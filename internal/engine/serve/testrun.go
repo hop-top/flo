@@ -18,6 +18,7 @@ import (
 	"hop.top/flo/internal/flowtest"
 	httpnode "hop.top/flo/internal/nodes/http"
 	"hop.top/flo/internal/placement"
+	"hop.top/flo/spec"
 	"hop.top/flo/spec/cel"
 	specrun "hop.top/flo/spec/run"
 )
@@ -39,6 +40,12 @@ type TestRequest struct {
 	Trigger map[string]any
 	// Vars are the flow's vars as text, bound to their declared types.
 	Vars map[string]string
+	// State says where the flow state of the run comes from: "default" (the
+	// declared defaults), "current" (a read-only copy of the engine's
+	// committed state, taken at the start) or the path of a JSON or YAML seed
+	// file. Empty is not explicit: a replay uses record/state.json when there
+	// is one, else the defaults. A tests/ document's own state: wins.
+	State string
 	// Timeout bounds the test; zero is DefaultTestTimeout.
 	Timeout time.Duration
 }
@@ -49,7 +56,92 @@ const (
 	cassetteDir   = "cassettes"
 	triggerRecord = "trigger.json"
 	plansRecord   = "plans.json"
+	stateRecord   = "state.json"
 )
+
+// testPrep is a test request, resolved and checked: everything a run or a
+// plan needs, read but nothing run or written.
+type testPrep struct {
+	req     TestRequest
+	v       core.FlowVersion
+	flow    *spec.Flow
+	vars    map[string]any
+	trigger map[string]any
+	cases   []flowtest.Case
+	set     *specrun.Settings
+	choice  seedChoice
+}
+
+func (e *Engine) prepareTest(ctx context.Context, tenant core.TenantID, req TestRequest) (testPrep, error) {
+	if err := core.RequireTenant(tenant); err != nil {
+		return testPrep{}, err //nolint:wrapcheck // *core.Error
+	}
+	if req.Mode == "" {
+		req.Mode = flowtest.ModeReplay
+	}
+	if !req.Mode.Valid() {
+		return testPrep{}, core.Errorf(core.CodeUsage, "test mode %q: want replay or record", req.Mode)
+	}
+	v, err := e.Services.Flows.GetVersion(ctx, tenant, req.Flow, req.Ref)
+	if err != nil {
+		return testPrep{}, err //nolint:wrapcheck // *core.Error
+	}
+	ck, err := e.Flows.Check(ctx, tenant, Source{File: v.Name + ".yaml", Bundle: v.Bundle, Data: v.Source})
+	if err != nil {
+		return testPrep{}, err
+	}
+	if err := ck.Report.Err(); err != nil {
+		return testPrep{}, err //nolint:wrapcheck // *core.Error
+	}
+	f, err := cel.ParseFlow(bytes.NewReader(v.Source), v.Name+".yaml")
+	if err != nil {
+		return testPrep{}, core.Wrap(core.CodeInvalidFlow, err)
+	}
+	vars, err := specrun.ResolveVars(f, req.Vars)
+	if err != nil {
+		return testPrep{}, core.Wrap(core.CodeInvalidVar, err).WithSuggestion("--var name=value, typed per the flow's vars")
+	}
+	runAs := f.RunAs
+	if runAs == "" {
+		runAs = req.Caller
+	}
+	ok, err := e.Services.Grants.CanUseProfile(ctx, tenant, req.Caller, runAs)
+	if err != nil {
+		return testPrep{}, err //nolint:wrapcheck // *core.Error
+	}
+	if !ok {
+		return testPrep{}, core.Errorf(core.CodeGrantDenied, "%s may not test this flow as %s", req.Caller, runAs).
+			WithSuggestion("flo grant set " + req.Caller + " profile.use:" + runAs)
+	}
+	if req.Mode == flowtest.ModeRecord && v.Bundle == "" {
+		return testPrep{}, core.Errorf(core.CodeUsage, "flow %s was applied from a single file: a recording needs a bundle directory to keep record/ in", v.Name).
+			WithSuggestion("move the flow to <dir>/flow.yaml and apply the directory")
+	}
+	trigger := req.Trigger
+	if trigger == nil && v.Bundle != "" {
+		if trigger, err = readRecordedTrigger(v.Bundle); err != nil {
+			return testPrep{}, err
+		}
+	}
+	cases, err := flowtest.LoadCases(v.Bundle)
+	if err != nil {
+		return testPrep{}, err //nolint:wrapcheck // *core.Error
+	}
+	set, err := specrun.Decode(f)
+	if err != nil {
+		return testPrep{}, core.Wrap(core.CodeInvalidFlow, err)
+	}
+	for _, c := range cases {
+		if err := flowtest.ValidateSeed(set.State, c.State, "tests/"+c.Name+": state"); err != nil {
+			return testPrep{}, err //nolint:wrapcheck // *core.Error
+		}
+	}
+	choice, err := e.resolveSeed(ctx, tenant, v, set.State, req)
+	if err != nil {
+		return testPrep{}, err
+	}
+	return testPrep{req: req, v: v, flow: f, vars: vars, trigger: trigger, cases: cases, set: set, choice: choice}, nil
+}
 
 // TestFlow runs one flow version in a sandbox engine (a throwaway data root
 // with the same packs, grants and configuration) and stores the result.
@@ -66,60 +158,11 @@ const (
 // run_as, a recording without a bundle); a flow that fails its test is a
 // Result with Passed false.
 func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestRequest) (flowtest.Result, error) {
-	if err := core.RequireTenant(tenant); err != nil {
-		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
-	}
-	if req.Mode == "" {
-		req.Mode = flowtest.ModeReplay
-	}
-	if !req.Mode.Valid() {
-		return flowtest.Result{}, core.Errorf(core.CodeUsage, "test mode %q: want replay or record", req.Mode)
-	}
-	v, err := e.Services.Flows.GetVersion(ctx, tenant, req.Flow, req.Ref)
-	if err != nil {
-		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
-	}
-	ck, err := e.Flows.Check(ctx, tenant, Source{File: v.Name + ".yaml", Bundle: v.Bundle, Data: v.Source})
+	p, err := e.prepareTest(ctx, tenant, req)
 	if err != nil {
 		return flowtest.Result{}, err
 	}
-	if err := ck.Report.Err(); err != nil {
-		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
-	}
-	f, err := cel.ParseFlow(bytes.NewReader(v.Source), v.Name+".yaml")
-	if err != nil {
-		return flowtest.Result{}, core.Wrap(core.CodeInvalidFlow, err)
-	}
-	vars, err := specrun.ResolveVars(f, req.Vars)
-	if err != nil {
-		return flowtest.Result{}, core.Wrap(core.CodeInvalidVar, err).WithSuggestion("--var name=value, typed per the flow's vars")
-	}
-	runAs := f.RunAs
-	if runAs == "" {
-		runAs = req.Caller
-	}
-	ok, err := e.Services.Grants.CanUseProfile(ctx, tenant, req.Caller, runAs)
-	if err != nil {
-		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
-	}
-	if !ok {
-		return flowtest.Result{}, core.Errorf(core.CodeGrantDenied, "%s may not test this flow as %s", req.Caller, runAs).
-			WithSuggestion("flo grant set " + req.Caller + " profile.use:" + runAs)
-	}
-	if req.Mode == flowtest.ModeRecord && v.Bundle == "" {
-		return flowtest.Result{}, core.Errorf(core.CodeUsage, "flow %s was applied from a single file: a recording needs a bundle directory to keep record/ in", v.Name).
-			WithSuggestion("move the flow to <dir>/flow.yaml and apply the directory")
-	}
-	trigger := req.Trigger
-	if trigger == nil && v.Bundle != "" {
-		if trigger, err = readRecordedTrigger(v.Bundle); err != nil {
-			return flowtest.Result{}, err
-		}
-	}
-	expects, err := flowtest.LoadExpect(v.Bundle)
-	if err != nil {
-		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
-	}
+	req, v, vars, trigger, cases, set, choice := p.req, p.v, p.vars, p.trigger, p.cases, p.set, p.choice
 	digest, err := flowtest.Digest(v.Bundle)
 	if err != nil {
 		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
@@ -152,13 +195,39 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 	}
 	defer func() { _ = sb.Close(context.WithoutCancel(ctx)) }()
 
-	run, recs, err := sb.runOnce(ctx, tenant, req.Caller, v, vars, trigger)
+	run, recs, err := sb.runOnce(ctx, tenant, req.Caller, v, vars, trigger, choice.seed)
 	if err != nil {
 		return flowtest.Result{}, err
 	}
 
 	steps, problems := flowtest.Evaluate(run, recs)
-	held, expProblems := flowtest.Check(steps, expects)
+	var expects []flowtest.Expect
+	var caseResults []flowtest.CaseResult
+	held := 0
+	for _, c := range cases {
+		if c.State == nil {
+			expects = append(expects, c.Expects...)
+			continue
+		}
+		crun, crecs, err := sb.runOnce(ctx, tenant, req.Caller, v, vars, trigger, c.State)
+		if err != nil {
+			return flowtest.Result{}, err
+		}
+		csteps, cprobs := flowtest.Evaluate(crun, crecs)
+		cheld, cexp := flowtest.Check(csteps, c.Expects)
+		cprobs = append(cprobs, cexp...)
+		for i := range cprobs {
+			cprobs[i].Message = "case " + c.Name + ": " + cprobs[i].Message
+		}
+		problems = append(problems, cprobs...)
+		held += cheld
+		expects = append(expects, c.Expects...)
+		caseResults = append(caseResults, flowtest.CaseResult{
+			Name: c.Name, StateSource: flowtest.StateCase + c.Name, Run: string(crun.ID), Status: string(crun.Status), Passed: len(cprobs) == 0,
+		})
+	}
+	bh, expProblems := flowtest.Check(steps, baseExpects(cases))
+	held += bh
 	problems = append(problems, expProblems...)
 	for _, m := range tape.Misses() {
 		problems = append(problems, flowtest.Problem{Kind: flowtest.ProblemCassette, Message: "no recording for " + m})
@@ -166,13 +235,13 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 	calls, replayed := tape.Stats()
 	res := flowtest.Result{
 		Schema: flowtest.SchemaVersion, Flow: v.Name, Version: v.Version, Hash: v.Hash, Digest: digest,
-		Mode: req.Mode, At: e.Config.Clock.Now().UTC(),
+		Mode: req.Mode, StateSource: choice.source, Cases: caseResults, At: e.Config.Clock.Now().UTC(),
 		Run: string(run.ID), Status: string(run.Status), Steps: steps, Problems: append([]flowtest.Problem{}, problems...),
 		Expected: len(expects), Held: held, Calls: calls, Replayed: replayed,
 	}
 	res.Passed = len(res.Problems) == 0
 	if req.Mode == flowtest.ModeRecord {
-		if res.Recorded, err = writeRecord(v.Bundle, trigger, steps); err != nil {
+		if res.Recorded, err = writeRecord(v.Bundle, trigger, steps, fullState(set.State, choice.seed)); err != nil {
 			return res, err
 		}
 		// The recording is part of the bundle the result is bound to.
@@ -187,7 +256,11 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 }
 
 // sandbox is a throwaway engine a test runs a flow in.
-type sandbox struct{ *Engine }
+type sandbox struct {
+	*Engine
+	// state is the sandbox store's own; a run reads its seed instead.
+	state core.StateStore
+}
 
 // openSandbox opens an engine over a new data root that sees what the real
 // one does (packs, trust documents, configuration, grants) but writes
@@ -212,7 +285,7 @@ func (e *Engine) openSandbox(ctx context.Context, root string, tape *flowtest.Ta
 	if err != nil {
 		return nil, err
 	}
-	sb := &sandbox{inner}
+	sb := &sandbox{Engine: inner, state: inner.Services.State}
 	svc := inner.Services
 	svc.Dispatcher = testDispatcher{svc.Dispatcher, cfg.Clock}
 	svc.Runner = placement.New(svc.Dispatcher)
@@ -234,8 +307,9 @@ func (e *Engine) openSandbox(ctx context.Context, root string, tape *flowtest.Ta
 
 // runOnce stores the version in the sandbox, runs it and returns the run and
 // its step records.
-func (sb *sandbox) runOnce(ctx context.Context, tenant core.TenantID, caller string, v core.FlowVersion, vars, trigger map[string]any) (core.Run, []core.StepRun, error) {
+func (sb *sandbox) runOnce(ctx context.Context, tenant core.TenantID, caller string, v core.FlowVersion, vars, trigger, seed map[string]any) (core.Run, []core.StepRun, error) {
 	svc := sb.Services
+	svc.State = seededState{StateStore: sb.state, seed: seed}
 	if _, _, err := svc.Flows.PutVersion(ctx, core.NewFlowVersion{
 		Tenant: tenant, Name: v.Name, Version: v.Version, Hash: v.Hash, Source: v.Source, Bundle: v.Bundle, At: svc.Clock.Now(),
 	}); err != nil {
@@ -321,7 +395,7 @@ func readRecordedTrigger(bundle string) (map[string]any, error) {
 // writeRecord keeps the trigger payload and the plans of the writes a
 // recording did not execute, beside the cassettes. It returns what it wrote,
 // relative to the bundle.
-func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step) ([]string, error) {
+func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step, state map[string]any) ([]string, error) {
 	dir := filepath.Join(bundle, recordDir)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, core.Wrap(core.CodeInternal, err)
@@ -339,7 +413,7 @@ func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step) (
 		}
 	}
 	var wrote []string
-	for name, v := range map[string]any{triggerRecord: trigger, plansRecord: plans} {
+	for name, v := range map[string]any{triggerRecord: trigger, plansRecord: plans, stateRecord: state} {
 		if name == triggerRecord && trigger == nil {
 			continue
 		}

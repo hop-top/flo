@@ -76,15 +76,20 @@ type Result struct {
 	Version string `json:"version" yaml:"version"`
 	Hash    string `json:"hash" yaml:"hash"`
 	// Digest fingerprints the bundle directory (empty for a single file).
-	Digest string    `json:"digest,omitempty" yaml:"digest,omitempty"`
-	Mode   Mode      `json:"mode" yaml:"mode"`
-	Passed bool      `json:"passed" yaml:"passed"`
-	At     time.Time `json:"at" yaml:"at"`
+	Digest string `json:"digest,omitempty" yaml:"digest,omitempty"`
+	Mode   Mode   `json:"mode" yaml:"mode"`
+	// StateSource is where the flow state of the run came from: default,
+	// current, file:<path> or recorded (record/state.json).
+	StateSource string    `json:"state_source" yaml:"state_source"`
+	Passed      bool      `json:"passed" yaml:"passed"`
+	At          time.Time `json:"at" yaml:"at"`
 
-	Run      string    `json:"run,omitempty" yaml:"run,omitempty"`
-	Status   string    `json:"status,omitempty" yaml:"status,omitempty"`
-	Steps    []Step    `json:"steps" yaml:"steps"`
-	Problems []Problem `json:"problems" yaml:"problems"`
+	Run    string `json:"run,omitempty" yaml:"run,omitempty"`
+	Status string `json:"status,omitempty" yaml:"status,omitempty"`
+	Steps  []Step `json:"steps" yaml:"steps"`
+	// Cases are the tests/ documents that seed their own state: one run each.
+	Cases    []CaseResult `json:"cases,omitempty" yaml:"cases,omitempty"`
+	Problems []Problem    `json:"problems" yaml:"problems"`
 	// Expectations is how many `expect:` entries held, out of Expected.
 	Expected int `json:"expected" yaml:"expected"`
 	Held     int `json:"held" yaml:"held"`
@@ -94,4 +99,13 @@ type Result struct {
 	Replayed int `json:"replayed" yaml:"replayed"`
 	// Recorded names what a recording wrote, relative to the bundle.
 	Recorded []string `json:"recorded,omitempty" yaml:"recorded,omitempty"`
+}
+
+// CaseResult is the run of a tests/ document with a `state:` map.
+type CaseResult struct {
+	Name        string `json:"name" yaml:"name"`
+	StateSource string `json:"state_source" yaml:"state_source"`
+	Run         string `json:"run,omitempty" yaml:"run,omitempty"`
+	Status      string `json:"status,omitempty" yaml:"status,omitempty"`
+	Passed      bool   `json:"passed" yaml:"passed"`
 }

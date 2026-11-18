@@ -22,6 +22,7 @@ import (
 // of the test run must have ended with.
 //
 //	# tests/findings.yaml
+//	state: { seen_adv: [GHSA-aaaa] }   # optional: this case runs on this state
 //	expect:
 //	  - step: newadv
 //	    output: { items: [{ ghsa_id: GHSA-aaaa }] }
@@ -41,6 +42,8 @@ type Expect struct {
 }
 
 type expectDoc struct {
+	// State seeds the flow state of the test case this document is.
+	State  map[string]any `yaml:"state"`
 	Expect []struct {
 		Step   string    `yaml:"step"`
 		Status string    `yaml:"status"`
@@ -48,9 +51,28 @@ type expectDoc struct {
 	} `yaml:"expect"`
 }
 
+// Case is one tests/ document: its expectations, and the state it seeds the
+// flow with when it has a `state:` map (such a case runs the flow on its own).
+type Case struct {
+	// Name is the file name.
+	Name    string
+	State   map[string]any
+	Expects []Expect
+}
+
 // LoadExpect reads the expect blocks of <bundle>/tests/*.yaml, in file order.
 // A bundle without tests/ has none; a single-file flow (empty bundle) has none.
 func LoadExpect(bundle string) ([]Expect, error) {
+	cases, err := LoadCases(bundle)
+	var out []Expect
+	for _, c := range cases {
+		out = append(out, c.Expects...)
+	}
+	return out, err
+}
+
+// LoadCases reads the documents of <bundle>/tests/, in file order.
+func LoadCases(bundle string) ([]Case, error) {
 	if bundle == "" {
 		return nil, nil
 	}
@@ -63,7 +85,7 @@ func LoadExpect(bundle string) ([]Expect, error) {
 		return nil, core.Errorf(core.CodeUsage, "tests/: %v", err)
 	}
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
-	var out []Expect
+	var out []Case
 	for _, e := range ents {
 		name := e.Name()
 		if e.IsDir() || (!strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml")) {
@@ -79,6 +101,7 @@ func LoadExpect(bundle string) ([]Expect, error) {
 		if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
 			return nil, core.Errorf(core.CodeUsage, "tests/%s: %v", name, err).WithSuggestion("a tests document is `expect: [{step, status?, output?}]`")
 		}
+		c := Case{Name: name, State: doc.State}
 		for i, x := range doc.Expect {
 			if x.Step == "" {
 				return nil, core.Errorf(core.CodeUsage, "tests/%s: expect[%d] has no step", name, i)
@@ -94,8 +117,9 @@ func LoadExpect(bundle string) ([]Expect, error) {
 				}
 				ex.Output, ex.HasOutput = v, true
 			}
-			out = append(out, ex)
+			c.Expects = append(c.Expects, ex)
 		}
+		out = append(out, c)
 	}
 	return out, nil
 }
