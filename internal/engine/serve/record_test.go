@@ -424,3 +424,25 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 		t.Errorf("a redacted output is not in the replay, which says so: %v", rep.Diffs)
 	}
 }
+
+// A replay starts from the state the run started from, not the declared
+// defaults and not what the engine holds by now.
+func TestReplayStartsFromTheRecordedState(t *testing.T) {
+	r := newRig(t)
+	v := r.apply(t, "dependency-watch", "vcs.read")
+	first := r.startRecorded(t, "dependency-watch", v.Hash) // commits seen_adv and seen_rel
+	second := r.startRecorded(t, "dependency-watch", v.Hash)
+	state, _, _ := r.e.Recordings.ReadDoc(core.DefaultTenant, second.ID, runrec.StateFile)
+	if seen, _ := state["seen_adv"].([]any); len(seen) != 2 {
+		t.Fatalf("the second run did not start from the first one's state: %v", state)
+	}
+	if st, _, _ := r.e.Recordings.ReadDoc(core.DefaultTenant, first.ID, runrec.StateFile); len(st["seen_adv"].([]any)) != 0 {
+		t.Fatalf("the first run started from %v", st)
+	}
+	for _, id := range []core.RunID{first.ID, second.ID} {
+		res, err := r.replay(t, id)
+		if err != nil || !res.Matches {
+			t.Errorf("replay of %s: %v %+v", id, err, res.Diffs)
+		}
+	}
+}
