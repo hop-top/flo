@@ -1,0 +1,18 @@
+node: flo/filter@1
+kind: builtin
+description: Keep the items that match a condition.
+inputs:
+  items: { type: array, required: true }
+  where:
+    type: string
+    required: true
+    description: Condition expression; `item` and `index` are bound.
+outputs:
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items: { type: array }
+capabilities: []
+side_effect: none
+privacy: local

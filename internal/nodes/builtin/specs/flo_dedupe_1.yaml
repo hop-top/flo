@@ -1,0 +1,26 @@
+node: flo/dedupe@1
+kind: builtin
+description: Remove items already seen, and report the keys to remember.
+inputs:
+  items: { type: array, required: true, description: Candidates. }
+  key:
+    type: string
+    required: true
+    description: Per-item key expression; `item` and `index` are bound.
+  seen: { type: array, items: { type: string }, default: [], description: Keys already seen. }
+  max:
+    type: integer
+    default: 10000
+    minimum: 1
+    description: Keep at most this many keys, dropping the oldest.
+outputs:
+  schema:
+    type: object
+    required: [items, keys, seen]
+    properties:
+      items: { type: array }
+      keys: { type: array, items: { type: string } }
+      seen: { type: array, items: { type: string } }
+capabilities: []
+side_effect: none
+privacy: local

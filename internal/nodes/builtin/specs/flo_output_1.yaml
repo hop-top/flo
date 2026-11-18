@@ -1,0 +1,29 @@
+node: flo/output@1
+kind: builtin
+description: Publish a result to the brief and the run.
+inputs:
+  kind: { type: string, required: true, enum: [findings, brief] }
+  title: { type: string }
+  body: { type: string, description: The brief's text (kind brief). }
+  items:
+    type: array
+    description: The findings (kind findings).
+    items:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        label: { type: string }
+        detail: { type: string }
+        url: { type: string }
+        refs: { type: array }
+outputs:
+  schema:
+    type: object
+    required: [id, kind]
+    properties:
+      id: { type: string }
+      kind: { type: string, enum: [findings, brief] }
+capabilities: []
+side_effect: write-local
+privacy: local
