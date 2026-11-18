@@ -34,6 +34,7 @@ type Flow struct {
 	Tasks       string            `yaml:"tasks,omitempty" json:"tasks,omitempty"`
 	Concurrency map[string]any    `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
 	Returns     map[string]string `yaml:"returns,omitempty" json:"returns,omitempty"`
+	Retention   map[string]any    `yaml:"retention,omitempty" json:"retention,omitempty"`
 
 	// Path is the file the flow was parsed from, Source the directory or
 	// layer it was located in, Hash the sha256 of the raw bytes. None of

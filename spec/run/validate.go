@@ -122,7 +122,7 @@ func (r Report) Has(rule string) bool {
 //
 //   - V05 a var default has the declared type;
 //   - V07 every state key has a default;
-//   - V16 durations parse and budget, retry, timeout are well-formed;
+//   - V16 durations parse and budget, retry, timeout, retention are well-formed;
 //   - V17 at most one step writes a state key, a written key is declared,
 //     and `outputs` has only `state`;
 //   - V25 a step's privacy only narrows the flow's;
@@ -181,7 +181,7 @@ func (c *checker) decodeFailure(err error) {
 	}
 	rule := ""
 	switch {
-	case strings.HasPrefix(e.Field, "budget") || strings.HasSuffix(e.Field, "jitter") ||
+	case strings.HasPrefix(e.Field, "budget") || strings.HasPrefix(e.Field, "retention") || strings.HasSuffix(e.Field, "jitter") ||
 		strings.HasSuffix(e.Field, "offset") || strings.HasSuffix(e.Field, "horizon"):
 		rule = "V16"
 	}

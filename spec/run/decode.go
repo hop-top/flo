@@ -37,7 +37,7 @@ func errf(field, format string, args ...any) *Error {
 }
 
 // Decode types the run-level keys of f: on, run_as, privacy, budget, tasks,
-// concurrency and state. Absent keys take their defaults. It checks shape
+// concurrency, retention and state. Absent keys take their defaults. It checks shape
 // (types, key names, duration syntax, enum membership) and stops at the
 // first problem; the cross-field rules (V06, V07, V16, V25, V26...) belong
 // to validation.
@@ -65,6 +65,9 @@ func Decode(f *spec.Flow) (*Settings, error) {
 		return nil, err
 	}
 	if s.Concurrency, err = decodeConcurrency(f.Concurrency); err != nil {
+		return nil, err
+	}
+	if s.Retention, err = decodeRetention(f.Retention); err != nil {
 		return nil, err
 	}
 	if s.State, err = decodeState(f.State); err != nil {
@@ -208,6 +211,29 @@ func decodeConcurrency(m map[string]any) (Concurrency, error) {
 		}
 	}
 	return c, nil
+}
+
+func decodeRetention(m map[string]any) (Retention, error) {
+	if len(m) == 0 {
+		return Retention{}, nil
+	}
+	var raw struct {
+		Recordings string `yaml:"recordings"`
+	}
+	if err := strictInto(m, &raw); err != nil {
+		return Retention{}, errf("retention", "%v", err)
+	}
+	if raw.Recordings == "" {
+		return Retention{}, nil
+	}
+	d, err := parseDur("retention.recordings", raw.Recordings)
+	if err != nil {
+		return Retention{}, err
+	}
+	if d < MinRecordingRetention || d > MaxRecordingRetention {
+		return Retention{}, errf("retention.recordings", "%q: want between 1d and 3650d", raw.Recordings)
+	}
+	return Retention{Recordings: d}, nil
 }
 
 func decodeState(m map[string]any) (map[string]StateDecl, error) {

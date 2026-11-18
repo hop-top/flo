@@ -89,6 +89,7 @@ decision. These words are not interchangeable: "gate" is retired, and
 | `tasks` (and step `task`) | flow, step | §7.8 |
 | `state` | flow (declaration) | §7.4 |
 | `concurrency` | flow | §7.3 |
+| `retention` | flow | §7.10 |
 | `returns` | flow (sub-flow interface) | §5.9 |
 | `uses` | step | §5.2 |
 | `with` | step (also kept on `include`) | §5.2 |
@@ -135,6 +136,7 @@ tool's extension namespace.)
 | `budget` | Budget | no | §7.7. Default: engine default |
 | `tasks` | `none` \| `per-run` \| `per-step` | no | §7.8. Default `per-run` |
 | `concurrency` | Concurrency | no | §7.3 |
+| `retention` | Retention | no | §7.10. Default: recordings kept 90 days |
 | `track` | `{title, type, plan}` | no | Plan level, as recipe 0.1 |
 | `returns` | map name → expression | no | §5.9 |
 | `steps` | list of Step | yes | At least one |
@@ -669,6 +671,26 @@ idempotency key (node.md §11); otherwise the step is marked `uncertain`,
 the run is parked as awaiting a decision, and nothing is repeated
 automatically.
 
+### 7.10 `retention`
+
+```yaml
+retention: { recordings: 30d }
+```
+
+How long the data a flow's runs leave behind is kept, per flow. One key in
+0.1:
+
+- `recordings`: how long a recording of one of the flow's runs
+  (`flo run create --record`) is kept, counted from when it was made. A
+  duration, at least `1d` and at most `3650d`; `d` and `w` units are
+  accepted. Absent: 90 days, the retention of outputs.
+
+The engine reads the value from the flow's active version (else the
+newest) each time it prunes, so a change applies to recordings already
+made. A recording of a flow that no longer exists keeps the default.
+Copies of a recording made into a bundle (`flo flow test --from-run`) are
+the bundle's files and are never pruned.
+
 ---
 
 ## 8. Validation rules
@@ -709,7 +731,8 @@ Steps (recursively into blocks):
   namespaces are maps); fields read through `results`, `state`, `trigger`
   and the other namespaces are dynamic, so a wrong field type is found at
   evaluation. Errors carry the step, the field and the line:column in it.
-- **V16** durations parse; `retry`, `budget` well-formed.
+- **V16** durations parse; `retry`, `budget`, `retention` well-formed
+  (`retention.recordings` between `1d` and `3650d`).
 - **V17** at most one step writes a given state key; `outputs` only has
   `state`.
 
@@ -774,7 +797,7 @@ How a plan-level tool treats a flow:
 | `uses:` node that lowers to `engine`, or has no spec | refused: `engine_node`, exit 2, suggestion `flo run create --flow <name>` |
 | `uses:` sub-flow | refused: `engine_node` (a sub-flow is an engine feature in 0.1) |
 | `for_each`, references to `state`, `trigger` | refused: `engine_feature` |
-| `on`, `run_as`, `privacy`, `budget`, `concurrency`, `tasks`, `returns` | ignored with a warning |
+| `on`, `run_as`, `privacy`, `budget`, `concurrency`, `tasks`, `retention`, `returns` | ignored with a warning |
 | `check` | runs as the recipe gate did |
 
 ---

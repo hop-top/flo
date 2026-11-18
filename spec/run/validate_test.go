@@ -46,6 +46,10 @@ func TestCheckRules(t *testing.T) {
 		{"V26", head + "on: [ { schedule: { tz: UTC } } ]\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
 		{"V16", head + "budget: { duration: soon }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
 		{"V16", head + "steps: [ { id: a, kind: exec, exec: { argv: [x] }, budget: { usd: -1 } } ]\n"},
+		{"V16", head + "retention: { recordings: 12h }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
+		{"V16", head + "retention: { recordings: 4000d }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
+		{"V16", head + "retention: { recordings: later }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
+		{"V16", head + "retention: { logs: 30d }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
 		{"V05", head + "vars: { n: { type: integer, default: abc } }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n"},
 	}
 	for i, c := range cases {
@@ -68,6 +72,7 @@ func TestCheckLegalVariants(t *testing.T) {
 		// a default of null is a default.
 		head + "state: { cursor: { default: null } }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] }, outputs: { state: { cursor: '{{ run.started_at }}' } } } ]\n",
 		head + "on: [ { schedule: { rrule: 'FREQ=MINUTELY;INTERVAL=15' } }, { manual: {} } ]\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n",
+		head + "retention: { recordings: 30d }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n",
 		head + "vars: { n: { type: integer, default: 3 }, d: { type: duration, default: 14d } }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n",
 	}
 	for i, doc := range ok {

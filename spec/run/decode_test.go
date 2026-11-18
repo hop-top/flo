@@ -131,6 +131,13 @@ func TestDecodeErrors(t *testing.T) {
 		{"concurrency overlap", spec.Flow{Concurrency: map[string]any{"on_overlap": "drop"}}, "concurrency.on_overlap"},
 		{"concurrency max", spec.Flow{Concurrency: map[string]any{"max": -2}}, "concurrency.max"},
 		{"concurrency key", spec.Flow{Concurrency: map[string]any{"limit": 2}}, "concurrency"},
+		{"retention key", spec.Flow{Retention: map[string]any{"outputs": "30d"}}, "retention"},
+		{"retention syntax", spec.Flow{Retention: map[string]any{"recordings": "soon"}}, "retention.recordings"},
+		{"retention below 1d", spec.Flow{Retention: map[string]any{"recordings": "23h"}}, "retention.recordings"},
+		{"retention zero", spec.Flow{Retention: map[string]any{"recordings": "0d"}}, "retention.recordings"},
+		{"retention negative", spec.Flow{Retention: map[string]any{"recordings": "-5d"}}, "retention.recordings"},
+		{"retention above 3650d", spec.Flow{Retention: map[string]any{"recordings": "3651d"}}, "retention.recordings"},
+		{"retention type", spec.Flow{Retention: map[string]any{"recordings": []any{1}}}, "retention"},
 		{"state shape", spec.Flow{State: map[string]any{"seen": []any{}}}, "state.seen"},
 		{"state key", spec.Flow{State: map[string]any{"seen": map[string]any{"initial": 1}}}, "state.seen"},
 		{"trigger two keys", spec.Flow{On: []map[string]any{{"manual": map[string]any{}, "schedule": map[string]any{}}}}, "on[0]"},
@@ -229,5 +236,40 @@ func TestPrivacyNarrows(t *testing.T) {
 	}
 	if PrivacyCloudAllowed.Narrows(PrivacyLocalOnly) {
 		t.Error("cloud-allowed widens local-only")
+	}
+}
+
+func TestDecodeRetention(t *testing.T) {
+	day := 24 * time.Hour
+	tests := []struct {
+		name string
+		in   map[string]any
+		want time.Duration
+	}{
+		{"absent", nil, 0},
+		{"empty", map[string]any{}, 0},
+		{"no recordings", map[string]any{"recordings": ""}, 0},
+		{"30 days", map[string]any{"recordings": "30d"}, 30 * day},
+		{"minimum", map[string]any{"recordings": "1d"}, day},
+		{"hours", map[string]any{"recordings": "48h"}, 2 * day},
+		{"weeks", map[string]any{"recordings": "2w"}, 14 * day},
+		{"maximum", map[string]any{"recordings": "3650d"}, 3650 * day},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := Decode(&spec.Flow{Retention: tt.in})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Retention.Recordings != tt.want {
+				t.Errorf("recordings = %v, want %v", s.Retention.Recordings, tt.want)
+			}
+		})
+	}
+	if got := (Retention{}).RecordingsOr(90 * day); got != 90*day {
+		t.Errorf("unset keeps the default: %v", got)
+	}
+	if got := (Retention{Recordings: 30 * day}).RecordingsOr(90 * day); got != 30*day {
+		t.Errorf("a flow's own value wins: %v", got)
 	}
 }

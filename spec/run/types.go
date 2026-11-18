@@ -159,6 +159,28 @@ func (p Privacy) Narrows(outer Privacy) bool {
 	return p == outer || p == PrivacyLocalOnly
 }
 
+// Retention is the `retention` key (flow.md §7.9): how long data a run left
+// behind is kept. A zero field is unset: the engine's default applies.
+type Retention struct {
+	// Recordings is how long the recordings of the flow's runs
+	// (`run create --record`) are kept, counted from when they were made.
+	Recordings time.Duration
+}
+
+// Bounds of retention.recordings.
+const (
+	MinRecordingRetention = 24 * time.Hour
+	MaxRecordingRetention = 3650 * 24 * time.Hour
+)
+
+// RecordingsOr is the retention of recordings: the flow's own, else def.
+func (r Retention) RecordingsOr(def time.Duration) time.Duration {
+	if r.Recordings > 0 {
+		return r.Recordings
+	}
+	return def
+}
+
 // Settings are the run-level keys of a flow, decoded and defaulted.
 type Settings struct {
 	// RunAs is the aps profile; empty means the profile that started the run.
@@ -167,6 +189,7 @@ type Settings struct {
 	Budget      Budget
 	Tasks       Tasks
 	Concurrency Concurrency
+	Retention   Retention
 	State       map[string]StateDecl
 	// Triggers is `on:` in order. An absent `on:` decodes to a single
 	// manual trigger, as the spec says.
