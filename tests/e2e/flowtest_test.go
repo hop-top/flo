@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -241,5 +242,93 @@ func TestTriggerFileFeedsTestsAndRuns(t *testing.T) {
 	}
 	if r := e.run("run", "create", "--flow", "on-event", "--trigger-file", filepath.Join(t.TempDir(), "nope.json")); r.Exit != core.ExitUsage {
 		t.Errorf("a missing trigger file: exit %d", r.Exit)
+	}
+}
+
+func newadvItems(res flowtest.Result) int {
+	for _, s := range res.Steps {
+		if s.ID == "newadv" {
+			m, _ := s.Output.(map[string]any)
+			l, _ := m["items"].([]any)
+			return len(l)
+		}
+	}
+	return -1
+}
+
+// TestFlowTestStateSeeds: where a test's flow state comes from, how a recording
+// keeps it, and that the live state is never touched.
+func TestFlowTestStateSeeds(t *testing.T) {
+	e := newEnv(t)
+	bundle := copyBundle(t, "dependency-watch")
+	gh := filepath.Join(e.scratch, "gh.log")
+	e.ok("grant", "set", "automation", "vcs.read", "--yes")
+	e.ok("flow", "apply", "-f", bundle, "--yes")
+	seed := filepath.Join(t.TempDir(), "seed.yaml")
+	if err := os.WriteFile(seed, []byte("seen_adv: [GHSA-5cv4-jp36-h3mw]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// --dry-run: the plan names the seed and writes nothing, runs nothing.
+	r := e.run("flow", "test", "dependency-watch", "--record", "--state", seed, "--dry-run", "--format", "json")
+	if r.Exit != 0 || !strings.Contains(r.Stdout, "state_source") || !strings.Contains(r.Stdout, "GHSA-5cv4-jp36-h3mw") || exists(gh) || exists(filepath.Join(bundle, "record")) {
+		t.Fatalf("dry-run: exit %d\n%s%s", r.Exit, r.Stdout, r.Stderr)
+	}
+
+	// a seed with an undeclared key is a usage error
+	bad := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(bad, []byte(`{"nope": 1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.run("flow", "test", "dependency-watch", "--state", bad); r.Exit != core.ExitUsage {
+		t.Fatalf("an undeclared key: exit %d\n%s", r.Exit, r.Stderr)
+	}
+
+	res, r := e.flowTest("dependency-watch", "--record", "--state", seed, "--yes")
+	if r.Exit != 0 || !res.Passed || res.StateSource != "file:"+seed || newadvItems(res) != 1 {
+		t.Fatalf("record on a seed: exit %d, %s, items %d\n%s", r.Exit, res.StateSource, newadvItems(res), r.Stderr)
+	}
+	if b, err := os.ReadFile(filepath.Join(bundle, "record", "state.json")); err != nil || !strings.Contains(string(b), "GHSA-5cv4-jp36-h3mw") { //nolint:gosec // a temp copy
+		t.Fatalf("state.json: %s %v", b, err)
+	}
+	// replay reuses the recorded seed; an explicit --state wins
+	res, r = e.flowTest("dependency-watch")
+	if r.Exit != 0 || res.StateSource != "recorded" || newadvItems(res) != 1 {
+		t.Fatalf("replay: exit %d, %s, items %d", r.Exit, res.StateSource, newadvItems(res))
+	}
+	res, r = e.flowTest("dependency-watch", "--state", "default")
+	if r.Exit != 0 || res.StateSource != "default" || newadvItems(res) != 2 {
+		t.Fatalf("explicit default: exit %d, %s, items %d", r.Exit, res.StateSource, newadvItems(res))
+	}
+
+	// current: a copy of what a live run committed, and nothing written back
+	e.ok("flow", "set", "dependency-watch", "--state", "active", "--yes")
+	eng := e.startEngine()
+	defer eng.stop()
+	var c created
+	if r := e.jsonOf(&c, "run", "create", "--flow", "dependency-watch", "--wait"); r.Exit != 0 {
+		t.Fatalf("live run: exit %d\n%s", r.Exit, r.Stderr)
+	}
+	live := func() string {
+		s, err := e.store().State.Snapshot(t.Context(), tenant, "dependency-watch")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := json.Marshal(s)
+		return string(b)
+	}
+	before := live()
+	if !strings.Contains(before, "GHSA-vvgc-356p-c3xw") {
+		t.Fatalf("the live run committed no state: %s", before)
+	}
+	res, r = e.flowTest("dependency-watch", "--state", "current")
+	if r.Exit != 0 || res.StateSource != "current" || newadvItems(res) != 0 {
+		t.Fatalf("current: exit %d, %s, items %d\n%s", r.Exit, res.StateSource, newadvItems(res), r.Stderr)
+	}
+	if res, r = e.flowTest("dependency-watch", "--state", "default"); r.Exit != 0 || newadvItems(res) != 2 {
+		t.Fatalf("default after a live run: exit %d, items %d", r.Exit, newadvItems(res))
+	}
+	if after := live(); after != before {
+		t.Fatalf("a test changed the live state:\n%s\n%s", before, after)
 	}
 }
