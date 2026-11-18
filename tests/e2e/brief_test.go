@@ -45,7 +45,8 @@ type briefDoc struct {
 func TestBrief(t *testing.T) {
 	e := newEnv(t)
 	e.ok("grant", "set", "automation", "vcs.read", "--yes")
-	e.ok("flow", "apply", "-f", testdata("flows", "dependency-watch"))
+	e.ok("flow", "apply", "-f", copyBundle(t, "dependency-watch"), "--yes")
+	e.recordTest("dependency-watch")
 	e.ok("flow", "set", "dependency-watch", "--state", "active", "--yes")
 	eng := setupInbox(t, e)
 	defer eng.stop()

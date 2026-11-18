@@ -76,7 +76,12 @@ func (e *env) flag(name string, on bool) {
 // the ones the fake gh serves.
 func watchFlow(t *testing.T) string {
 	t.Helper()
-	dst := filepath.Join(t.TempDir(), "dependency-watch.yaml")
+	// a bundle: recording writes record/ beside the document
+	dir := filepath.Join(t.TempDir(), "dependency-watch")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dir, "flow.yaml")
 	b, err := os.ReadFile(filepath.Join(repoRoot, "flows", "dependency-watch.yaml")) //nolint:gosec // a file of this repository
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +90,7 @@ func watchFlow(t *testing.T) string {
 		t.Fatal(err)
 	}
 	rewrite(t, dst, "[example-org/api, example-org/web, example-org/worker]", "[example-org/api, example-org/web, example-org/off, example-org/gone]")
-	return dst
+	return dir
 }
 
 type finding struct {
@@ -157,7 +162,13 @@ func TestDependencyWatchFlow(t *testing.T) {
 	}
 	e.ok("grant", "set", "automation", "vcs.read", "--yes")
 	var a applied
-	e.okJSON(&a, "flow", "apply", "-f", flow)
+	e.okJSON(&a, "flow", "apply", "-f", flow, "--yes")
+	e.recordTest("dependency-watch")
+	// The wrappers write their JSON to the step directory: the cassettes carry
+	// those files, so a replay needs no gh, aps or jq.
+	if res, r := e.flowTest("dependency-watch", "--replay"); r.Exit != 0 || !res.Passed || res.Replayed == 0 || res.Replayed != res.Calls || exists(filepath.Join(e.scratch, "aps.log")) {
+		t.Fatalf("replay: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
+	}
 	e.okJSON(&a, "flow", "set", "dependency-watch", "--version", a.Hash, "--state", "active", "--yes")
 	var trig []triggerRow
 	e.okJSON(&trig, "trigger", "list", "--flow", "dependency-watch")
@@ -259,11 +270,12 @@ func TestDependencyWatchFlow(t *testing.T) {
 // nothing quietly stands in for the missing judge.
 func TestDependencyWatchWithoutClassifier(t *testing.T) {
 	e := watcherEnv(t)
-	e.extra = nil
 	flow := watchFlow(t)
 	e.ok("grant", "set", "automation", "vcs.read", "--yes")
 	var a applied
-	e.okJSON(&a, "flow", "apply", "-f", flow)
+	e.okJSON(&a, "flow", "apply", "-f", flow, "--yes")
+	e.recordTest("dependency-watch") // the test needs a classifier to pass
+	e.extra = nil                    // the engine that runs it has none
 	e.okJSON(&a, "flow", "set", "dependency-watch", "--version", a.Hash, "--state", "active", "--yes")
 	eng := e.startEngine()
 	defer eng.stop()

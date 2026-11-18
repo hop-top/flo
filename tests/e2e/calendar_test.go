@@ -78,9 +78,16 @@ func TestCalendarFlowFiresOncePerEvent(t *testing.T) {
 		}
 		return out.String(), nil
 	}
+	bundle := copyBundle(t, "calendar-event") // recording writes into the bundle
+	// the test feeds the trigger payload a calendar trigger would
+	event := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(event, []byte(`{"event":{"title":"standup","start":"2026-11-18T13:00:00Z","attendees":["a@example.org","b@example.org"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, args := range [][]string{
 		{"grant", "set", "automation", "calendar.read", "--yes"},
-		{"flow", "apply", "-f", testdata("flows", "calendar-event")},
+		{"flow", "apply", "-f", bundle, "--yes"},
+		{"flow", "test", "calendar-event", "--record", "--trigger-file", event, "--yes"},
 		{"flow", "set", "calendar-event", "--state", "active", "--yes"},
 	} {
 		if out, err := flo(args...); err != nil {

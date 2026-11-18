@@ -427,6 +427,14 @@ func (e *env) resetScratch() {
 	}
 }
 
+// recordTest records a passing test of a stored flow, then clears what the
+// fake tools logged meanwhile.
+func (e *env) recordTest(flow string, args ...string) {
+	e.t.Helper()
+	e.ok(append([]string{"flow", "test", flow, "--record", "--yes"}, args...)...)
+	e.resetScratch()
+}
+
 // applyTested stores a copy of a testdata flow bundle (recording writes into
 // the bundle, never into the repository) and records a passing test of it, so
 // the flow can be activated. It returns the copy's path.
