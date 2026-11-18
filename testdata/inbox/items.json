@@ -1,0 +1,22 @@
+[
+  {"n": 1, "account": "acme", "id": "101", "message_id": "<m1@example.org>", "from": "news@example.org", "subject": "Weekly digest",
+   "folder": "newsletters", "actions": ["read", "archive"], "original_actions": ["read", "archive"], "keys": ["read", "archive"],
+   "why": "newsletter, nothing to answer", "why_fields": null, "guard": null, "recipients": null,
+   "status": "auto", "verdict": null, "errors": [], "executed": null},
+  {"n": 2, "account": "acme", "id": "102", "message_id": "<m2@example.org>", "from": "billing@example.org", "subject": "Invoice 2291",
+   "folder": "finance", "actions": [{"label": "Finance"}, "archive"], "original_actions": [{"label": "Finance"}, "archive"], "keys": ["label:Finance", "archive"],
+   "why": "invoice from a known sender", "why_fields": null, "guard": null, "recipients": null,
+   "status": "pending", "verdict": null, "errors": [], "executed": null},
+  {"n": 3, "account": "acme", "id": "103", "message_id": "<m3@example.org>", "from": "sam@example.org", "subject": "Lunch on Friday?",
+   "folder": "people", "actions": [{"reply": {"mode": "draft", "body": "Friday works.", "reply_all": false, "cc": []}}], "original_actions": [{"reply": {"mode": "draft", "body": "Friday works.", "reply_all": false, "cc": []}}], "keys": ["reply:draft"],
+   "why": "a person asks a question", "why_fields": null, "guard": null, "recipients": {"to": ["sam@example.org"], "cc": [], "redirected": false},
+   "status": "pending", "verdict": null, "errors": [], "executed": null},
+  {"n": 4, "account": "beta", "id": "201", "message_id": "<m5@example.org>", "from": "legal@example.org", "subject": "Contract renewal",
+   "folder": "legal", "actions": ["archive"], "original_actions": ["archive"], "keys": ["archive"],
+   "why": "renewal notice", "why_fields": null, "guard": "folder rule: approval always", "recipients": null,
+   "status": "pending", "verdict": null, "errors": [], "executed": null},
+  {"n": 5, "account": "acme", "id": "102", "message_id": "<m2@example.org>", "from": "billing@example.org", "subject": "Invoice 2291",
+   "folder": "finance", "actions": ["archive"], "original_actions": ["archive"], "keys": ["archive"],
+   "why": "an earlier run's copy", "why_fields": null, "guard": null, "recipients": null,
+   "status": "superseded", "verdict": null, "errors": [], "executed": null, "superseded_by": "20261117-181500"}
+]

@@ -1,0 +1,6 @@
+{
+  "read":          {"streak": 3, "threshold": 3, "resets": 0},
+  "archive":       {"streak": 3, "threshold": 3, "resets": 0},
+  "label:Finance": {"streak": 1, "threshold": 3, "resets": 0},
+  "reply:draft":   {"streak": 0, "threshold": 5, "resets": 1, "last_reset_reason": "rejected"}
+}

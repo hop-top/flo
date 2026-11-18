@@ -1,0 +1,14 @@
+[
+  {"n": 1, "account": "acme", "id": "101", "message_id": "<m1@example.org>", "date": "2026-11-18T08:40:00-05:00",
+   "from": {"name": "Weekly", "email": "news@example.org"}, "to": ["me@example.org"], "subject": "Weekly digest",
+   "flags": [], "has_attachment": false, "folder": "newsletters", "rules": {"never": []}, "rule_levels": [], "history": 12, "prior": []},
+  {"n": 2, "account": "acme", "id": "102", "message_id": "<m2@example.org>", "date": "2026-11-18T08:41:00-05:00",
+   "from": {"name": "Billing", "email": "billing@example.org"}, "to": ["me@example.org"], "subject": "Invoice 2291",
+   "flags": [], "has_attachment": true, "folder": "finance", "rules": {"never": []}, "rule_levels": [], "history": 3, "prior": []},
+  {"n": 3, "account": "acme", "id": "103", "message_id": "<m3@example.org>", "date": "2026-11-18T08:42:00-05:00",
+   "from": {"name": "Sam", "email": "sam@example.org"}, "to": ["me@example.org"], "subject": "Lunch on Friday?",
+   "flags": [], "has_attachment": false, "folder": "people", "rules": {"never": []}, "rule_levels": [], "history": 1, "prior": []},
+  {"n": 4, "account": "beta", "id": "201", "message_id": "<m5@example.org>", "date": "2026-11-18T08:43:00-05:00",
+   "from": {"name": "Legal", "email": "legal@example.org"}, "to": ["me@example.org"], "subject": "Contract renewal",
+   "flags": [], "has_attachment": true, "folder": "legal", "rules": {"approval": "always"}, "rule_levels": [], "history": 2, "prior": []}
+]

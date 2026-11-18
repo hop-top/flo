@@ -1,0 +1,157 @@
+#!/bin/sh
+# Fake `inbox` for the triage tests. It has the command line and the --json
+# summaries of the real script (fetch, lanes, decide, plan, approve, apply,
+# status, reset) over fixtures in testdata/inbox; nothing here touches mail or
+# a real inbox home. State lives under $FLO_E2E_DIR/inbox:
+#
+#   inbox.log        one line per call: the arguments
+#   applied.log      one line per message the apply executed: "applied <message_id>"
+#   runs/<stamp>/    snapshot.json, decisions.json, plan.json, receipt.json
+#   trust.json       the counters (seeded from testdata/inbox/trust.json)
+#   flags/<name>     scenario switches a test creates:
+#       no-auto        no automatic item in the plan
+#       no-rows        nothing to fetch
+#       no-guard       the message held by a rule that always asks is not in the inbox
+#       fail-account   account beta is not fetched (exit 3)
+#       fail-all       no account is fetched (exit 3)
+#       invalid        the plan holds one invalid item (exit 3)
+#       fail-apply     the apply fails on message m2 (exit 3)
+td="$FLO_E2E_TESTDATA/inbox"
+st="$FLO_E2E_DIR/inbox"
+mkdir -p "$st/runs" "$st/flags"
+echo "$*" >> "$st/inbox.log"
+[ -e "$st/trust.json" ] || cp "$td/trust.json" "$st/trust.json"
+flag() { [ -e "$st/flags/$1" ]; }
+
+json=false
+for a in "$@"; do [ "$a" = --json ] && json=true; done
+
+# emit CMD EXIT JSON_FIELDS: the summary object (stdout) when --json was asked.
+emit() {
+  if $json; then
+    jq -c -n --arg c "$1" --argjson rc "$2" --argjson f "$3" \
+      '{schema_version: 1, command: $c, exit: $rc, ok: ($rc == 0)} + $f'
+  fi
+}
+
+rundir() { printf '%s/runs/%s' "$st" "$1"; }
+
+cmd=$1
+shift
+case $cmd in
+  fetch)
+    n=$(( $(cat "$st/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$st/n"
+    run=$(printf '20261118-0900%02d' $n)
+    rd=$(rundir "$run"); mkdir -p "$rd"
+    if flag no-rows; then rows='[]'; else rows=$(cat "$td/rows.json"); fi
+    flag no-guard && rows=$(printf '%s' "$rows" | jq -c 'map(select(.message_id != "<m5@example.org>"))')
+    if flag fail-all; then rows='[]'; accts='{"acme":{"status":"error","error":"login failed"},"beta":{"status":"error","error":"login failed"}}'
+    elif flag fail-account; then rows=$(printf '%s' "$rows" | jq -c 'map(select(.account != "beta"))')
+      accts='{"acme":{"status":"ok","count":3},"beta":{"status":"error","error":"connection timed out"}}'
+    else accts='{"acme":{"status":"ok","count":3},"beta":{"status":"ok","count":1}}'; fi
+    jq -n --arg run "$run" --argjson rows "$rows" --argjson accts "$accts" \
+      '{run: $run, created: "2026-11-18T09:00:00-05:00", limit: 200, since: null, locked: 0, seen: 0, muted: 0, invites: 0, carried: 0, accounts: $accts, rows: $rows}' > "$rd/snapshot.json"
+    failed=$(jq -c '[.accounts | to_entries[] | select(.value.status != "ok") | .key] | sort' "$rd/snapshot.json")
+    rc=0; [ "$failed" != '[]' ] && rc=3
+    emit fetch $rc "$(jq -c --arg rd "$rd" --argjson failed "$failed" \
+      '{run: .run, run_dir: $rd, accounts: .accounts, failed_accounts: $failed, rows: (.rows | length), new: (.rows | length), carried: 0, locked: 0, seen: 0, muted: 0, files: [$rd + "/snapshot.json"]}' "$rd/snapshot.json")"
+    exit $rc ;;
+  lanes)
+    emit lanes 0 '{"accounts": [{"account": "acme", "lanes": 0}], "errored": 0}'
+    exit 0 ;;
+  decide)
+    run=$1; rd=$(rundir "$run")
+    [ -f "$rd/snapshot.json" ] || { echo "no such run: $run" >&2; exit 1; }
+    if [ ! -f "$rd/decisions.json" ]; then
+      jq '{version: 1, decisions: [.rows[] | {n, actions: ["archive"], why: "fixture decision"}]}' "$rd/snapshot.json" > "$rd/decisions.json"
+    fi
+    emit decide 0 "$(jq -c -n --arg run "$run" --arg rd "$rd" --argjson rows "$(jq '.rows | length' "$rd/snapshot.json")" \
+      '{run: $run, run_dir: $rd, engine: "model", already_decided: false, rows: $rows, carried: 0, asked: $rows, answered: 0, attention: 0, needs_review: 0, cost: 0.0123, files: [$rd + "/decisions.json"]}')"
+    exit 0 ;;
+  plan)
+    run=$1; rd=$(rundir "$run")
+    [ -f "$rd/decisions.json" ] || { echo "no decisions file at $rd/decisions.json" >&2; exit 1; }
+    if [ ! -f "$rd/plan.json" ]; then
+      rows=$(jq -c '[.rows[].message_id]' "$rd/snapshot.json")
+      jq --slurpfile t "$st/trust.json" --argjson rows "$rows" --arg run "$run" --argjson noauto "$(flag no-auto && echo true || echo false)" --argjson invalid "$(flag invalid && echo true || echo false)" '
+        def auto($k): ($t[0][$k] // {streak: 0, threshold: 15}) | .streak >= .threshold;
+        { run: $run, created: "2026-11-18T09:00:00-05:00", task: null, notes: [], labels: {},
+          items: ( [ .[] | select(.status == "superseded" or (.message_id | IN($rows[])))
+                     | if .status == "superseded" or .guard != null then .
+                       elif all(.keys[]; auto(.)) then .status = "auto" else .status = "pending" end
+                     | select(($noauto | not) or .status != "auto") ]
+                   + (if $invalid then [{n: 9, account: "acme", id: "109", message_id: "<bad@example.org>", from: "x@example.org", subject: "Broken", actions: [{"move_to": {"account": "acme", "mailbox": "Nope"}}], keys: [], why: "", guard: null, status: "invalid", verdict: null, errors: ["mailbox Nope does not exist"], executed: null}] else [] end) ) }' "$td/items.json" > "$rd/plan.json"
+    fi
+    rc=0; jq -e 'any(.items[]; .status == "invalid")' "$rd/plan.json" >/dev/null && rc=3
+    emit plan $rc "$(jq -c --arg run "$run" --arg rd "$rd" '
+      {run: $run, run_dir: $rd,
+       counts: ({total: (.items | length)} + (.items | group_by(.status) | map({(.[0].status): length}) | add)),
+       pending: [.items[] | select(.status == "pending" and .verdict == null) | .n],
+       auto: [.items[] | select(.status == "auto" and .executed == null) | .n],
+       invalid: [.items[] | select(.status == "invalid") | .n], task: null, files: [$rd + "/plan.json"]}' "$rd/plan.json")"
+    exit $rc ;;
+  approve)
+    run=$1; shift; rd=$(rundir "$run"); only=; reject=
+    while [ $# -gt 0 ]; do
+      case $1 in
+        --only) only=$2; shift 2 ;;
+        --reject) reject=$2; shift 2 ;;
+        --json) shift ;;
+        *) echo "fake inbox: approve: unsupported: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -f "$rd/plan.json" ] || { echo "no such run: $run" >&2; exit 1; }
+    res=$(jq -c -n --slurpfile p "$rd/plan.json" --arg only "$only" --arg reject "$reject" '
+      def nums($s): ($s | split(",") | map(select(. != "") | tonumber));
+      ($p[0].items) as $items
+      | def open($n): any($items[]; .n == $n and .status == "pending" and .verdict == null);
+        { approved: [nums($only)[] | select(open(.))], rejected: [nums($reject)[] | select(open(.))],
+          ignored: [(nums($only) + nums($reject))[] | select(open(.) | not)] }')
+    jq --argjson r "$res" --slurpfile t "$st/trust.json" '
+      .items |= map(if (.n | IN($r.approved[])) then .verdict = "approved" | .verdict_at = "2026-11-18T09:05:00-05:00"
+                    elif (.n | IN($r.rejected[])) then .verdict = "rejected" else . end)' "$rd/plan.json" > "$rd/plan.tmp" && mv "$rd/plan.tmp" "$rd/plan.json"
+    # trust: a clean approval advances each key's streak once, a rejection resets it
+    jq --argjson r "$res" --slurpfile p "$rd/plan.json" '
+      reduce ($p[0].items[] | select(.n | IN($r.approved[])) | .keys[]) as $k (.; .[$k].streak = ((.[$k].streak // 0) + 1))
+      | reduce ($p[0].items[] | select(.n | IN($r.rejected[])) | .keys[]) as $k (.; .[$k].streak = 0 | .[$k].resets = ((.[$k].resets // 0) + 1) | .[$k].last_reset_reason = "rejected")' "$st/trust.json" > "$st/trust.tmp" && mv "$st/trust.tmp" "$st/trust.json"
+    left=$(jq '[.items[] | select(.status == "pending" and .verdict == null)] | length' "$rd/plan.json")
+    emit approve 0 "$(printf '%s' "$res" | jq -c --arg run "$run" --arg rd "$rd" --argjson left "$left" \
+      '{run: $run, run_dir: $rd, approved: .approved, rejected: .rejected, corrected: [], ignored: .ignored, pending_left: $left, graduated: [], resets: {}, files: [$rd + "/plan.json"]}')"
+    exit 0 ;;
+  apply)
+    run=$1; rd=$(rundir "$run")
+    [ -f "$rd/plan.json" ] || { echo "no plan at $rd/plan.json" >&2; exit 1; }
+    : > "$rd/exec.tmp"
+    for n in $(jq -r '.items[] | select(.executed == null and (.verdict | IN("approved", "corrected")) or (.status == "auto" and .executed == null)) | .n' "$rd/plan.json"); do
+      mid=$(jq -r --argjson n "$n" '.items[] | select(.n == $n) | .message_id' "$rd/plan.json")
+      if flag fail-apply && [ "$mid" = "<m2@example.org>" ]; then echo "$n fail" >> "$rd/exec.tmp"
+      else echo "applied $mid" >> "$st/applied.log"; echo "$n ok" >> "$rd/exec.tmp"; fi
+    done
+    jq --rawfile e "$rd/exec.tmp" '
+      ($e | split("\n") | map(select(. != "") | split(" ") | {key: .[0], value: .[1]}) | from_entries) as $x
+      | .items |= map(if has("n") and $x[(.n | tostring)] != null then .executed = (if $x[(.n | tostring)] == "ok" then {ts: "2026-11-18T09:06:00-05:00", ok: true, error: null} else {ts: "2026-11-18T09:06:00-05:00", ok: false, error: "imap: store failed"} end) else . end)' "$rd/plan.json" > "$rd/plan.tmp" && mv "$rd/plan.tmp" "$rd/plan.json"
+    rm -f "$rd/exec.tmp"
+    jq '{run: .run, ts: "2026-11-18T09:06:00-05:00", seconds: 0.2, backend: "fake", calls: ([.items[] | select(.executed != null)] | length),
+         results: ([.items[] | select(.executed != null) | {key: (.n | tostring), value: (if .executed.ok then null else .executed.error end)}] | from_entries),
+         notes: {}, pending_left: ([.items[] | select(.status == "pending" and .verdict == null)] | length)}' "$rd/plan.json" > "$rd/receipt.json"
+    rc=0; jq -e 'any(.items[]; .executed != null and .executed.ok == false)' "$rd/plan.json" >/dev/null && rc=3
+    emit apply $rc "$(jq -c --arg run "$run" --arg rd "$rd" --slurpfile r "$rd/receipt.json" '
+      {run: $run, run_dir: $rd, executed_ok: ([.items[] | select(.executed != null and .executed.ok) | (.n | tostring)] | sort),
+       failed: [.items[] | select(.executed != null and .executed.ok == false) | {n, error: .executed.error}],
+       pending_left: $r[0].pending_left, backend: $r[0].backend, calls: $r[0].calls, seconds: $r[0].seconds, notes: $r[0].notes,
+       files: [$rd + "/plan.json", $rd + "/receipt.json"]}' "$rd/plan.json")"
+    exit $rc ;;
+  status)
+    echo "TRUST (streak/threshold):"
+    jq -r 'to_entries | sort_by(.key)[] | "  \(.key + (" " * (28 - (.key | length)))) \(.value.streak | tostring | (" " * (3 - length)) + .)/\(.value.threshold | tostring + (" " * (3 - length))) \(if .value.streak >= .value.threshold then "auto    " else "training" end) resets=\(.value.resets // 0)\(if .value.last_reset_reason then "  last reset: " + .value.last_reset_reason else "" end)"' "$st/trust.json"
+    echo "ACCOUNTS:"
+    echo "  acme           me@example.org               direct"
+    echo "FOLDERS with history: 0; locked (awaiting approval): 0"
+    exit 0 ;;
+  reset)
+    key=$1; [ "$2" = --reason ] || exit 2
+    jq --arg k "$key" --arg r "$3" '.[$k].streak = 0 | .[$k].resets = ((.[$k].resets // 0) + 1) | .[$k].last_reset_reason = $r' "$st/trust.json" > "$st/trust.tmp" && mv "$st/trust.tmp" "$st/trust.json"
+    echo "reset $key"
+    exit 0 ;;
+  *) echo "fake inbox: unsupported: $cmd $*" >&2; exit 64 ;;
+esac
