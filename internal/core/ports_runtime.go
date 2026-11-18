@@ -174,6 +174,9 @@ type StartRequest struct {
 	IdemKey string
 	// StartedBy is the calling profile.
 	StartedBy string
+	// Record asks the engine to record the run's exec and HTTP traffic for
+	// offline replay (`flo run replay`).
+	Record bool
 }
 
 // StartResult is what Start did.

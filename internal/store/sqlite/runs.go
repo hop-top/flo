@@ -102,7 +102,7 @@ func (s *RunStore) CreateRun(ctx context.Context, in core.NewRun) (core.Run, boo
 			ID: in.ID, Tenant: in.Tenant, Flow: in.Flow, Status: core.RunQueued,
 			Vars: in.Vars, Trigger: in.Trigger, IdemKey: in.IdemKey,
 			Group: in.Group, GroupMax: in.GroupMax, Admitted: in.Admitted,
-			StartedBy: in.StartedBy, RunAs: in.RunAs, MaxAttempts: max,
+			StartedBy: in.StartedBy, RunAs: in.RunAs, Record: in.Record, MaxAttempts: max,
 			CreatedAt: at, UpdatedAt: at,
 		}
 		doc, err := enc(run)

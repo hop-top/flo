@@ -60,7 +60,7 @@ func (s *RunStore) CreateRun(_ context.Context, in core.NewRun) (core.Run, bool,
 		ID: in.ID, Tenant: in.Tenant, Flow: in.Flow, Status: core.RunQueued,
 		Vars: clone(in.Vars), Trigger: clone(in.Trigger), IdemKey: in.IdemKey,
 		Group: in.Group, GroupMax: in.GroupMax, Admitted: in.Admitted,
-		StartedBy: in.StartedBy, RunAs: in.RunAs, MaxAttempts: max,
+		StartedBy: in.StartedBy, RunAs: in.RunAs, Record: in.Record, MaxAttempts: max,
 		CreatedAt: at, UpdatedAt: at,
 	}
 	d.runs[in.ID] = &runRec{run: run, seq: s.db.next()}

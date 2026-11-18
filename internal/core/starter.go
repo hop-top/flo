@@ -105,7 +105,7 @@ func (s *starter) Start(ctx context.Context, req StartRequest) (StartResult, err
 	run, created, err := s.Runs.CreateRun(ctx, NewRun{
 		ID: id, Tenant: req.Tenant, Flow: fv.Ref(), Vars: req.Vars, Trigger: req.Trigger,
 		IdemKey: req.IdemKey, Group: group, GroupMax: set.Concurrency.Max, Admitted: dec.Action == GroupRun,
-		StartedBy: req.StartedBy, RunAs: runAs, At: now,
+		StartedBy: req.StartedBy, RunAs: runAs, Record: req.Record, At: now,
 	})
 	if err != nil {
 		_ = s.Groups.Abandon(ctx, req.Tenant, group, id)

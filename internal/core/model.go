@@ -176,6 +176,9 @@ type Run struct {
 	StartedBy string `json:"started_by,omitempty"`
 	RunAs     string `json:"run_as,omitempty"`
 
+	// Record is set when the run's traffic is recorded for replay.
+	Record bool `json:"record,omitempty"`
+
 	// Attempts and MaxAttempts are dek's job counters: how many times the
 	// run.advance job has been picked up, and its limit.
 	Attempts    int `json:"attempts"`
@@ -224,6 +227,7 @@ type NewRun struct {
 	Admitted  bool
 	StartedBy string
 	RunAs     string
+	Record    bool
 	// MaxAttempts bounds run.advance job pickups; 0 takes the store default.
 	MaxAttempts int
 	At          time.Time // creation time
