@@ -1,0 +1,13 @@
+schema_version: "1"
+story_id: flo.engine.serve
+title: Run the engine and see that it runs
+binary: flo
+intent: |
+  An operator starts the engine so schedules fire and runs advance, then
+  reads the engine section of the status snapshot.
+steps:
+  - id: status
+    intent: |
+      Read the engine state: running, stopped, or stale after a crash.
+    invoke: ["flo", "status", "--format", "json"]
+    capture: [exit_code, stdout]

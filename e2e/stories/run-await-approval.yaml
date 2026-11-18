@@ -1,0 +1,29 @@
+schema_version: "1"
+story_id: flo.run.await-approval
+title: Start a run that waits for a person, decide, and read its log
+binary: flo
+intent: |
+  An agent starts a run of a flow that proposes actions. The run parks on
+  an approval and the call says so with exit 7. The agent decides the
+  items and reads the run's events in order.
+steps:
+  - id: create
+    intent: |
+      Start the run and wait; exit 7 means it parked on an approval.
+    invoke: ["flo", "run", "create", "--flow", "inbox-triage", "--wait", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: pending
+    intent: |
+      List the approvals that wait for a decision, with their runs.
+    invoke: ["flo", "approval", "list", "--status", "open", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: decide
+    intent: |
+      Approve the first item; the call that completes the approval resumes the run.
+    invoke: ["flo", "approval", "set", "ap_01", "--item", "1=approve", "--yes", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: logs
+    intent: |
+      Read the run's events as JSON Lines, in the order they happened.
+    invoke: ["flo", "run", "logs", "run_01"]
+    capture: [exit_code, stdout]
