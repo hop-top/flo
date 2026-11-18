@@ -293,23 +293,41 @@ func TestMeetingBriefStaysLocal(t *testing.T) {
 		t.Fatalf("the bundle does not apply: exit %d\n%s", r.Exit, r.Stderr)
 	}
 
-	bad := filepath.Join(t.TempDir(), mbFlow)
-	if out, err := cpR(m.bundle, bad); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-	rewrite(t, filepath.Join(bad, "flow.yaml"), "ollama://gemma4:e4b", "anthropic://claude-sonnet-5-5")
-	var rep struct {
+	type report struct {
 		Valid  bool `json:"valid"`
 		Issues []struct{ Rule, Code, Step, Message string }
 	}
+	var rep report
 	m.okJSON(&rep, "flow", "validate", "-f", m.bundle)
 	if !rep.Valid || len(rep.Issues) != 0 {
 		t.Errorf("the bundle: %+v", rep)
 	}
-	if r := m.jsonOf(&rep, "flow", "validate", "-f", bad); r.Exit == 0 || rep.Valid || len(rep.Issues) != 1 ||
-		rep.Issues[0].Rule != "V19" || rep.Issues[0].Code != "privacy_violation" || rep.Issues[0].Step != "brief" || !strings.Contains(rep.Issues[0].Message, "anthropic://claude-sonnet-5-5") {
-		t.Errorf("a hosted model under local-only: exit %d, %+v", r.Exit, rep)
+
+	// swap writes the bundle with another model for the brief and validates it.
+	swap := func(model string) (string, report, int) {
+		dir := filepath.Join(t.TempDir(), mbFlow)
+		if out, err := cpR(m.bundle, dir); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		rewrite(t, filepath.Join(dir, "flow.yaml"), "ollama://gemma4:e4b", model)
+		var r report
+		return dir, r, m.jsonOf(&r, "flow", "validate", "-f", dir).Exit
 	}
+
+	// Local forms of a model hold; every hosted or public one fails V19, the
+	// dotted forms (a host without a slash is ambiguous) included.
+	for _, model := range []string{"ollama://gemma4:e4b", "ollama:///gemma4.5:e4b", "ollama://localhost/gemma4:e4b", "ollama://127.0.0.1:11434/gemma4:e4b", "ollama://10.0.0.5/gemma4:e4b"} {
+		if _, r, exit := swap(model); exit != 0 || !r.Valid || len(r.Issues) != 0 {
+			t.Errorf("%s: exit %d, %+v", model, exit, r)
+		}
+	}
+	for _, model := range []string{"anthropic://claude-sonnet-5-5", "ollama://public.host", "ollama://public.host/gemma4:e4b", "ollama://gpu.example.com:11434/gemma4:e4b", "ollama://gemma4.5:e4b", "openai://api.openai.com/gpt-5"} {
+		_, r, exit := swap(model)
+		if exit == 0 || r.Valid || len(r.Issues) != 1 || r.Issues[0].Rule != "V19" || r.Issues[0].Code != "privacy_violation" || r.Issues[0].Step != "brief" || !strings.Contains(r.Issues[0].Message, model) {
+			t.Errorf("%s under local-only: exit %d, %+v", model, exit, r)
+		}
+	}
+	bad, _, _ := swap("anthropic://claude-sonnet-5-5")
 	r := m.run("flow", "apply", "-f", bad, "--yes")
 	if r.Exit != core.ExitPermission && r.Exit == 0 || !strings.Contains(r.Stderr, "privacy_violation") {
 		t.Fatalf("apply of a hosted model under local-only: exit %d\n%s", r.Exit, r.Stderr)
