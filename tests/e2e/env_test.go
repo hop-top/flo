@@ -256,25 +256,25 @@ type engine struct {
 	t    *testing.T
 	cmd  *exec.Cmd
 	logs *syncBuf
-	done chan error
+	exit chan struct{} // closed when the process has exited
 }
 
 // startEngine runs `flo engine serve` and returns once it is serving.
 func (e *env) startEngine() *engine {
 	e.t.Helper()
-	p := &engine{t: e.t, logs: &syncBuf{}, done: make(chan error, 1)}
+	p := &engine{t: e.t, logs: &syncBuf{}, exit: make(chan struct{})}
 	p.cmd = exec.Command(flo, "engine", "serve")
 	p.cmd.Env = e.environ()
 	p.cmd.Stderr, p.cmd.Stdout = p.logs, p.logs
 	if err := p.cmd.Start(); err != nil {
 		e.t.Fatal(err)
 	}
-	go func() { p.done <- p.cmd.Wait() }()
+	go func() { _ = p.cmd.Wait(); close(p.exit) }()
 	e.t.Cleanup(func() { p.kill() })
 	eventually(e.t, "the engine to serve", func() bool {
 		select {
-		case err := <-p.done:
-			e.t.Fatalf("the engine exited: %v\n%s", err, p.logs.String())
+		case <-p.exit:
+			e.t.Fatalf("the engine exited\n%s", p.logs.String())
 		default:
 		}
 		return strings.Contains(p.logs.String(), "engine serving")
@@ -285,13 +285,14 @@ func (e *env) startEngine() *engine {
 // stop sends SIGTERM and waits for the drain.
 func (p *engine) stop() {
 	p.t.Helper()
-	if p.cmd.ProcessState != nil {
+	select {
+	case <-p.exit:
 		return
+	default:
 	}
 	_ = p.cmd.Process.Signal(syscall.SIGTERM)
 	select {
-	case err := <-p.done:
-		_ = err // a SIGTERM exit is the engine's own clean stop
+	case <-p.exit:
 	case <-time.After(30 * time.Second):
 		p.t.Fatalf("the engine did not stop on SIGTERM\n%s", p.logs.String())
 	}
@@ -299,13 +300,14 @@ func (p *engine) stop() {
 
 // kill ends the engine at once, as a crash does.
 func (p *engine) kill() {
-	if p.cmd.Process == nil || p.cmd.ProcessState != nil {
+	select {
+	case <-p.exit:
 		return
+	default:
 	}
 	_ = p.cmd.Process.Kill()
 	select {
-	case err := <-p.done:
-		_ = err // killed: the wait error is the signal
+	case <-p.exit:
 	case <-time.After(10 * time.Second):
 	}
 }
