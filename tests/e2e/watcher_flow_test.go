@@ -81,7 +81,7 @@ func watchFlow(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dst, b, 0o600); err != nil {
+	if err := os.WriteFile(dst, b, 0o600); err != nil { //nolint:gosec // a file in the test's temp directory
 		t.Fatal(err)
 	}
 	rewrite(t, dst, "[example-org/api, example-org/web, example-org/worker]", "[example-org/api, example-org/web, example-org/off, example-org/gone]")

@@ -39,6 +39,14 @@ flo run cancel <run> --yes
   engine takes them), `FLO_ENGINE_SHUTDOWN_GRACE`, `FLO_APPROVAL_POLL`,
   `FLO_TLC_DIR`, `FLO_TLC_PROFILE`, `FLO_EVA_URL`. Secrets of HTTP nodes come
   from `FLO_SECRET_<TENANT>_<PROFILE>_<NAME>`.
+- Classifier: `ai.classifier` (env `FLO_AI_CLASSIFIER`) picks the backend of
+  `flo/ai.classify@1`: `rules` (deterministic, no model; security by advisory,
+  breaking by major bump, else routine) or `judge` (kit go/ai/judge; refused
+  until it exists). Unset configures none and a step using the node fails
+  with `engine_feature`: no backend stands in for another.
+- `packs/github` holds the GitHub nodes of `flows/dependency-watch.yaml`. Its
+  wrappers (`bin/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
+  `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.
 - `flo status` reports the engine: running, stopped, or stale after a crash.
 - Tests: `go test ./tests/e2e` builds the binary and runs it against fake
   `aps`, `gh`, `tlc` and `inbox` executables on `PATH`; nothing reaches a
