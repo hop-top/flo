@@ -1,0 +1,7 @@
+{"sbom":{"spdxVersion":"SPDX-2.3","name":"com.github.example-org/api","packages":[
+{"name":"com.github.example-org/api","versionInfo":"main","externalRefs":[{"referenceType":"purl","referenceLocator":"pkg:github/example-org/api@main"}]},
+{"name":"golang.org/x/net","versionInfo":"v0.17.0","externalRefs":[{"referenceType":"purl","referenceLocator":"pkg:golang/golang.org/x/net@v0.17.0"}]},
+{"name":"github.com/cli/cli/v2","versionInfo":"v2.103.3","externalRefs":[{"referenceType":"purl","referenceLocator":"pkg:golang/github.com/cli/cli/v2@v2.103.3"}]},
+{"name":"github.com/hop-top/poly-kit/kit","versionInfo":"0.5.0-beta.12","externalRefs":[{"referenceType":"purl","referenceLocator":"pkg:golang/github.com/hop-top/poly-kit/kit@0.5.0-beta.12"}]},
+{"name":"actions/checkout","versionInfo":"4.*.*","externalRefs":[{"referenceType":"purl","referenceLocator":"pkg:githubactions/actions/checkout@4.%2A.%2A"}]}
+]}}
