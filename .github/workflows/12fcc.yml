@@ -18,12 +18,12 @@ jobs:
       pull-requests: write     # sticky PR comment
       security-events: write   # SARIF upload to code-scanning
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
-      # Pinned by commit; spec-12fc has no release tag yet.
-      - uses: hop-top/spec-12fc@2da962b62b40f7cef5e9d20170d561f8b90c27c1 # main @ 2026-11-11
+      # No release tag yet: main, locked to a commit in actions.lock.
+      - uses: hop-top/spec-12fc@main
         with:
           command: all
           paths: .
