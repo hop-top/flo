@@ -5,6 +5,7 @@ go 1.27.4
 require (
 	cel.dev/cel-go v0.33.2
 	gopkg.in/yaml.v3 v3.0.1
+	hop.top/vstar v1.0.0-alpha.1
 )
 
 require (
