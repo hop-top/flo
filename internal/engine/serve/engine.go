@@ -24,9 +24,11 @@ import (
 	"hop.top/flo/internal/nodes/command"
 	"hop.top/flo/internal/nodes/dispatch"
 	httpnode "hop.top/flo/internal/nodes/http"
+	"hop.top/flo/internal/nodes/ratelimit"
 	"hop.top/flo/internal/packs/calendar"
 	"hop.top/flo/internal/placement"
 	"hop.top/flo/internal/runlog"
+	"hop.top/flo/internal/runrec"
 	"hop.top/flo/internal/store/sqlite"
 	"hop.top/flo/internal/tasks/tlccli"
 	"hop.top/flo/internal/triggers"
@@ -53,6 +55,14 @@ type Engine struct {
 	// TestResults keeps the latest test of each flow version, which the
 	// activation gate reads.
 	TestResults *flowtest.Store
+	// Recordings keeps the recordings of runs started with --record.
+	Recordings *runrec.Store
+
+	dispDeps dispatch.Deps // what a recording dispatcher is rebuilt from
+	liveExec sideeffect.Exec
+	liveHTTP sideeffect.HTTP
+	// secretLog remembers the secrets nodes resolved, for a recording to scrub.
+	secretLog *secretLog
 }
 
 // Open assembles the engine over the data root. It creates the root, the
@@ -155,10 +165,13 @@ func (e *Engine) wire() error {
 		return err //nolint:wrapcheck // *core.Error
 	}
 
-	dispatcher := humanDispatcher{dispatch.New(dispatch.Deps{
-		Builtins: builtins, Commands: commands, HTTP: httpc, Secrets: httpnode.StoreSecrets{Store: secrets},
-		Plugins: e.Nodes.Plugins, Clock: cfg.Clock,
-	})}
+	e.secretLog = &secretLog{Secrets: httpnode.StoreSecrets{Store: secrets}}
+	e.dispDeps = dispatch.Deps{
+		Builtins: builtins, Commands: commands, HTTP: httpc, Secrets: e.secretLog,
+		Plugins: e.Nodes.Plugins, Clock: cfg.Clock, Limits: ratelimit.New(cfg.Clock),
+	}
+	e.liveExec, e.liveHTTP = exec, httpc
+	dispatcher := humanDispatcher{dispatch.New(e.dispDeps)}
 	starter := core.NewStarter(core.StarterDeps{
 		Clock: cfg.Clock, IDs: ids, Flows: st.Flows, Runs: st.Runs, Groups: st.Groups, Jobs: e.Queue, RunLog: e.RunLog,
 	})
@@ -172,6 +185,7 @@ func (e *Engine) wire() error {
 	})
 
 	e.TestResults = flowtest.NewStore(e.Store.Registry().Dir)
+	e.Recordings = runrec.NewStore(e.Store.Registry().RunsDir)
 	gate := &testedGate{results: e.TestResults}
 	e.Services = &core.Services{
 		Clock: cfg.Clock, IDs: ids,
@@ -179,16 +193,16 @@ func (e *Engine) wire() error {
 		GrantRows: st.Grants, Receipts: st.Receipts, Outputs: st.Outputs, Triggers: st.Triggers,
 		Jobs: e.Queue, Worker: e.Worker, Resumer: resumer, Groups: st.Groups, RunLog: e.RunLog,
 		Starter: starter, TrigSync: e.Calendar.Hook(e.Scheduler),
-		Dispatcher: dispatcher, Runner: placement.New(dispatcher), Nodes: e.Nodes.Registry, Builtins: builtins,
-		Commands: commands, Checker: eva.New(httpc), Secrets: httpnode.StoreSecrets{Store: secrets},
+		Dispatcher: dispatcher, Runner: recordingRunner{e: e, inner: placement.New(dispatcher)}, Nodes: e.Nodes.Registry, Builtins: builtins,
+		Commands: commands, Checker: recordingChecker{e: e, inner: eva.New(httpc)}, Secrets: e.secretLog,
 		Grants: e.Grants, ApprovalSvc: e.Approvals, Admission: adm, Gate: gate, Tasks: tasks, Trust: trust,
 	}
 	e.Executor = run.New(e.Services, run.Config{MaxParallel: cfg.MaxParallel, Config: cfg.ExprConfig})
-	e.Executor.Register(e.Worker)
+	e.Worker.Handle(core.JobRunAdvance, e.advance)
 	e.Scheduler.Register(e.Worker)
 	e.Calendar.Register(e.Worker)
 	e.Approvals.Register(e.Worker)
-	e.Pruner = &brief.Pruner{Outputs: st.Outputs, Jobs: e.Queue, Clock: cfg.Clock}
+	e.Pruner = &brief.Pruner{Outputs: st.Outputs, Jobs: e.Queue, Clock: cfg.Clock, Also: e.pruneRecordings}
 	e.Pruner.Register(e.Worker)
 	e.Flows = NewFlows(e.Services, e.Nodes)
 	gate.flows = e.Flows

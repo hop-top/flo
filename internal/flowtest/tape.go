@@ -43,16 +43,36 @@ type Tape struct {
 	mode Mode
 	dir  string
 	sess *xrr.FileSession
+	opts Options
+	cass *xrr.FileCassette
 
 	mu       sync.Mutex
 	calls    int
 	replayed int
 	misses   []string
+	partial  []string
+}
+
+// Options tune a Tape that records the real run of a flow (not a test).
+type Options struct {
+	// Live records without ever changing what the caller sees: a call the
+	// tape cannot keep (a body over the limit, a cassette that cannot be
+	// written) is passed through and noted in Partial, never failed. Without
+	// Live a record fails the call, as a test should.
+	Live bool
+	// Scrub copies a request or response payload for the cassette with what
+	// must not be stored removed. Nil stores the payload as is (xrr's own
+	// secret redaction still applies).
+	Scrub func(any) any
 }
 
 // NewTape returns a Tape over dir. Recording creates it; replaying reads it,
 // and a call without a cassette fails.
-func NewTape(mode Mode, dir string) (*Tape, error) {
+func NewTape(mode Mode, dir string) (*Tape, error) { return NewTapeWith(mode, dir, Options{}) }
+
+// NewTapeWith is NewTape with options. A Live tape ignores XRR_REDACT_*: the
+// default credential redaction of xrr is always on for it.
+func NewTapeWith(mode Mode, dir string, opts Options) (*Tape, error) {
 	if !mode.Valid() {
 		return nil, fmt.Errorf("flowtest: mode %q is not replay or record", mode)
 	}
@@ -63,7 +83,48 @@ func NewTape(mode Mode, dir string) (*Tape, error) {
 			return nil, fmt.Errorf("flowtest: cassette directory: %w", err)
 		}
 	}
-	return &Tape{mode: mode, dir: dir, sess: xrr.NewSession(xm, xrr.NewFileCassette(dir))}, nil
+	cass := xrr.NewFileCassette(dir)
+	if opts.Live {
+		cass = xrr.NewFileCassetteWithRedactor(dir, xrr.NewRedactor(xrr.RedactConfig{}))
+	}
+	return &Tape{mode: mode, dir: dir, sess: xrr.NewSession(xm, cass), cass: cass, opts: opts}, nil
+}
+
+// Partial lists what a Live tape could not keep.
+func (t *Tape) Partial() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.partial...)
+}
+
+func (t *Tape) notePartial(why string) {
+	t.mu.Lock()
+	t.partial = append(t.partial, why)
+	t.mu.Unlock()
+}
+
+// save writes one live interaction to the cassette, scrubbed. A failure
+// leaves the call as it was and the recording partial.
+func (t *Tape) save(adapter xrr.Adapter, req xrr.Request, resp xrr.Response, doErr error, what string) {
+	fp, err := adapter.Fingerprint(req)
+	if err == nil {
+		var sreq, sresp any = req, resp
+		if resp == nil {
+			sresp = nil
+		}
+		if t.opts.Scrub != nil {
+			sreq = t.opts.Scrub(req)
+			if resp != nil {
+				sresp = t.opts.Scrub(resp)
+			}
+		}
+		err = t.cass.Save(adapter.ID(), fp, sreq, sresp, doErr)
+	}
+	if err != nil {
+		t.notePartial(what + ": " + err.Error())
+		return
+	}
+	t.count(false)
 }
 
 // Stats returns how many calls went through the tape and how many of them a
@@ -149,6 +210,9 @@ func (e *execSeam) Run(cmd *exec.Cmd) error {
 		argv[i] = stepDirRe.ReplaceAllString(a, stepDirHolder)
 	}
 	req := &xexec.Request{Argv: argv, Stdin: string(stdin), Env: envKeys(cmd.Env)}
+	if e.t.opts.Live {
+		return e.runLive(cmd, req, stepDir)
+	}
 
 	var runErr error
 	do := func() (xrr.Response, error) {
@@ -203,6 +267,33 @@ func (e *execSeam) Run(cmd *exec.Cmd) error {
 		return exitError(code)
 	}
 	return nil
+}
+
+// runLive runs the process and keeps its interaction; what cannot be kept
+// does not change the run.
+func (e *execSeam) runLive(cmd *exec.Cmd, req *xexec.Request, stepDir string) error {
+	var so, se bytes.Buffer
+	cmd.Stdout, cmd.Stderr = tee(cmd.Stdout, &so), tee(cmd.Stderr, &se)
+	runErr := e.live.Run(cmd)
+	what := "`" + strings.Join(req.Argv, " ") + "`"
+	resp := &execResponse{Response: xexec.Response{Stdout: so.String(), Stderr: se.String()}}
+	var ee *exec.ExitError
+	switch {
+	case runErr == nil, errors.Is(runErr, exec.ErrWaitDelay):
+	case errors.As(runErr, &ee):
+		resp.ExitCode = ee.ExitCode()
+	default: // did not start: recorded as an error
+		e.t.save(&xexec.Adapter{}, req, nil, runErr, what)
+		return runErr
+	}
+	files, ferr := readStepFiles(stepDir)
+	if ferr != nil {
+		e.t.notePartial(what + ": " + ferr.Error())
+		return runErr
+	}
+	resp.Files = files
+	e.t.save(&xexec.Adapter{}, req, resp, nil, what)
+	return runErr
 }
 
 // takeStdin reads the command's standard input so it can be matched, and puts
@@ -363,6 +454,9 @@ func (h *httpSeam) Do(req *http.Request) (*http.Response, error) {
 		req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
 	}
 	xreq := &xhttp.Request{Method: req.Method, URL: req.URL.String(), Headers: keep(req.Header), Body: string(body)}
+	if h.t.opts.Live {
+		return h.doLive(req, xreq)
+	}
 	do := func() (xrr.Response, error) {
 		resp, err := h.live.Do(req)
 		if err != nil {
@@ -415,6 +509,34 @@ func (h *httpSeam) Do(req *http.Request) (*http.Response, error) {
 		Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1, Header: hdr,
 		Body: io.NopCloser(strings.NewReader(text)), ContentLength: int64(len(text)), Request: req,
 	}, nil
+}
+
+// doLive sends the request and keeps its interaction; the caller gets the
+// response whole, kept or not.
+func (h *httpSeam) doLive(req *http.Request, xreq *xhttp.Request) (*http.Response, error) {
+	what := req.Method + " " + req.URL.String()
+	resp, err := h.live.Do(req)
+	if err != nil {
+		h.t.save(&xhttp.Adapter{}, xreq, nil, err, what)
+		return nil, err //nolint:wrapcheck // the live error
+	}
+	rb, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	if err != nil {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("flowtest: response body: %w", err)
+	}
+	if len(rb) > maxBody {
+		h.t.notePartial(what + ": the response is over the size a recording keeps")
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(rb), resp.Body), resp.Body}
+		return resp, nil
+	}
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(rb))
+	h.t.save(&xhttp.Adapter{}, xreq, &xhttp.Response{Status: resp.StatusCode, Headers: keep(resp.Header), Body: string(rb)}, nil, what)
+	return resp, nil
 }
 
 func str(v any) string {

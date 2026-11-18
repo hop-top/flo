@@ -26,6 +26,9 @@ type Pruner struct {
 	Outputs core.OutputStore
 	Jobs    core.Jobs
 	Clock   core.Clock
+	// Also prunes other data kept for the same time (run recordings); it
+	// gets the same cutoff.
+	Also func(ctx context.Context, tenant core.TenantID, cutoff time.Time) error
 }
 
 // Register hands the outputs.prune handler to the job worker.
@@ -63,5 +66,13 @@ func (p *Pruner) Handle(ctx context.Context, j core.Job) error {
 // Prune deletes the tenant's outputs older than the retention and reports how
 // many.
 func (p *Pruner) Prune(ctx context.Context, tenant core.TenantID) (int, error) {
-	return p.Outputs.PruneOutputs(ctx, tenant, p.Clock.Now().Add(-core.OutputRetention)) //nolint:wrapcheck // port error passes through
+	cutoff := p.Clock.Now().Add(-core.OutputRetention)
+	n, err := p.Outputs.PruneOutputs(ctx, tenant, cutoff)
+	if err != nil {
+		return n, err //nolint:wrapcheck // port error passes through
+	}
+	if p.Also != nil {
+		return n, p.Also(ctx, tenant, cutoff)
+	}
+	return n, nil
 }

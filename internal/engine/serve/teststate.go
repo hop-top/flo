@@ -12,7 +12,6 @@ import (
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/flowtest"
 	"hop.top/flo/internal/nodes/dispatch"
-	"hop.top/flo/spec"
 	"hop.top/flo/spec/node"
 	specrun "hop.top/flo/spec/run"
 )
@@ -170,41 +169,24 @@ func (e *Engine) PlanTest(ctx context.Context, tenant core.TenantID, req TestReq
 			plan.Cases = append(plan.Cases, c.Name)
 		}
 	}
-	loc, err := e.Nodes.Locator(p.v.Bundle)
+	uses, err := e.flowSteps(p.v, p.flow)
 	if err != nil {
 		return TestPlan{}, err
 	}
-	var flows spec.Locator
-	if p.v.Bundle != "" {
-		flows = &spec.DirLocator{Dirs: []string{p.v.Bundle}}
-	}
-	steps := p.flow.Steps
-	if flows != nil {
-		if exp, err := spec.Expand(p.flow, flows); err == nil {
-			steps = exp
-		}
-	}
 	redact := map[string]bool{}
-	var walk func([]spec.Step)
-	walk = func(ss []spec.Step) {
-		for i := range ss {
-			switch {
-			case ss[i].IsNode():
-				if ent, err := loc.Locate(ss[i].Uses); err == nil {
-					for _, r := range ent.Spec.Redact {
-						redact[lastSegment(r)] = true
-					}
-					if !dispatch.ExecutesInDryRun(ent.Spec.SideEffect) {
-						plan.Writes = append(plan.Writes, PlannedWrite{Step: ss[i].ID, Node: ent.Spec.Node, SideEffect: string(ent.Spec.SideEffect)})
-					}
-				}
-			case ss[i].EffectiveKind() == spec.KindExec:
-				plan.Writes = append(plan.Writes, PlannedWrite{Step: ss[i].ID, Node: "exec", SideEffect: string(node.SideEffectWriteShared)})
+	for _, u := range uses {
+		switch {
+		case u.Spec != nil:
+			for _, r := range u.Spec.Redact {
+				redact[lastSegment(r)] = true
 			}
-			walk(ss[i].Steps)
+			if !dispatch.ExecutesInDryRun(u.Spec.SideEffect) {
+				plan.Writes = append(plan.Writes, PlannedWrite{Step: u.ID, Node: u.Spec.Node, SideEffect: string(u.Spec.SideEffect)})
+			}
+		case u.Exec:
+			plan.Writes = append(plan.Writes, PlannedWrite{Step: u.ID, Node: "exec", SideEffect: string(node.SideEffectWriteShared)})
 		}
 	}
-	walk(steps)
 	for k := range plan.Seed {
 		if redact[k] {
 			plan.Seed[k] = "[redacted]"
