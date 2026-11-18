@@ -99,7 +99,26 @@ func (r *Redactor) matches(chain []string) bool {
 // Doc returns a copy of a JSON-like document (maps, lists, scalars) with the
 // redacted keys dropped and the secret values replaced. v is not changed.
 func (r *Redactor) Doc(v any) any {
-	out, _ := r.walk(v, nil, true)
+	out, _ := r.walk(v, nil, true, nil)
+	return out
+}
+
+// DocDropped is Doc, and the dotted paths of the keys it dropped.
+func (r *Redactor) DocDropped(v any) (any, []string) {
+	var dropped []string
+	out, _ := r.walk(v, nil, true, &dropped)
+	return out, dropped
+}
+
+// Names are the last segments of the paths: the state keys a flow-wide
+// redaction drops by name.
+func (r *Redactor) Names() []string {
+	var out []string
+	for _, p := range r.paths {
+		if n := p[len(p)-1]; !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
 	return out
 }
 
@@ -116,7 +135,7 @@ func (r *Redactor) Payload(v any) any {
 	if err := yaml.Unmarshal(b, &generic); err != nil {
 		return map[string]any{"redaction_error": "payload could not be copied"}
 	}
-	out, _ := r.walk(generic, nil, false)
+	out, _ := r.walk(generic, nil, false, nil)
 	return out
 }
 
@@ -128,7 +147,7 @@ func (r *Redactor) Text(s string) string {
 }
 
 // walk copies v. doc is true inside a JSON document, where keys are matched.
-func (r *Redactor) walk(v any, chain []string, doc bool) (any, bool) {
+func (r *Redactor) walk(v any, chain []string, doc bool, drop *[]string) (any, bool) {
 	switch x := v.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(x))
@@ -138,11 +157,14 @@ func (r *Redactor) walk(v any, chain []string, doc bool) (any, bool) {
 			if doc {
 				next = append(slices.Clone(chain), k)
 				if r.matches(next) {
+					if drop != nil {
+						*drop = append(*drop, strings.Join(next, "."))
+					}
 					changed = true
 					continue
 				}
 			}
-			nv, c := r.walk(val, next, doc)
+			nv, c := r.walk(val, next, doc, drop)
 			out[k] = nv
 			changed = changed || c
 		}
@@ -151,7 +173,7 @@ func (r *Redactor) walk(v any, chain []string, doc bool) (any, bool) {
 		out := make([]any, len(x))
 		changed := false
 		for i, val := range x {
-			nv, c := r.walk(val, chain, doc)
+			nv, c := r.walk(val, chain, doc, drop)
 			out[i] = nv
 			changed = changed || c
 		}
@@ -181,7 +203,7 @@ func (r *Redactor) text(s string) (string, bool) {
 		dec.UseNumber()
 		var doc any
 		if err := dec.Decode(&doc); err == nil && !dec.More() {
-			if red, c := r.walk(doc, nil, true); c {
+			if red, c := r.walk(doc, nil, true, nil); c {
 				var buf bytes.Buffer
 				enc := json.NewEncoder(&buf)
 				enc.SetEscapeHTML(false)

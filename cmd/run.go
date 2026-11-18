@@ -719,12 +719,29 @@ func runReplayCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 			"is auto-approved, as in `flo flow test`.\n\n" +
 			"It says where the replay differs from the run (status, step statuses, outputs). Paths a node " +
 			"lists under redact are not in the recording, so a step that used one can differ. Exits 1 when " +
-			"the replay differs. A run with no recording, an unfinished one, or a partial one is refused " +
+			"the replay differs. Inputs a node's redact paths dropped from the recording (trigger payload, " +
+			"vars, state) are not stored: the replay is refused with the path until you supply them with " +
+			"--trigger-file, --vars-file or --state-file. A run with no recording, an unfinished one, or a partial one is refused " +
 			"with the reason.",
 		Args: cobra.ExactArgs(1),
 	}
 	timeout := c.Flags().Duration("timeout", serve.DefaultTestTimeout, "give up after this long")
+	trigFile := c.Flags().String("trigger-file", "", "a JSON object replacing the recorded trigger payload (needed when a redact path dropped part of it)")
+	varsFile := c.Flags().String("vars-file", "", "a JSON object replacing the recorded vars (typed values)")
+	stateFile := c.Flags().String("state-file", "", "a JSON object replacing the recorded starting state")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
+		trig, err := readTriggerFile(*trigFile)
+		if err != nil {
+			return err
+		}
+		vars, err := readJSONObject("--vars-file", *varsFile)
+		if err != nil {
+			return err
+		}
+		state, err := readJSONObject("--state-file", *stateFile)
+		if err != nil {
+			return err
+		}
 		id, err := core.ParseRunID(args[0])
 		if err != nil {
 			return err //nolint:wrapcheck // *core.Error
@@ -741,7 +758,7 @@ func runReplayCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		res, err := e.ReplayRun(cmd.Context(), tenant, serve.ReplayRequest{Run: id, Caller: caller, Timeout: *timeout})
+		res, err := e.ReplayRun(cmd.Context(), tenant, serve.ReplayRequest{Run: id, Caller: caller, Timeout: *timeout, Trigger: trig, Vars: vars, State: state})
 		if err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
@@ -774,4 +791,24 @@ func runReplayCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		{When: "the replay differs", Suggest: "flo run show <run>", Reason: "compare with the run's steps"},
 	})
 	return c
+}
+
+// readJSONObject reads a flag's JSON object file; nil when the flag is unset.
+func readJSONObject(flag, path string) (map[string]any, error) {
+	if path == "" {
+		return nil, nil //nolint:nilnil // no file, no override
+	}
+	data, err := os.ReadFile(path) //nolint:gosec // the file the caller named
+	if err != nil {
+		return nil, core.Errorf(core.CodeUsage, "%s: %v", flag, err)
+	}
+	v, err := core.DecodeJSONValue(data)
+	if err != nil {
+		return nil, core.Errorf(core.CodeUsage, "%s %s: not JSON: %v", flag, path, err)
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, core.Errorf(core.CodeUsage, "%s %s: want a JSON object", flag, path)
+	}
+	return m, nil
 }

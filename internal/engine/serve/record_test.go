@@ -304,8 +304,10 @@ privacy: local-only
 tasks: none
 vars:
   query: { default: alpha, type: string }
+  passphrase: { default: "pass-3c7d1e90-var", type: string }
 state:
   cursor: { default: "" }
+  password: { default: "pw-default-9z8y7x" }
 steps:
   - id: find
     uses: demo/lookup@1
@@ -327,7 +329,7 @@ outputs:
 side_effect: read
 privacy: local
 capabilities: []
-redact: [in.token, out.secret]
+redact: [in.token, out.secret, passphrase, password]
 timeout: 30s
 `
 
@@ -359,6 +361,7 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 	}
 	res, err := e.Services.Starter.Start(bg, core.StartRequest{
 		Tenant: core.DefaultTenant, Flow: "lookup", Version: a.Version.Hash, StartedBy: "jad", Record: true,
+		Vars:    map[string]any{"query": "alpha", "passphrase": "pass-3c7d1e90-var"},
 		Trigger: core.TriggerInfo{Payload: map[string]any{"token": secretToken, "note": "kept"}},
 	})
 	if err != nil {
@@ -375,7 +378,7 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 		t.Fatalf("the live call did not get the real token: %q", live.stdins)
 	}
 
-	dir, _ := e.Recordings.Cassettes(core.DefaultTenant, run.ID)
+	dir, _ := e.Recordings.Dir(core.DefaultTenant, run.ID) // every file: cassettes, trigger, vars, state, meta
 	var all strings.Builder
 	files := 0
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
@@ -386,11 +389,11 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 		}
 		return nil
 	})
-	if files != 2 {
-		t.Fatalf("%d cassette files, want a request and a response", files)
+	if files < 6 {
+		t.Fatalf("only %d recording files", files)
 	}
 	text := all.String()
-	for what, secret := range map[string]string{"a redacted input": secretToken, "a redacted output field": secretOut, "a secret of the environment": envSecret} {
+	for what, secret := range map[string]string{"a trigger field under a redact path": secretToken, "a secret-looking var": "pass-3c7d1e90-var", "a state key named by a redact path": "pw-default-9z8y7x", "a redacted input": secretToken, "a redacted output field": secretOut, "a secret of the environment": envSecret} {
 		if strings.Contains(text, secret) {
 			t.Errorf("the recording keeps %s (%s)", what, secret)
 		}
@@ -400,10 +403,9 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 			t.Errorf("the recording lost %q, which is not redacted", kept)
 		}
 	}
-	// the run's own inputs are copied whole: a replay needs them
 	trig, _, _ := e.Recordings.ReadDoc(core.DefaultTenant, run.ID, runrec.TriggerFile)
 	state, _, _ := e.Recordings.ReadDoc(core.DefaultTenant, run.ID, runrec.StateFile)
-	if trig["token"] != secretToken || state["cursor"] != "" {
+	if _, ok := trig["token"]; ok || state["cursor"] != "" {
 		t.Errorf("recorded trigger %v, state %v", trig, state)
 	}
 	meta, _, _ := e.Recordings.Load(core.DefaultTenant, run.ID)
@@ -411,9 +413,16 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 		t.Errorf("a local-only flow: %+v", meta)
 	}
 
-	// the replay runs on what was kept: the dropped output field makes it differ,
-	// which it says, and it still never reaches the real world
-	rep, err := e.ReplayRun(bg, core.DefaultTenant, serve.ReplayRequest{Run: run.ID, Caller: "jad"})
+	// what was dropped is asked for again, never guessed
+	_, err = e.ReplayRun(bg, core.DefaultTenant, serve.ReplayRequest{Run: run.ID, Caller: "jad"})
+	if !core.IsCode(err, core.CodeUsage) || !strings.Contains(err.Error(), "recorded input redacted: ") {
+		t.Fatalf("a replay without the dropped input: %v", err)
+	}
+	rep, err := e.ReplayRun(bg, core.DefaultTenant, serve.ReplayRequest{
+		Run: run.ID, Caller: "jad",
+		Trigger: map[string]any{"token": secretToken}, Vars: map[string]any{"query": "alpha", "passphrase": "x"},
+		State: map[string]any{"cursor": "", "password": "y"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

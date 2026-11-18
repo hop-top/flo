@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 	"time"
 
 	"hop.top/flo/internal/core"
@@ -26,6 +27,10 @@ type ReplayRequest struct {
 	// Caller is the profile that replays; it must be allowed to use the
 	// flow's run_as, as for a run.
 	Caller string
+	// Trigger, Vars and State replace the recorded trigger payload, vars and
+	// starting state; they are needed for what a node's redact paths dropped
+	// from the recording. Nil takes the recorded one.
+	Trigger, Vars, State map[string]any
 	// Timeout bounds the replay; zero is DefaultTestTimeout.
 	Timeout time.Duration
 }
@@ -119,6 +124,21 @@ func (e *Engine) ReplayRun(ctx context.Context, tenant core.TenantID, req Replay
 			WithSuggestion("flo grant set " + req.Caller + " profile.use:" + runAs)
 	}
 
+	for _, doc := range []struct {
+		label string
+		set   bool
+	}{{"trigger", req.Trigger != nil}, {"vars", req.Vars != nil}, {"state", req.State != nil}} {
+		if doc.set {
+			continue
+		}
+		for _, d := range meta.Dropped {
+			if strings.HasPrefix(d, doc.label+".") {
+				return ReplayResult{}, core.Errorf(core.CodeUsage, "recorded input redacted: %s", d).
+					WithDetail("dropped", meta.Dropped).
+					WithSuggestion("supply it again with --trigger-file, --var/--var-file or --state-file")
+			}
+		}
+	}
 	trigger, _, err := rs.ReadDoc(tenant, run.ID, runrec.TriggerFile)
 	if err != nil {
 		return ReplayResult{}, err //nolint:wrapcheck // *core.Error
@@ -130,6 +150,15 @@ func (e *Engine) ReplayRun(ctx context.Context, tenant core.TenantID, req Replay
 	state, _, err := rs.ReadDoc(tenant, run.ID, runrec.StateFile)
 	if err != nil {
 		return ReplayResult{}, err //nolint:wrapcheck // *core.Error
+	}
+	if req.Trigger != nil {
+		trigger = req.Trigger
+	}
+	if req.Vars != nil {
+		vars = req.Vars
+	}
+	if req.State != nil {
+		state = req.State
 	}
 	seed := map[string]any{}
 	for k, val := range state { // keys an older version declared are not this one's

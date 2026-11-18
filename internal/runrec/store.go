@@ -80,6 +80,10 @@ type Meta struct {
 	// Partial lists what could not be kept; a partial recording cannot be
 	// replayed.
 	Partial []string `json:"partial,omitempty"`
+	// Dropped lists the inputs left out of the recording because a node
+	// redacts them (trigger.token, state.password): a replay needs them
+	// supplied again.
+	Dropped []string `json:"dropped,omitempty"`
 	// Redacted lists the redact paths the recording was scrubbed with.
 	Redacted []string `json:"redacted,omitempty"`
 }

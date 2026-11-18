@@ -126,17 +126,20 @@ func (e *Engine) openRecording(ctx context.Context, run core.Run) (*recSession, 
 		Status: runrec.StatusRecording, CreatedAt: e.Config.Clock.Now().UTC(), Redacted: slices.Compact(slices.Sorted(slices.Values(paths))),
 	}
 	// What the replay starts from, except the state, which the run takes at
-	// its first turn (closeTurn). These are the run's own inputs, copied as
-	// the run record holds them: a replay needs them whole, and the copy
-	// exposes nothing the run record does not. Redaction is for the calls.
-	trigger, vars := map[string]any{}, map[string]any{}
-	if run.Trigger.Payload != nil {
-		trigger = run.Trigger.Payload
+	// its first turn (closeTurn). Redact paths are dropped from every doc;
+	// a replay asks for what was dropped (ReplayRequest overrides).
+	docs := map[string]any{}
+	for _, d := range []struct {
+		file, label string
+		in          map[string]any
+	}{{runrec.TriggerFile, "trigger", run.Trigger.Payload}, {runrec.VarsFile, "vars", run.Vars}} {
+		doc, dropped := s.redact.DocDropped(orEmpty(d.in))
+		docs[d.file] = doc
+		for _, p := range dropped {
+			s.meta.Dropped = append(s.meta.Dropped, d.label+"."+p)
+		}
 	}
-	if run.Vars != nil {
-		vars = run.Vars
-	}
-	for name, doc := range map[string]any{runrec.TriggerFile: trigger, runrec.VarsFile: vars} {
+	for name, doc := range docs {
 		if err := rs.WriteJSON(run.Tenant, run.ID, name, doc); err != nil {
 			return nil, err //nolint:wrapcheck // *core.Error
 		}
@@ -162,9 +165,27 @@ func (e *Engine) closeTurn(ctx context.Context, s *recSession) error {
 	}
 	rs := e.Recordings
 	if run.StateSnapshot != nil && !rs.Exists(s.tenant, s.run, runrec.StateFile) {
-		if err := rs.WriteJSON(s.tenant, s.run, runrec.StateFile, run.StateSnapshot); err != nil {
+		state := orEmpty(run.StateSnapshot)
+		out := make(map[string]any, len(state))
+		names := s.redact.Names()
+		var dropped []string
+		for k, v := range state {
+			if slices.Contains(names, k) {
+				dropped = append(dropped, "state."+k)
+				continue
+			}
+			out[k] = v
+		}
+		doc, more := s.redact.DocDropped(out)
+		for _, p := range more {
+			dropped = append(dropped, "state."+p)
+		}
+		if err := rs.WriteJSON(s.tenant, s.run, runrec.StateFile, doc); err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
+		s.mu.Lock()
+		s.meta.Dropped = append(s.meta.Dropped, dropped...)
+		s.mu.Unlock()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -299,4 +320,11 @@ func (e *Engine) secretValues() []string { return e.secretLog.values() }
 func (e *Engine) pruneRecordings(_ context.Context, tenant core.TenantID, cutoff time.Time) error {
 	_, err := e.Recordings.Prune(tenant, cutoff)
 	return err //nolint:wrapcheck // *core.Error
+}
+
+func orEmpty(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }
