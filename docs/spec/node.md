@@ -366,8 +366,17 @@ element are made.
 | `model` | string URI, required | as above |
 | `schema` | object | optional output schema; validated with repair |
 
-Output `{text, data?}` (`data` present with `schema`). Prompts are files
-with a version, so a recorded run names the prompt text it used.
+Output `{text, data?, prompt: {name, version, hash}}` (`data` present with
+`schema`; `text` is never blank: a blank result fails
+`node_reported_failure`). Prompts are files with a version, so a recorded run
+names the prompt text it used by hash.
+
+A prompt `name@N` is `prompts/name@N.yaml` in the flow bundle, else in an
+installed pack that lists it. The file is YAML: `system:` (optional text) and
+`template:` (required Go `text/template`; functions `join`, `trunc`,
+`default` only; a missing key is an error). Backend `ai.generator`:
+`template` renders the template over `context` (no model, no cost, no
+`schema`); `llm` calls the model.
 
 ### 6.6 `flo/approval@1`
 
@@ -516,9 +525,13 @@ Rules:
 
 - A flow with `privacy: local-only` is refused if any node is `cloud`
   (flow.md V19).
-- For AI nodes the level is derived from the `model` scheme: `ollama://`
-  and a local `openai://host:port` are `local`; hosted providers are
-  `cloud`. The node spec states the default; the validator resolves the
+- For AI nodes the level is derived from the `model` URI: `ollama://<model>`
+  (the daemon on this machine), `ollama://<host>/<model>` and
+  `openai://<host>/<model>` with a local host, and an `ollama://` unix
+  socket are `local`; hosted providers and any other host are `cloud`. A host
+  is local when it is `localhost`, `*.local`, loopback (127.0.0.0/8, `::1`) or
+  private (RFC 1918). The engine applies the same rule at run time: under a
+  local-only ceiling a cloud model fails `privacy_violation` before any call. The node spec states the default; the validator resolves the
   actual value from `with.model` when it is a literal.
 - A node whose data may not leave the machine (`local`) cannot be placed
   on a remote runner (placement check; §15).

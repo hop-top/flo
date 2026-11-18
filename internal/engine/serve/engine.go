@@ -141,6 +141,13 @@ func (e *Engine) wire() error {
 	if err := builtin.RegisterClassify(builtins, classifier); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
+	generator, err := builtin.GeneratorFor(cfg.Generator)
+	if err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
+	if err := builtin.RegisterGenerate(builtins, generator, packs.Prompts()); err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
 	e.Nodes = newNodes(packs, builtins)
 	if err := e.Nodes.Plugins.RegisterTrigger(&calendar.Plugin{Clock: cfg.Clock, Secrets: httpnode.StoreSecrets{Store: secrets}}); err != nil {
 		return err //nolint:wrapcheck // *core.Error

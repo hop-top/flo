@@ -120,6 +120,7 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 		}
 	}
 	cfg.Classifier = setting(root, builtin.EnvClassifier, "ai.classifier")
+	cfg.Generator = setting(root, builtin.EnvGenerator, "ai.generator")
 	cfg.ExprConfig = exprConfig(root)
 	return cfg, nil
 }

@@ -1,0 +1,26 @@
+node: flo/ai.generate@1
+kind: builtin
+description: Text from a versioned prompt and a context.
+inputs:
+  prompt: { type: string, required: true, description: "Prompt reference name@N: prompts/name@N.yaml in the flow bundle or an installed pack." }
+  context: { type: object, description: Variables of the prompt template. }
+  model: { type: string, required: true, description: "Model URI, e.g. anthropic://claude-sonnet-5-5; ignored by the template backend." }
+  schema: { type: object, description: Optional output schema for data. }
+outputs:
+  schema:
+    type: object
+    required: [text, prompt]
+    properties:
+      text: { type: string }
+      data: { type: object }
+      prompt:
+        type: object
+        required: [name, version, hash]
+        properties:
+          name: { type: string }
+          version: { type: integer }
+          hash: { type: string }
+capabilities: []
+side_effect: none
+privacy: cloud
+cost: { class: low }

@@ -11,6 +11,7 @@ import (
 
 	"hop.top/flo/internal/approvals"
 	"hop.top/flo/internal/core"
+	"hop.top/flo/internal/prompts"
 	"hop.top/flo/spec/node"
 )
 
@@ -64,6 +65,23 @@ func (p *Packs) Entries() []node.Entry {
 		out = append(out, lp.Entries()...)
 	}
 	return out
+}
+
+// Prompts returns the loader of the prompt files the packs list; the flow
+// bundle's own prompts/ comes before it.
+func (p *Packs) Prompts() prompts.Loader {
+	var l prompts.Loader
+	for _, lp := range p.Loaded {
+		if len(lp.Pack.Prompts) == 0 {
+			continue
+		}
+		pf := prompts.PackFiles{Pack: lp.Pack.Pack}
+		for _, f := range lp.Pack.Prompts {
+			pf.Files = append(pf.Files, filepath.Join(p.Dir, filepath.FromSlash(lp.Dir), filepath.FromSlash(f)))
+		}
+		l.Packs = append(l.Packs, pf)
+	}
+	return l
 }
 
 // TrustEntries returns the trust providers of every pack.

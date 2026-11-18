@@ -65,6 +65,15 @@ flo run cancel <run> --yes
   breaking by major bump, else routine) or `judge` (kit go/ai/judge; refused
   until it exists). Unset configures none and a step using the node fails
   with `engine_feature`: no backend stands in for another.
+- Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
+  `flo/ai.generate@1`: `template` (renders the prompt's template over the
+  context: no model, no cost) or `llm` (refused until a model client lands).
+  Unset configures none and a step using the node fails with
+  `engine_feature`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
+  bundle, else in an installed pack: YAML with `system:` and `template:` (Go
+  text/template; funcs `join`, `trunc`, `default`; a missing key is an
+  error). The ceiling of the step (`privacy`) refuses a cloud model with
+  `privacy_violation`.
 - `packs/github` holds the GitHub nodes of `flows/dependency-watch.yaml`. Its
   wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.

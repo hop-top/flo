@@ -80,6 +80,10 @@ type Config struct {
 	// "rules" is the deterministic one, "judge" is kit's and not yet
 	// available. Empty configures none, and a step using the node fails.
 	Classifier string
+	// Generator names the flo/ai.generate@1 backend (`ai.generator`):
+	// "template" is the deterministic one, "llm" is a model client and not
+	// yet available. Empty configures none, and a step using the node fails.
+	Generator string
 	// PacksDir holds the installed packs (<Root>/packs when empty).
 	PacksDir string
 	// TrustDirs hold trust provider documents, besides the trusts/ of every
