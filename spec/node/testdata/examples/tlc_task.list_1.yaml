@@ -1,0 +1,16 @@
+node: tlc/task.list@1
+kind: command
+lowers_to: exec
+description: Tasks matching a search and status.
+argv: [tlc, task, list, --search, "{{ in.search }}", --status, "{{ in.status }}", --format, json]
+inputs:
+  search: { type: string, required: true }
+  status: { type: array, items: { type: string }, default: [] }
+outputs:
+  from: stdout
+  format: json
+  schema: { type: array, items: { type: object } }
+side_effect: read
+privacy: local
+capabilities: [tasks.read]
+timeout: 15s

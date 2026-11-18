@@ -1,0 +1,23 @@
+node: heo/conversation.list@1
+kind: command
+lowers_to: exec
+description: Conversations involving the given participants.
+argv: [heo, conversation, list, --participants, "{{ in.participants }}", --since, "{{ in.since }}", --format, json]
+inputs:
+  participants: { type: array, items: { type: string }, required: true }
+  since: { type: string, format: duration, default: 30d }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: array
+    items:
+      type: object
+      properties:
+        subject: { type: string }
+        last_message: { type: string }
+        state: { type: string }
+side_effect: read
+privacy: local
+capabilities: [mail.read]
+timeout: 20s

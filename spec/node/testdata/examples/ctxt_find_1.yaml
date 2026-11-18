@@ -1,0 +1,20 @@
+node: ctxt/find@1
+kind: http
+lowers_to: engine
+description: Look up people, decisions and notes in the knowledge store.
+request:
+  method: POST
+  url: "{{ config.ctxt.url }}/api/v1/find"
+  json: { query: "{{ in.query }}", limit: "{{ in.limit }}" }
+inputs:
+  query: { type: [string, array], required: true }
+  limit: { type: integer, default: 10 }
+outputs:
+  from: body.results
+  schema: { type: array, items: { type: object } }
+side_effect: read
+privacy: local
+capabilities: [knowledge.read]
+timeout: 10s
+retry: { max_attempts: 3, backoff: 2s }
+record: true

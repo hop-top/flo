@@ -1,0 +1,51 @@
+node: gh/advisories@1
+kind: command
+lowers_to: engine
+description: >-
+  Published security advisories affecting the given package versions, in
+  batches. Withdrawn advisories are dropped.
+argv: [gh-advisories, --out, "{{ run.step_dir }}/out.json", --batch, "{{ in.batch_size }}", --]
+stdin: { json: "{{ in.packages }}" }
+inputs:
+  packages:
+    type: array
+    required: true
+    items:
+      type: object
+      required: [ecosystem, name, version]
+      properties:
+        ecosystem: { type: string }
+        name: { type: string }
+        version: { type: string }
+        used_by: { type: array, items: { type: string } }
+  batch_size: { type: integer, default: 50, minimum: 1, maximum: 100 }
+exit_codes: { ok: [0], retry: [75] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [advisories]
+    properties:
+      advisories:
+        type: array
+        items:
+          type: object
+          required: [ghsa_id, package, ecosystem, version, severity]
+          properties:
+            ghsa_id: { type: string }
+            cve_id: { type: [string, 'null'] }
+            package: { type: string }
+            ecosystem: { type: string }
+            version: { type: string }                 # the affected installed version
+            severity: { type: string, enum: [low, medium, high, critical] }   # lowercase
+            summary: { type: string }
+            vulnerable_range: { type: string }
+            first_patched: { type: [string, 'null'] }  # plain string
+            url: { type: string }
+            used_by: { type: array, items: { type: string } }
+side_effect: read
+privacy: cloud
+capabilities: [vcs.read]
+timeout: 60s
+retry: { max_attempts: 3, backoff: 5s }

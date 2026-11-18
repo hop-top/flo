@@ -1,0 +1,28 @@
+node: inbox/apply@1
+kind: command
+lowers_to: engine               # irreversible nodes never lower to exec
+description: Apply the plan's automatic and approved actions to the mailbox.
+argv: [inbox, apply, "{{ in.run }}", --no-task, --format, json]
+env: { INBOX_HOME: "{{ config.inbox.home }}", INBOX_RUNS: "{{ config.inbox.runs }}" }
+cwd: "{{ config.inbox.root }}"
+inputs: { run: { type: string, required: true } }
+outputs:
+  from: stdout
+  format: json
+  fail_when: "{{ size(out.failed) > 0 }}"
+  schema:
+    type: object
+    required: [run, applied, failed, pending_left]
+    properties:
+      run: { type: string }
+      applied: { type: integer }
+      failed:
+        type: array
+        items: { type: object, properties: { n: { type: integer }, error: { type: string } } }
+      pending_left: { type: integer }
+side_effect: irreversible       # label, archive, reply, send, unsubscribe, move
+approval: required
+idempotent: false               # until the script records each action as it is done
+privacy: local
+capabilities: [mail.write, mail.send]
+timeout: 300s

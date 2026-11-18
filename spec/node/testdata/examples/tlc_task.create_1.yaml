@@ -1,0 +1,19 @@
+node: tlc/task.create@1
+kind: command
+lowers_to: exec
+description: Create a task.
+argv: [tlc, task, create, "{{ in.title }}", --description, "{{ in.description }}", --format, json]
+inputs:
+  title:       { type: string, required: true }
+  description: { type: string, default: "" }
+  tags:        { type: array, items: { type: string }, default: [] }
+outputs:
+  from: stdout
+  format: json
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
+side_effect: write-shared
+privacy: local
+capabilities: [tasks.write]
+idempotent: false
+idempotency_key: "{{ in.title }}"
+timeout: 15s

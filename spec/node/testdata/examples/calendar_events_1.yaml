@@ -1,0 +1,30 @@
+node: calendar/events@1
+kind: plugin
+role: trigger
+description: Upcoming calendar events with start times.
+config:
+  url: { type: string, required: true }
+inputs:
+  calendar: { type: string, default: primary }
+outputs:
+  schema:
+    type: object
+    required: [uid, start, title, attendees]
+    properties:
+      uid: { type: string }
+      recurrence_id: { type: [string, 'null'] }
+      start: { type: string, format: date-time }
+      end: { type: string, format: date-time }
+      title: { type: string }
+      attendees:
+        type: array
+        items:
+          type: object
+          required: [email]
+          properties:
+            email: { type: string }
+            name: { type: string }
+            status: { type: string }
+side_effect: read
+privacy: local
+capabilities: [calendar.read]
