@@ -1,0 +1,216 @@
+{
+  "$defs": {
+    "ChainLevel": {
+      "description": "One level of a proposal's chain.",
+      "properties": {
+        "approvals": {
+          "description": "The approvals so far, oldest first, one per principal (contract\n1.29); at most [`MAX_LEVEL_APPROVALS`]. Absent reads as none: a\nsingle-decider core names its decider in `by` only. Sent only when\nthere is one.",
+          "items": {
+            "$ref": "#/$defs/LevelApproval"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "by": {
+          "description": "Who decided, once approved or rejected: the approval that met\n[`required`](Self::required), or the rejection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "description": "Product-defined level key, e.g. `instance`.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "A rejection's reason.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required": {
+          "description": "Approvals from distinct principals the level needs (contract 1.29):\n1 to [`MAX_LEVEL_APPROVALS`]. Absent reads as 1, a single decider,\nand a single decider is sent without it.",
+          "format": "uint8",
+          "maximum": 16,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/LevelStatus"
+        }
+      },
+      "required": [
+        "level",
+        "status"
+      ],
+      "type": "object"
+    },
+    "LevelApproval": {
+      "description": "One principal's approval at a level. `by` is the principal's canonical\nid, the same string as its `/whoami` `id` (never a display name),\ncompared byte for byte; a core dedupes a level's approvals on it.",
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ],
+      "type": "object"
+    },
+    "LevelStatus": {
+      "description": "One level's place in the chain.",
+      "oneOf": [
+        {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "description": "The level does not require its approval.",
+          "type": "string"
+        }
+      ]
+    },
+    "PaneId": {
+      "description": "Stable id of one pane instance inside a layout.",
+      "type": "string"
+    },
+    "ProposalKind": {
+      "description": "What a proposal asks to let through.",
+      "oneOf": [
+        {
+          "enum": [
+            "grant"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "component",
+          "description": "A new catalog component or stored building block.",
+          "type": "string"
+        },
+        {
+          "const": "apply",
+          "description": "An `apply`-gated plan.",
+          "type": "string"
+        },
+        {
+          "const": "review",
+          "description": "A `review`-gated plan.",
+          "type": "string"
+        },
+        {
+          "const": "review_bypass",
+          "description": "Skipping review under a grant.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProposalStatus": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Something waiting for approval, with its chain. Sent whole on every\nchange ([`PROPOSAL_UPDATED`](crate::bus::PROPOSAL_UPDATED)).",
+  "properties": {
+    "capability": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "chain": {
+      "description": "Every level from the top down to `target_level`, in order.",
+      "items": {
+        "$ref": "#/$defs/ChainLevel"
+      },
+      "type": "array"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "current_level": {
+      "description": "The level whose turn it is; absent once decided.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ProposalKind"
+    },
+    "proposed_by": {
+      "description": "The agent key or member that proposed it.",
+      "type": "string"
+    },
+    "source_pane": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PaneId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The pane it came from, if any."
+    },
+    "status": {
+      "$ref": "#/$defs/ProposalStatus"
+    },
+    "subject": {
+      "description": "What the decision applies to: a plan, component or grant id.",
+      "type": "string"
+    },
+    "target_level": {
+      "description": "The level the proposal targets; the chain runs from the top level\ndown to it.",
+      "type": "string"
+    },
+    "title": {
+      "description": "What is proposed, for display.",
+      "type": "string"
+    },
+    "version": {
+      "description": "+1 on every change; a decision names the version it was made on and\nthe core refuses it on any other.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "kind",
+    "title",
+    "subject",
+    "proposed_by",
+    "created_at",
+    "target_level",
+    "chain",
+    "status"
+  ],
+  "title": "Proposal",
+  "type": "object"
+}
