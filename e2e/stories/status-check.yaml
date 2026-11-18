@@ -1,0 +1,15 @@
+schema_version: "1"
+story_id: flo.status.check
+title: Inspect flo runtime state before running a flow
+binary: flo
+intent: |
+  An operator or agent wants a snapshot of flo's runtime state
+  (profile, env, workspace, auth, effective config) before acting.
+  They run flo status and read the sections it reports.
+steps:
+  - id: status
+    intent: |
+      Print the status snapshot in machine-readable form so the
+      caller can branch on section states.
+    invoke: ["flo", "status", "--format", "json"]
+    capture: [exit_code, stdout, duration_ms]

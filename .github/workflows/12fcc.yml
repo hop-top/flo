@@ -1,0 +1,33 @@
+name: 12fcc
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: 12-factor AI-CLI conformance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write     # sticky PR comment
+      security-events: write   # SARIF upload to code-scanning
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      # Pinned by commit; spec-12fc has no release tag yet.
+      - uses: hop-top/spec-12fc@2da962b62b40f7cef5e9d20170d561f8b90c27c1 # main @ 2026-11-11
+        with:
+          command: all
+          paths: .
+          diff: ""             # scan paths; --diff and --paths are exclusive
+          upload-sarif: true
+          pr-comment: ${{ github.event_name == 'pull_request' }}
+          commit-badge: false
