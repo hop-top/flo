@@ -1,0 +1,28 @@
+node: gh/releases@1
+kind: command
+description: Recent releases of a repository.
+argv:
+  - sh
+  - -c
+  - 'gh api "$1" > "$2"'
+  - sh
+  - "/repos/{{ in.repo }}/releases?per_page=100"
+  - "{{ run.step_dir }}/out.json"
+inputs:
+  repo: { type: string, required: true, description: owner/repo }
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: array
+    items:
+      type: object
+      required: [tag_name, url]
+      properties:
+        tag_name: { type: string }
+        url: { type: string }
+side_effect: read
+privacy: cloud
+capabilities: [vcs.read]
+timeout: 30s

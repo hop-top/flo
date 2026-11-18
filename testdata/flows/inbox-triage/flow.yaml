@@ -1,0 +1,26 @@
+flow: inbox-triage
+version: 0.1.0
+description: Propose actions for new mail and apply the ones a person approves.
+on:
+  - manual: {}
+run_as: automation
+privacy: local-only
+tasks: none
+steps:
+  - id: list
+    uses: inbox/list@1
+
+  - id: review
+    uses: flo/approval@1
+    with:
+      surface: tlc
+      title: Triage the inbox
+      items: >-
+        {{ results.list.messages.map(m,
+             {'id': m.id, 'action': 'archive ' + m.subject, 'why': m.from, 'class': 'mail.archive'}) }}
+
+  - id: apply
+    uses: inbox/apply@1
+    for_each: "{{ results.review.approved }}"
+    with:
+      id: "{{ item.id }}"

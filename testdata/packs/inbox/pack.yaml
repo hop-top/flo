@@ -1,0 +1,4 @@
+pack: inbox
+version: 0.1.0
+description: Triage a mailbox through the inbox script.
+nodes: [nodes/list.yaml, nodes/apply.yaml]

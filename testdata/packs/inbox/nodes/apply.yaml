@@ -1,0 +1,20 @@
+node: inbox/apply@1
+kind: command
+description: Archive one message. Irreversible.
+argv: [inbox, apply, "{{ in.id }}", --out, "{{ run.step_dir }}/out.json"]
+inputs:
+  id: { type: string, required: true }
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [applied]
+    properties:
+      applied: { type: string }
+side_effect: irreversible
+approval: required
+privacy: local
+capabilities: [mail.write]
+timeout: 30s

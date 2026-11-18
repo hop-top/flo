@@ -1,0 +1,26 @@
+node: inbox/list@1
+kind: command
+description: The messages that wait for triage.
+argv: [inbox, list, --out, "{{ run.step_dir }}/out.json"]
+inputs: {}
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [messages]
+    properties:
+      messages:
+        type: array
+        items:
+          type: object
+          required: [id, subject, from]
+          properties:
+            id: { type: string }
+            subject: { type: string }
+            from: { type: string }
+side_effect: read
+privacy: local
+capabilities: [mail.read]
+timeout: 30s

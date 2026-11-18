@@ -1,0 +1,56 @@
+flow: dependency-watch
+version: 0.1.0
+description: New advisories and releases for what a repository depends on.
+on:
+  - schedule: { rrule: "FREQ=DAILY;BYHOUR=7", tz: UTC }
+  - manual: {}
+vars:
+  package: { default: "golang.org/x/net@0.50.0", type: string }
+  repo: { default: cli/cli, type: string }
+run_as: automation
+privacy: cloud-allowed
+tasks: none
+state:
+  seen_adv: { default: [] }
+  seen_rel: { default: [] }
+steps:
+  - id: advisories
+    uses: gh/advisories@1
+    with: { affects: "{{ vars.package }}" }
+
+  - id: newadv
+    uses: flo/dedupe@1
+    with:
+      items: "{{ results.advisories }}"
+      key: "{{ item.ghsa_id }}"
+      seen: "{{ state.seen_adv }}"
+    outputs:
+      state: { seen_adv: "{{ result.seen }}" }
+
+  # after newadv, so a failure here shows state staged by a step that succeeded
+  # is dropped with the failed run
+  - id: releases
+    uses: gh/releases@1
+    depends_on: [newadv]
+    with: { repo: "{{ vars.repo }}" }
+
+  - id: newrel
+    uses: flo/dedupe@1
+    with:
+      items: "{{ results.releases }}"
+      key: "{{ item.tag_name }}"
+      seen: "{{ state.seen_rel }}"
+    outputs:
+      state: { seen_rel: "{{ result.seen }}" }
+
+  - id: findings
+    uses: flo/output@1
+    when: "{{ size(results.newadv.items) > 0 || size(results.newrel.items) > 0 }}"
+    with:
+      kind: findings
+      title: dependency-watch
+      items: >-
+        {{ results.newadv.items.map(a,
+             {'title': a.ghsa_id + ' ' + a.summary, 'label': a.severity, 'url': a.html_url})
+           + results.newrel.items.map(r,
+             {'title': r.tag_name, 'label': 'release', 'url': r.url}) }}

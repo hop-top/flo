@@ -1,0 +1,31 @@
+node: gh/advisories@1
+kind: command
+description: Published security advisories affecting a package version.
+argv:
+  - sh
+  - -c
+  - 'gh api "$1" > "$2"'
+  - sh
+  - "/advisories?ecosystem={{ in.ecosystem }}&affects={{ in.affects }}"
+  - "{{ run.step_dir }}/out.json"
+inputs:
+  affects: { type: string, required: true, description: package@version }
+  ecosystem: { type: string, default: go }
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: array
+    items:
+      type: object
+      required: [ghsa_id, severity, summary]
+      properties:
+        ghsa_id: { type: string }
+        severity: { type: string }
+        summary: { type: string }
+        html_url: { type: string }
+side_effect: read
+privacy: cloud
+capabilities: [vcs.read]
+timeout: 30s

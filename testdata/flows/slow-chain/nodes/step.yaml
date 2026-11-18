@@ -1,0 +1,28 @@
+node: chain/step@1
+kind: command
+description: Record that a step ran, optionally take a while, and say so.
+argv:
+  - sh
+  - -c
+  - 'echo "$1" >> "$FLO_E2E_DIR/steps.log"; if [ "$2" -gt 0 ]; then : > "$FLO_E2E_DIR/$1.running"; sleep "$2"; fi; echo "{\"name\":\"$1\"}" > "$3"'
+  - sh
+  - "{{ in.name }}"
+  - "{{ in.delay }}"
+  - "{{ run.step_dir }}/out.json"
+inputs:
+  name: { type: string, required: true }
+  delay: { type: integer, default: 0 }
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [name]
+    properties:
+      name: { type: string }
+side_effect: read
+idempotent: true
+privacy: local
+capabilities: []
+timeout: 60s

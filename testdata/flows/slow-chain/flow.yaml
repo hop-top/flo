@@ -1,0 +1,23 @@
+flow: slow-chain
+version: 0.1.0
+description: Three steps, the middle one slow, for the restart test.
+on:
+  - manual: {}
+run_as: automation
+tasks: none
+steps:
+  - id: one
+    uses: chain/step@1
+    with: { name: one }
+
+  - id: two
+    uses: chain/step@1
+    depends_on: [one]
+    # an attempt the engine's death interrupted counts as one: leave room to run it again
+    retry: { max_attempts: 2, backoff: 100ms }
+    with: { name: two, delay: 6 }
+
+  - id: three
+    uses: chain/step@1
+    depends_on: [two]
+    with: { name: three }
