@@ -4,9 +4,11 @@ go 1.27.4
 
 require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+	gopkg.in/yaml.v3 v3.0.1
 	hop.top/flo/spec v0.0.0
 	hop.top/kit v0.5.0-beta.14
 	hop.top/vstar v1.0.0-alpha.1
+	hop.top/xrr v0.1.0-alpha.5
 )
 
 require (
@@ -76,7 +78,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20261026165753-2ffab32bce7e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	hop.top/cite v0.1.1 // indirect
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

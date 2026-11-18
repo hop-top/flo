@@ -49,3 +49,25 @@ module. Exact pin. Owned dependency (hop.top): exempt from the age gate.
   a TZID the system does not know falls back to the calendar's VTIMEZONE (a
   fixed offset). `rrule.SetFromComponent` is not used: it accepts UTC
   DTSTART/EXDATE/RDATE only.
+
+## hop.top/xrr v0.1.0-alpha.5
+
+Root module only; packages `hop.top/xrr` and `hop.top/xrr/adapters/{exec,http}`
+(`internal/flowtest`). Exact pin. Owned dependency (hop.top): exempt from the
+age gate.
+
+- Vetted 2026-11-18. Released 2026-08-30 (80 days before vetting).
+- Repository: read-only mirror `hop-top/xrr` of `hop-top/poly-xrr` (Go
+  component `xrr`). `rsx analyze`: PASS, 5.4/10, policy balanced (activity 1.0,
+  maintenance 5.0, security 5.6, docs 8.5, release hygiene 10.0, license
+  10.0).
+- License MIT, compatible. `go` directive 1.26.1.
+- Advisories: OSV has none for `hop.top/xrr` 0.1.0-alpha.5.
+- Added modules: none; its requirements (`gopkg.in/yaml.v3`,
+  `google.golang.org/protobuf`, `golang.org/x/net`) were already in the build
+  list. The gRPC, Redis and SQL adapters are not imported.
+- Used: file cassettes (`NewSession`, `NewFileCassette`, default redaction on)
+  at the exec and HTTP seams of the engine, to record and replay flow tests.
+  Cassettes are written only by `flo flow test --record`.
+- `gopkg.in/yaml.v3` v3.0.1 was already in the build list; `internal/flowtest`
+  imports it directly to read the `expect:` documents of a bundle's `tests/`.
