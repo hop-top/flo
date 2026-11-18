@@ -23,7 +23,7 @@ func schema(t *testing.T, name string) *jsonschema.Schema {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // a fixed test path
 	if err != nil {
 		t.Fatal(err)
 	}
