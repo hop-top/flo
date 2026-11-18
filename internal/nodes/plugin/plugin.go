@@ -271,10 +271,29 @@ func (x *Executor) Execute(ctx context.Context, inv core.Invocation) (core.Resul
 	if !ok {
 		return core.Result{}, core.Errorf(core.CodeNodeNotFound, "no plugin serves %s", inv.Node.Node)
 	}
-	rep, err := p.Call(ctx, Call{
+	call := Call{
 		Node: inv.Node.Node, Tenant: inv.Tenant, Run: inv.Run, StepID: inv.StepID, Index: inv.Index, Attempt: inv.Attempt,
 		In: inv.In, Config: inv.Config, RunAs: inv.RunAs, IdempotencyKey: inv.IdempotencyKey,
-	})
+	}
+	type answer struct {
+		rep Reply
+		err error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		rep, err := p.Call(ctx, call)
+		done <- answer{rep, err}
+	}()
+	var rep Reply
+	var err error
+	select {
+	case a := <-done:
+		rep, err = a.rep, a.err
+	case <-ctx.Done():
+		// the executor waits for us: return now, the plugin's call is abandoned
+		e := core.Errorf(core.CodeRunCancelled, "%s: cancelled during the plugin call", inv.Node.Node)
+		return core.Result{Outcome: core.OutcomeFailed, Err: e, Effect: core.EffectUnknown, Calls: 1}, nil
+	}
 	if err != nil {
 		e, eff := Classify(err)
 		return core.Result{Outcome: core.OutcomeFailed, Err: e, Effect: eff, Calls: 1}, nil

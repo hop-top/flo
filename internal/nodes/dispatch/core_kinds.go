@@ -44,6 +44,9 @@ func (x *Dispatcher) exec(ctx context.Context, inv core.Invocation) (core.Result
 	}
 	out := core.Result{Output: command.Raw(res), Raw: command.Raw(res), Truncated: res.Truncated, Calls: 1}
 	switch {
+	case ctx.Err() != nil:
+		out.Err = core.Errorf(core.CodeRunCancelled, "%s was cancelled; partial output kept", firstArg(ex.Argv))
+		out.Outcome, out.Effect = core.OutcomeFailed, core.EffectUnknown
 	case res.TimedOut:
 		out.Err = core.Errorf(core.CodeTimeout, "%s did not finish in %s; partial output kept", firstArg(ex.Argv), timeout)
 		out.Outcome, out.Effect = core.OutcomeFailed, core.EffectUnknown

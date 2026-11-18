@@ -147,6 +147,9 @@ func (x *Executor) Execute(ctx context.Context, inv core.Invocation) (core.Resul
 	out := core.Result{Raw: raw, Truncated: res.Truncated, Calls: 1}
 
 	switch {
+	case ctx.Err() != nil:
+		e := core.Errorf(core.CodeRunCancelled, "%s was cancelled; partial output kept", firstOr(req.Argv, "command"))
+		return failWith(out, e, core.EffectUnknown), nil
 	case res.TimedOut:
 		e := core.Errorf(core.CodeTimeout, "%s did not finish in %s; partial output kept", firstOr(req.Argv, "command"), render.Timeout(inv))
 		return failWith(out, e, core.EffectUnknown), nil

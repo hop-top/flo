@@ -137,7 +137,7 @@ func (x *Dispatcher) run(ctx context.Context, inv core.Invocation) (core.Result,
 		if !ok {
 			return core.Result{}, core.Errorf(core.CodeNodeNotFound, "built-in %s is not registered", inv.Node.Node)
 		}
-		return b.Execute(ctx, inv) //nolint:wrapcheck // the built-in's own result
+		return executeBuiltin(ctx, b, inv)
 	case node.KindCommand:
 		return x.command.Execute(ctx, inv) //nolint:wrapcheck // the executor's own result
 	case node.KindHTTP:
@@ -235,4 +235,24 @@ func asError(err error) *core.Error {
 		return ce
 	}
 	return nil
+}
+
+// executeBuiltin runs a built-in and returns as soon as ctx is done, even if
+// the built-in is still working (the executor waits for the dispatch).
+func executeBuiltin(ctx context.Context, b core.BuiltinNode, inv core.Invocation) (core.Result, error) {
+	type answer struct {
+		res core.Result
+		err error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		res, err := b.Execute(ctx, inv)
+		done <- answer{res, err}
+	}()
+	select {
+	case a := <-done:
+		return a.res, a.err
+	case <-ctx.Done():
+		return failed(core.Errorf(core.CodeRunCancelled, "%s: cancelled", inv.Node.Node), core.EffectUnknown), nil
+	}
 }

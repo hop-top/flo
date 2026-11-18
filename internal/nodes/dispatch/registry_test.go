@@ -152,3 +152,14 @@ func TestRegistryBadBundleFile(t *testing.T) {
 		t.Fatalf("a malformed bundle node is invalid_node: %v", err)
 	}
 }
+
+func newBuiltins(t *testing.T, ns ...core.BuiltinNode) core.BuiltinRegistry {
+	t.Helper()
+	r := builtin.NewRegistry()
+	for _, n := range ns {
+		if err := r.Register(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return r
+}
