@@ -1,0 +1,12 @@
+trust: inbox
+kind: command
+description: Trust state owned by the inbox script.
+read:                           # [{class, level: ask|auto, streak, threshold, resets, last_reset}]
+  argv: [inbox, trust, list, --format, json]
+decide:                         # once per approval, after every item has a decision
+  argv: [inbox, approve, "{{ in.context.run }}", --decisions, "-", --format, json]
+  stdin: { json: "{{ in.decisions }}" }
+set:                            # backs `flo trust set`
+  argv: [inbox, trust, "{{ in.level == 'auto' ? 'promote' : 'reset' }}", "{{ in.class }}", --reason, "{{ in.reason }}"]
+env: { INBOX_HOME: "{{ config.inbox.home }}", INBOX_RUNS: "{{ config.inbox.runs }}" }
+cwd: "{{ config.inbox.root }}"

@@ -1,0 +1,11 @@
+pack: inbox
+version: 0.1.0
+description: Mail triage through the inbox script.
+requires: { flo: ">=0.1" }
+config:
+  inbox:
+    root: { type: string, required: true }     # working directory of the script
+    home: { type: string, required: true }     # rules and state
+    runs: { type: string, required: true }     # run folders
+nodes: [nodes/fetch.yaml, nodes/decide.yaml, nodes/plan.yaml, nodes/apply.yaml]
+trusts: [trusts/inbox.yaml]

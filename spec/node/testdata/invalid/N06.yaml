@@ -1,0 +1,9 @@
+node: acme/send@1
+kind: command
+argv: [acme, send]
+inputs: {}
+outputs: { schema: { type: object } }
+capabilities: [mail.send]
+side_effect: irreversible
+approval: none
+privacy: local

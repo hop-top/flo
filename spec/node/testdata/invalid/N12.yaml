@@ -1,0 +1,11 @@
+node: acme/find@1
+kind: http
+request:
+  method: GET
+  url: "https://api.acme.test/find"
+  headers: { Authorization: "Bearer {{ in.q }}" }
+inputs: { q: { type: string } }
+outputs: { schema: { type: object } }
+capabilities: [acme.read]
+side_effect: read
+privacy: cloud

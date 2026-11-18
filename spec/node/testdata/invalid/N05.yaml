@@ -1,0 +1,8 @@
+node: acme/list@1
+kind: command
+argv: [acme, list]
+inputs: {}
+outputs: { format: json }
+capabilities: []
+side_effect: read
+privacy: local

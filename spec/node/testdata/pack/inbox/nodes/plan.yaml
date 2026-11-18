@@ -1,0 +1,44 @@
+node: inbox/plan@1
+kind: command
+lowers_to: engine               # reshapes its output with `map`
+description: >-
+  Split decisions into automatic, pending and invalid. Marks the run's
+  messages as seen and locks pending ones. Creates no task.
+argv: [inbox, plan, "{{ in.run }}", --unattended, --no-task, --format, json]
+env: { INBOX_HOME: "{{ config.inbox.home }}", INBOX_RUNS: "{{ config.inbox.runs }}" }
+cwd: "{{ config.inbox.root }}"
+inputs: { run: { type: string, required: true } }
+outputs:
+  from: stdout
+  format: json
+  map: >-
+    {{ {'run': out.run,
+        'auto': out.items.filter(i, i.status == 'auto'),
+        'invalid': out.items.filter(i, i.status == 'invalid'),
+        'pending': out.items.filter(i, i.status == 'pending' && i.verdict == null).map(i,
+          {'id': i.message_id, 'n': i.n, 'action': i.keys.join(', '),
+           'why': i.why, 'class': i.keys, 'from': i.from, 'subject': i.subject,
+           'actions': i.actions})} }}
+  schema:
+    type: object
+    required: [run, auto, invalid, pending]
+    properties:
+      run: { type: string }
+      auto:    { type: array, items: { type: object } }
+      invalid: { type: array, items: { type: object } }
+      pending:
+        type: array
+        items:
+          type: object
+          required: [id, n, action, why, class]
+          properties:
+            id: { type: string }            # the message id: stable across runs
+            n: { type: integer }            # item number within this run
+            action: { type: string }
+            why: { type: string }
+            class: { type: array, items: { type: string } }   # trust keys of its actions
+side_effect: write-local        # run files, seen set, locks; reads mail servers
+idempotent: true                # re-planning keeps decided items and rebuilds locks
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

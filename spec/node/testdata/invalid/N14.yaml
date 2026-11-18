@@ -1,0 +1,10 @@
+node: acme/list@1
+kind: command
+argv: [acme, list]
+inputs: {}
+outputs:
+  schema: { type: object }
+  map: "{{ results.x }}"
+capabilities: [acme.read]
+side_effect: read
+privacy: local

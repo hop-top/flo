@@ -1,0 +1,24 @@
+node: inbox/decide@1
+kind: command
+lowers_to: engine
+description: Typed decisions for the run's messages, from headers only.
+argv: [inbox, decide, "{{ in.run }}", --format, json]
+env: { INBOX_HOME: "{{ config.inbox.home }}", INBOX_RUNS: "{{ config.inbox.runs }}" }
+cwd: "{{ config.inbox.root }}"
+inputs: { run: { type: string, required: true } }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: object
+    required: [run, decided]
+    properties:
+      run: { type: string }
+      decided: { type: integer }
+      cost_usd: { type: number }
+side_effect: write-local        # writes the run's decisions; the model call spends money
+idempotent: true                # an existing decisions file is kept, not asked again
+privacy: cloud                  # headers go to a hosted classifier
+capabilities: [mail.read]
+timeout: 300s
+cost: { class: metered, estimate: { usd: 0.05 } }

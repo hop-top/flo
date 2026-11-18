@@ -1,0 +1,9 @@
+node: acme/list@1
+kind: command
+argv: [acme, list, "{{ in.q }}"]
+inputs: { q: { type: string, required: true } }
+outputs: { schema: { type: object } }
+capabilities: [acme.read]
+side_effect: read
+privacy: local
+request: { method: GET, url: "https://x.test" }

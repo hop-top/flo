@@ -1,0 +1,38 @@
+node: inbox/fetch@1
+kind: command
+lowers_to: engine
+description: Sync message headers into a new run, without acting on mail.
+argv: [inbox, fetch, --no-lanes, --format, json]
+env: { INBOX_HOME: "{{ config.inbox.home }}", INBOX_RUNS: "{{ config.inbox.runs }}" }
+cwd: "{{ config.inbox.root }}"
+inputs:
+  accounts: { type: array, items: { type: string }, default: [] }
+  limit:    { type: integer, default: 200 }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  fail_when: "{{ size(out.accounts) > 0 && out.accounts.all(a, a.status == 'error') }}"
+  schema:
+    type: object
+    required: [run, rows, new, carried, accounts]
+    properties:
+      run: { type: string }
+      rows: { type: integer }
+      new: { type: integer }
+      carried: { type: integer }
+      accounts:
+        type: array
+        items:
+          type: object
+          required: [account, status]
+          properties:
+            account: { type: string }
+            status: { type: string, enum: [ok, error] }
+            count: { type: integer }
+            error: { type: string }
+side_effect: write-local        # a new run folder and the local mail store; reads mail servers
+idempotent: false               # every call creates a new run
+privacy: local
+capabilities: [mail.read]
+timeout: 120s
