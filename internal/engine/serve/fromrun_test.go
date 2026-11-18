@@ -402,6 +402,12 @@ func TestFromRunNeverCopiesRedactedInputsRaw(t *testing.T) {
 	if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "local-only") }) {
 		t.Errorf("no warning that local data was copied: %v", res.Warnings)
 	}
+	// What was supplied again served this replay; the bundle keeps none of it.
+	for p, body := range tree(t, r.bundle) {
+		if strings.Contains(body, secretToken) {
+			t.Errorf("%s holds the supplied token", p)
+		}
+	}
 	// Nothing of the run's own recording that was scrubbed shows up in the bundle.
 	for p, body := range tree(t, r.bundle) {
 		for _, secret := range []string{varSecret, secretOut, stateSecret} {

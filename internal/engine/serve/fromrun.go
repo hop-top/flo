@@ -151,7 +151,7 @@ func (e *Engine) FromRun(ctx context.Context, tenant core.TenantID, req FromRunR
 		}
 	}
 	res, err := e.TestFlow(ctx, tenant, TestRequest{
-		Flow: req.Flow, Ref: p.version, Mode: flowtest.ModeReplay, Caller: req.Caller, Vars: req.Vars, Timeout: req.Timeout,
+		Flow: req.Flow, Ref: p.version, Mode: flowtest.ModeReplay, Caller: req.Caller, Trigger: req.Trigger, Vars: req.Vars, Timeout: req.Timeout,
 	})
 	if err != nil {
 		return FromRunResult{}, err
@@ -255,9 +255,26 @@ func (e *Engine) prepareFromRun(ctx context.Context, tenant core.TenantID, req F
 		return fromRunPrep{}, err //nolint:wrapcheck // *core.Error
 	}
 
+	// Whatever goes into record/ is scrubbed as `flow test --record` scrubs it:
+	// the flow's redact paths are dropped (so what the owner supplied again
+	// for this replay is not kept), and secret values are replaced.
+	paths, err := e.redactPaths(tp.v, tp.flow)
+	if err != nil {
+		return fromRunPrep{}, err
+	}
+	red := runrec.NewRedactor(paths, envSecretValues()...)
+	red = red.With(red.ValuesAt(trigger)...)
+	names := red.Names()
+	kept := map[string]any{}
+	for k, val := range fullState(tp.set.State, seed) {
+		if !slices.Contains(names, k) {
+			kept[k] = val
+		}
+	}
+
 	p := fromRunPrep{
-		bundle: tp.v.Bundle, cassDir: cassDir, cassRels: cassRels, trigger: orEmpty(trigger),
-		state: fullState(tp.set.State, seed), version: tp.v.Hash,
+		bundle: tp.v.Bundle, cassDir: cassDir, cassRels: cassRels, trigger: orEmpty(asMap(red.Doc(trigger))),
+		state: asMap(red.Doc(kept)), version: tp.v.Hash,
 		plan: FromRunPlan{
 			Schema: FromRunSchemaVersion, Run: string(run.ID), Flow: v.Name, Version: v.Version, Hash: v.Hash, Bundle: tp.v.Bundle,
 			Privacy: meta.Privacy, Files: []FromRunFile{}, Cassettes: len(cassRels), Warnings: []string{},
@@ -289,8 +306,8 @@ func (e *Engine) prepareFromRun(ctx context.Context, tenant core.TenantID, req F
 	if !meta.MayLeave() {
 		p.plan.Warnings = append(p.plan.Warnings, "flow is local-only: its recorded data is copied into the bundle at your request; keep record/ out of version control")
 	}
-	if req.Trigger != nil || req.State != nil {
-		p.plan.Warnings = append(p.plan.Warnings, "the trigger payload and state you supplied are written to record/ as given")
+	if req.Trigger != nil || req.State != nil || req.Vars != nil {
+		p.plan.Warnings = append(p.plan.Warnings, "inputs you supplied again are used for this replay only: paths a node redacts are not kept in record/, so a later test of the bundle runs without them")
 	}
 	if names := differingVars(recVars, tp.vars, req.Vars); len(names) > 0 {
 		p.plan.Warnings = append(p.plan.Warnings, "the run used other values for vars "+strings.Join(names, ", ")+
@@ -412,4 +429,9 @@ func marshalJSONDoc(doc map[string]any) ([]byte, error) {
 		return nil, core.Wrap(core.CodeInternal, err)
 	}
 	return append(b, '\n'), nil
+}
+
+func asMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
 }
