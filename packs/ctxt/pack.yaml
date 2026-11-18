@@ -1,0 +1,18 @@
+pack: ctxt
+version: 0.1.0
+description: Search of the ctxt knowledge store (dpkms) over its REST API.
+requires: { flo: ">=0.1" }
+# The server is where `ctxt find` goes: the first server.urls entry of the ctxt
+# config, else server.url, else http://127.0.0.1:8080 (ctxt resolves
+# --server, --instance and the current instance first). Set the same URL here as
+# packs.ctxt.url. An instance with server.access protected or public (or any
+# server.auth) needs a token: store it as the secret ctxt_token of the profile
+# the flow runs as (FLO_SECRET_<TENANT>_<PROFILE>_CTXT_TOKEN), the value of
+# server.token. A private instance (127.0.0.1, no auth) ignores the header, but
+# the secret must still exist: any value will do.
+config:
+  ctxt:
+    url:
+      type: string
+      description: Base URL of the dpkms server, without a trailing slash.
+nodes: [nodes/find.yaml]

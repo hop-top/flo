@@ -1,0 +1,73 @@
+node: ctxt/find@1
+kind: http
+lowers_to: engine               # reshapes the response with `map`
+description: >-
+  Search the knowledge store, full-text, vector or hybrid, optionally narrowed
+  by metadata. Returns a compact projection of each object, never its content.
+request:
+  method: POST
+  url: "{{ config.ctxt.url }}/api/v1/find"
+  headers: { Accept: application/json }
+  json:
+    query: "{{ in.query }}"
+    mode: "{{ in.mode }}"
+    limit: "{{ in.limit }}"
+    filter: "{{ in.filter }}"
+  auth: { secret: ctxt_token, scheme: bearer }
+response: { success: [200] }
+inputs:
+  query: { type: string, required: true, description: Search text; the server refuses an empty one. }
+  mode: { type: string, enum: [fts, vector, hybrid], default: hybrid }
+  limit: { type: integer, default: 10, minimum: 1, maximum: 100 }
+  filter:
+    type: object
+    default: {}
+    description: >-
+      Metadata facets, all optional: meta_type, topic, person (an element of the
+      object's metadata.people, a name as ctxt extracted it, not an address),
+      source_type, and since and until (YYYY-MM-DD, compared with the dates the
+      object mentions).
+    properties:
+      meta_type: { type: string }
+      topic: { type: string }
+      person: { type: string }
+      source_type: { type: string }
+      since: { type: string }
+      until: { type: string }
+outputs:
+  from: body
+  format: json
+  map: >-
+    {{ {'query': out.query, 'mode': out.mode, 'total': out.total,
+        'objects': out.objects.map(o,
+          {'id': o.id, 'type': o.type,
+           'source': has(o.source) ? o.source : '',
+           'created_at': o.created_at,
+           'summary': has(o.summaries) && size(o.summaries) > 0 ? o.summaries[0] :
+                      (has(o.text_content) ? (size(o.text_content) > 600 ? o.text_content.substring(0, 600) : o.text_content) : ''),
+           'tags': has(o.tags) ? o.tags.map(t, t.label) : []})} }}
+  schema:
+    type: object
+    required: [objects, total]
+    properties:
+      query: { type: string }
+      mode: { type: string, description: The mode that ran; hybrid answers full-text only when the semantic leg is down. }
+      total: { type: integer }
+      objects:
+        type: array
+        items:
+          type: object
+          required: [id, type]
+          properties:
+            id: { type: string }
+            type: { type: string }
+            source: { type: string }
+            created_at: { type: string }
+            summary: { type: string, description: The first summary, else the first 600 characters of the text. }
+            tags: { type: array, items: { type: string } }
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [knowledge.read]
+timeout: 10s
+retry: { max_attempts: 3, backoff: 2s }

@@ -1,0 +1,8 @@
+pack: tlc
+version: 0.1.0
+description: Task lookup through the tlc CLI.
+requires: { flo: ">=0.1" }
+# tlc must be on the PATH of the profile the flow runs as. The node lists
+# across all projects: a tlc read run in a directory without a project can
+# create a database there, so it never depends on the working directory.
+nodes: [nodes/task-list.yaml]

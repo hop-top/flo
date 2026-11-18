@@ -1,0 +1,72 @@
+node: heo/conversation.list@1
+kind: command
+lowers_to: engine
+description: >-
+  Conversations with activity since a time in which one of the given people
+  takes part, newest first. Snoozed ones included.
+argv:
+  - heo-conversations
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --since
+  - "{{ in.since }}"
+  - --status
+  - "{{ in.status.join(',') }}"
+  - --limit
+  - "{{ in.limit }}"
+  - --
+  - "{{ in.participants }}"
+inputs:
+  participants:
+    type: array
+    items: { type: string }
+    required: true
+    description: Email addresses. Matched, case-insensitively, against the address of each identity heo knows.
+  since:
+    type: string
+    default: 30d
+    description: A lookback (30d, 12h, 2w) or an RFC 3339 time or date; heo keeps conversations whose last activity is after it.
+  status:
+    type: array
+    items: { type: string, enum: [open, pending, resolved, closed] }
+    default: []
+    description: Empty is every status.
+  limit: { type: integer, default: 25, minimum: 1, maximum: 100, description: At most this many conversations are returned. }
+exit_codes: { ok: [0], retry: [70] }    # 70: heo's daemon is not running (transient)
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [conversations, scanned]
+    properties:
+      conversations:
+        type: array
+        items:
+          type: object
+          required: [id, status]
+          properties:
+            id: { type: string }
+            inbox: { type: string }
+            status: { type: string }
+            mode: { type: string }
+            created_at: { type: string }
+            last_activity: { type: [string, 'null'] }
+            participants:
+              type: array
+              description: The identities that matched, with the address that matched.
+              items:
+                type: object
+                properties:
+                  identity: { type: string }
+                  email: { type: string }
+                  role: { type: string }
+      scanned: { type: integer, description: Conversations read from heo. }
+      matched_identities: { type: integer }
+      truncated: { type: boolean, description: True when a page cap or the limit stopped the scan early. }
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [mail.read]
+timeout: 60s
+retry: { max_attempts: 3, backoff: 5s }

@@ -1,0 +1,10 @@
+pack: heo
+version: 0.1.0
+description: Conversations from heo, selected by participant.
+requires: { flo: ">=0.1" }
+# The node runs wrappers/heo-conversations as `aps run <profile> -- ...`: put
+# that directory, heo and jq on the PATH of the profile, and run heo's daemon
+# for it (without one heo exits 70 and the node retries). heo has no
+# participant filter yet; the wrapper is the stand-in. Drop it, and point the
+# node at `heo conversation list --participant`, when heo ships the flag.
+nodes: [nodes/conversation-list.yaml]

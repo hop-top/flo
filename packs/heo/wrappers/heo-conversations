@@ -1,0 +1,133 @@
+#!/bin/sh
+# heo-conversations --out FILE [--since 30d|TIME] [--status a,b] [--limit N]
+#                   [--max-pages N] -- EMAIL...
+#
+# Conversations in which one of the given people takes part, newest activity
+# first. Stand-in for `heo conversation list --participant`, which heo does not
+# have yet; delete this wrapper and point the node at the flag when it ships.
+#
+# heo has no participant filter and no addresses in a conversation: a
+# conversation lists identity ids, and an identity carries the address
+# (source_id, and attributes). So:
+#   1. page `heo identity list`, keep the identities whose address is one of the
+#      EMAILs (case-insensitive);
+#   2. page `heo conversation list --updated-since --sort last-activity
+#      --snoozed include`, keep the conversations with one of those identities
+#      among their participants. A conversation listed without its participants
+#      is looked up with `heo participant list --conversation`.
+# Writes {conversations: [{id, inbox, status, mode, created_at, last_activity,
+# participants: [{identity, email, role}]}], scanned, matched_identities,
+# truncated} to FILE.
+#
+# - --since is a lookback (30d, 12h, 2w, 45m) or an RFC 3339 time or a date,
+#   passed to heo as is. FLO_NOW overrides the clock.
+# - Exits with heo's own code when heo fails: 70 is heo's daemon not running
+#   (the node retries it). 64 is a usage error.
+# - Needs heo and jq.
+command -v jq > /dev/null 2>&1 || { echo "heo-conversations: jq is required" >&2; exit 1; }
+
+out= since=30d status= limit=25 maxpages=20
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --since) since=$2; shift 2 ;;
+    --status) status=$2; shift 2 ;;
+    --limit) limit=$2; shift 2 ;;
+    --max-pages) maxpages=$2; shift 2 ;;
+    --) shift; break ;;
+    *) echo "heo-conversations: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] && [ $# -gt 0 ] || { echo "heo-conversations: --out and at least one email are required" >&2; exit 64; }
+case $limit$maxpages in *[!0-9]* | '') echo "heo-conversations: --limit and --max-pages are numbers" >&2; exit 64 ;; esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+emails=$(jq -nc '$ARGS.positional | map(select(. != "") | ascii_downcase)' --args "$@")
+
+# heo_get FILE ARGS...: heo ARGS as JSON into FILE; heo's failure is ours.
+heo_get() {
+  _f=$1
+  shift
+  heo "$@" --format json --no-hints < /dev/null > "$_f" 2> "$_f.err" && return 0
+  _rc=$?
+  cat "$_f.err" >&2
+  exit "$_rc"
+}
+
+if printf '%s' "$since" | grep -Eq '^[0-9]+[wdhm]$'; then
+  case $since in
+    *w) secs=$(( ${since%w} * 604800 )) ;;
+    *d) secs=$(( ${since%d} * 86400 )) ;;
+    *h) secs=$(( ${since%h} * 3600 )) ;;
+    *m) secs=$(( ${since%m} * 60 )) ;;
+  esac
+  now=${FLO_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+  since=$(jq -nr --arg now "$now" --argjson secs "$secs" '($now | sub("\\.[0-9]+"; "") | fromdateiso8601) - $secs | todate') ||
+    { echo "heo-conversations: bad clock $now" >&2; exit 1; }
+fi
+
+truncated=false
+
+# 1. identities that carry one of the addresses -> matched.json {id: address}
+echo '{}' > "$tmp/matched.json"
+cursor=
+page=0
+while :; do
+  if [ -n "$cursor" ]; then heo_get "$tmp/ident.json" identity list --limit 100 --cursor "$cursor"; else heo_get "$tmp/ident.json" identity list --limit 100; fi
+  jq --argjson emails "$emails" --slurpfile acc "$tmp/matched.json" '
+    $acc[0] + ([ .items[]? | . as $i
+      | ([$i.source_id] + [($i.attributes // [])[].value] | map(select(type == "string") | ascii_downcase)) as $addrs
+      | ($addrs | map(select(IN($emails[]))) | .[0]) as $hit
+      | select($hit != null)
+      | {key: $i.ref.id, value: $hit}] | from_entries)' "$tmp/ident.json" > "$tmp/matched.new" ||
+    { echo "heo-conversations: unreadable identity page" >&2; exit 1; }
+  mv "$tmp/matched.new" "$tmp/matched.json"
+  cursor=$(jq -r 'if (.complete // false) then "" else (.next // "") end' "$tmp/ident.json")
+  page=$((page + 1))
+  [ -n "$cursor" ] || break
+  [ "$page" -lt "$maxpages" ] || { truncated=true; break; }
+done
+matched=$(jq 'length' "$tmp/matched.json")
+
+echo '[]' > "$tmp/all.json"
+scanned=0
+if [ "$matched" -gt 0 ]; then
+  # 2. conversations
+  cursor=
+  page=0
+  while :; do
+    set -- conversation list --updated-since "$since" --sort last-activity --snoozed include --limit 100
+    [ -z "$status" ] || set -- "$@" --status "$status"
+    [ -z "$cursor" ] || set -- "$@" --cursor "$cursor"
+    heo_get "$tmp/conv.json" "$@"
+    scanned=$((scanned + $(jq '.items | length' "$tmp/conv.json")))
+    # participants: the matching ones, or null when the listing has none to read
+    jq --slurpfile m "$tmp/matched.json" '
+      def ids: [.[]? | (if (.identity | type) == "object" then .identity.id else .identity end) as $id
+        | select($m[0][$id] != null) | {identity: $id, email: $m[0][$id], role: .role}];
+      [.items[]? | {id: .ref.id, inbox: .ref.inbox.id, status, mode, created_at, last_activity: (.last_activity // null),
+                    participants: (if has("participants") then (.participants | ids) else null end)}]' "$tmp/conv.json" > "$tmp/items.json" ||
+      { echo "heo-conversations: unreadable conversation page" >&2; exit 1; }
+    for id in $(jq -r '.[] | select(.participants == null) | .id' "$tmp/items.json"); do
+      heo_get "$tmp/part.json" participant list --conversation "$id"
+      jq --arg id "$id" --slurpfile m "$tmp/matched.json" --slurpfile p "$tmp/part.json" '
+        def ids: [.[]? | (if (.identity | type) == "object" then .identity.id else .identity end) as $x
+          | select($m[0][$x] != null) | {identity: $x, email: $m[0][$x], role: .role}];
+        map(if .id == $id then .participants = ($p[0].participants | ids) else . end)' "$tmp/items.json" > "$tmp/items.new" &&
+        mv "$tmp/items.new" "$tmp/items.json"
+    done
+    jq --slurpfile acc "$tmp/all.json" '$acc[0] + map(select((.participants // []) | length > 0))' "$tmp/items.json" > "$tmp/all.new" &&
+      mv "$tmp/all.new" "$tmp/all.json"
+    cursor=$(jq -r 'if (.complete // false) then "" else (.next // "") end' "$tmp/conv.json")
+    page=$((page + 1))
+    [ "$(jq 'length' "$tmp/all.json")" -lt "$limit" ] || { [ -z "$cursor" ] || truncated=true; break; }
+    [ -n "$cursor" ] || break
+    [ "$page" -lt "$maxpages" ] || { truncated=true; break; }
+  done
+fi
+
+jq -n --slurpfile c "$tmp/all.json" --argjson limit "$limit" --argjson scanned "$scanned" --argjson mi "$matched" --argjson trunc "$truncated" '
+  {conversations: $c[0][:$limit], scanned: $scanned, matched_identities: $mi,
+   truncated: ($trunc or ($c[0] | length) > $limit)}' > "$out"

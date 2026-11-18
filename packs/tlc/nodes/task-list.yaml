@@ -1,0 +1,55 @@
+node: tlc/task.list@1
+kind: command
+lowers_to: engine               # reshapes its output with `map`
+description: Open tasks, across all projects, matching a free-text search.
+argv:
+  - tlc
+  - task
+  - list
+  - --all-projects
+  - --status
+  - "{{ in.status.join(',') }}"
+  - --limit
+  - "{{ in.limit }}"
+  - --format
+  - json
+  - --
+  - "{{ in.search }}"
+inputs:
+  search:
+    type: string
+    default: ""
+    description: Free-text query, one positional argument (after `--`, so a leading dash is text). Empty matches every task of the statuses.
+  status:
+    type: array
+    items: { type: string, enum: [TODO, IN_PROGRESS, DONE, SKIPPED] }
+    default: [TODO, IN_PROGRESS]
+    description: Uppercase, as tlc spells them. tlc has no BLOCKED status.
+  limit: { type: integer, default: 25, minimum: 1, maximum: 200 }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  map: >-
+    {{ out.map(t,
+        {'id': t.display_id, 'title': t.title, 'status': t.status,
+         'priority': has(t.priority) ? t.priority : null,
+         'due_at': has(t.due_at) ? t.due_at : null,
+         'tags': has(t.tags) && t.tags != null ? t.tags : []}) }}
+  schema:
+    type: array
+    items:
+      type: object
+      required: [id, title, status]
+      properties:
+        id: { type: string, description: The task display id. }
+        title: { type: string }
+        status: { type: string }
+        priority: { type: [string, 'null'] }
+        due_at: { type: [string, 'null'] }
+        tags: { type: array, items: { type: string } }
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [tasks.read]
+timeout: 15s
