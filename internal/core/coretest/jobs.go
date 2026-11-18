@@ -24,6 +24,9 @@ type jobRec struct {
 	info        core.JobInfo
 	maxAttempts int
 	seq         int
+	// rerun is set by an enqueue that arrived while the job was active: one
+	// more job is queued when it settles.
+	rerun bool
 }
 
 // NewJobs returns an empty queue.
@@ -50,10 +53,18 @@ func (q *Jobs) Enqueue(_ context.Context, spec core.JobSpec) (core.JobID, error)
 	if spec.Key != "" {
 		for _, r := range q.jobs {
 			if r.info.Type == spec.Type && r.info.Tenant == spec.Tenant && r.info.Key == spec.Key && !r.info.Status.Finished() {
+				// Active: what the caller wants may have been missed by this
+				// turn, so one rerun follows it. Pending duplicates collapse.
+				r.rerun = r.rerun || r.info.Status == core.JobActive
 				return r.info.ID, nil
 			}
 		}
 	}
+	return q.insert(spec, payload), nil
+}
+
+// insert adds a pending job; the caller holds the lock.
+func (q *Jobs) insert(spec core.JobSpec, payload []byte) core.JobID {
 	now := q.clock.Now()
 	at := now
 	if spec.At != nil {
@@ -72,7 +83,7 @@ func (q *Jobs) Enqueue(_ context.Context, spec core.JobSpec) (core.JobID, error)
 	}}
 	q.jobs = append(q.jobs, r)
 	q.notify()
-	return r.info.ID, nil
+	return r.info.ID
 }
 
 // Cancel implements core.Jobs.
@@ -182,16 +193,23 @@ func (q *Jobs) finish(id core.JobID, handlerErr error) {
 		if r.info.ID != id {
 			continue
 		}
+		rerun := r.rerun
+		r.rerun = false
 		switch {
 		case r.info.Status == core.JobCancelled:
+			rerun = false
 		case handlerErr == nil:
 			r.info.Status = core.JobSucceeded
 		case r.info.Attempt < r.maxAttempts:
-			r.info.Status = core.JobPending
+			r.info.Status = core.JobPending // retried: that is the next run
 			r.info.Error = handlerErr.Error()
+			rerun = false
 		default:
 			r.info.Status = core.JobFailed
 			r.info.Error = handlerErr.Error()
+		}
+		if rerun {
+			q.insert(core.JobSpec{Type: r.info.Type, Tenant: r.info.Tenant, Key: r.info.Key, MaxAttempts: r.maxAttempts}, r.info.Payload)
 		}
 	}
 	q.notify()

@@ -45,7 +45,12 @@ func (SystemClock) Sleep(ctx context.Context, d time.Duration) error {
 type Jobs interface {
 	// Enqueue queues a job. At most one unfinished job exists per
 	// (Type, Tenant, Key): when one does, its id is returned and nothing is
-	// queued. An empty Key never dedupes.
+	// queued, so a duplicate of a pending job changes nothing. When that job
+	// is active (running now) the request may have been missed by its turn:
+	// the id is returned and one more job with the same payload is queued
+	// when it settles; any number of such requests make one rerun. A job
+	// that goes back to the queue for a retry needs no rerun. An empty Key
+	// never dedupes.
 	Enqueue(ctx context.Context, spec JobSpec) (JobID, error)
 	// Cancel cancels a job that has not finished. Cancelling a finished or
 	// unknown job is not an error.

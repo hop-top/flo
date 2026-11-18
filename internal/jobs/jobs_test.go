@@ -488,3 +488,64 @@ func TestEnqueueDuringActiveRunsAgain(t *testing.T) {
 	s.cancel()
 	<-s.done
 }
+
+// The enqueue-while-active rule is part of the Jobs contract: it holds on the
+// fake queue and on durabletask, the handler asking for itself mid-turn.
+func TestContractEnqueueWhileActiveRerunsOnce(t *testing.T) {
+	spec := core.JobSpec{Type: core.JobRunAdvance, Tenant: T, Key: "r1", Payload: map[string]int{"n": 1}}
+	check := func(t *testing.T, q core.Jobs, w core.JobWorker, settle func(runs *atomic.Int32)) {
+		var runs atomic.Int32
+		var midIDs []core.JobID
+		var firstID core.JobID
+		w.Handle(core.JobRunAdvance, func(ctx context.Context, j core.Job) error {
+			if runs.Add(1) == 1 {
+				firstID = j.ID
+				for i := 0; i < 3; i++ { // mid-turn: the job is active
+					id, err := q.Enqueue(ctx, spec)
+					if err != nil {
+						return err
+					}
+					midIDs = append(midIDs, id)
+				}
+			}
+			return nil
+		})
+		first, _ := q.Enqueue(bg, spec)
+		if dup, _ := q.Enqueue(bg, spec); dup != first {
+			t.Fatal("a pending duplicate dedupes")
+		}
+		settle(&runs)
+		if firstID != first {
+			t.Fatalf("handler saw %s, want %s", firstID, first)
+		}
+		for _, id := range midIDs {
+			if id != first {
+				t.Errorf("a mid-turn enqueue returns the running job's id: %s vs %s", id, first)
+			}
+		}
+		if n := runs.Load(); n != 2 {
+			t.Errorf("ran %d times; want the run and one rerun", n)
+		}
+		live, _ := q.List(bg, core.JobFilter{Type: core.JobRunAdvance, Key: "r1", Statuses: []core.JobStatus{core.JobPending, core.JobActive}})
+		if len(live) != 0 {
+			t.Errorf("%d jobs left unfinished", len(live))
+		}
+	}
+	t.Run("fake", func(t *testing.T) {
+		clock := coretest.NewClock(time.Time{})
+		q := coretest.NewJobs(clock, &coretest.IDs{})
+		w := coretest.NewWorker(q)
+		check(t, q, w, func(*atomic.Int32) { w.Drain(bg) })
+	})
+	t.Run("durabletask", func(t *testing.T) {
+		q := newQueue(t, nil)
+		w := fastWorker(q, 1)
+		s := serve(t, w)
+		check(t, q, w, func(runs *atomic.Int32) {
+			eventually(t, "the rerun", func() bool { return runs.Load() == 2 })
+			time.Sleep(60 * time.Millisecond) // and no third
+		})
+		s.cancel()
+		<-s.done
+	})
+}
