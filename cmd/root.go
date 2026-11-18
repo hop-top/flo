@@ -52,7 +52,7 @@ func build(svc ServicesFunc, eng EngineFunc, real bool) *kitcli.Root {
 		alive = engineAlive
 		registerEngineStatus(root)
 	}
-	addRun(root, svc, alive)
+	addRun(root, svc, eng, alive)
 	addApproval(root, svc)
 	addBrief(root, svc)
 	addGrant(root, svc)

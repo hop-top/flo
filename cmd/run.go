@@ -18,6 +18,7 @@ import (
 	"hop.top/kit/go/runtime/bus"
 
 	"hop.top/flo/internal/core"
+	"hop.top/flo/internal/engine/serve"
 	"hop.top/flo/spec/cel"
 	specrun "hop.top/flo/spec/run"
 )
@@ -63,6 +64,9 @@ type runCreated struct {
 	Queued  bool     `json:"queued,omitempty" yaml:"queued,omitempty"`
 	Skipped bool     `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 	Cancels []string `json:"cancelled,omitempty" yaml:"cancelled,omitempty"`
+	// Recording is true when the run's exec and HTTP traffic is recorded
+	// (--record); `flo run replay` replays it once the run has ended.
+	Recording bool `json:"recording,omitempty" yaml:"recording,omitempty"`
 	// Waiting lists the approvals an awaiting run waits on (--wait).
 	Waiting []string      `json:"waiting_on,omitempty" yaml:"waiting_on,omitempty"`
 	Result  any           `json:"result,omitempty" yaml:"result,omitempty"`
@@ -175,11 +179,11 @@ func runViewOf(r core.Run, steps []core.StepRun, aps []core.Approval, outs []cor
 	return v
 }
 
-// addRun registers the `flo run` noun: create, list, show, logs, cancel.
+// addRun registers the `flo run` noun: create, list, show, logs, cancel, replay.
 // alive, when set, reports whether an engine serves (run create --wait).
-func addRun(root *kitcli.Root, svc ServicesFunc, alive func() error) {
-	r := &cobra.Command{Use: "run", Short: "runs: start, inspect, follow and cancel"}
-	r.AddCommand(runCreateCmd(root, svc, alive), runListCmd(root, svc), runShowCmd(root, svc), runLogsCmd(root, svc), runCancelCmd(root, svc))
+func addRun(root *kitcli.Root, svc ServicesFunc, eng EngineFunc, alive func() error) {
+	r := &cobra.Command{Use: "run", Short: "runs: start, inspect, follow, cancel and replay"}
+	r.AddCommand(runCreateCmd(root, svc, alive), runListCmd(root, svc), runShowCmd(root, svc), runLogsCmd(root, svc), runCancelCmd(root, svc), runReplayCmd(root, eng))
 	root.Cmd.AddCommand(r)
 }
 
@@ -191,7 +195,13 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 			"to the declared types, check that you may use the flow's run_as, store the run and queue it " +
 			"for the engine. The same --idempotency-key returns the first run, not a second. With --wait " +
 			"it waits for the run to settle: exit 0 when it succeeded, 7 (awaiting_approval) when it " +
-			"parked on an approval, else the failure's exit code. --wait needs an engine serving.",
+			"parked on an approval, else the failure's exit code. --wait needs an engine serving.\n\n" +
+			"--record keeps the run's exec and HTTP calls (and its trigger payload, vars and starting state) " +
+			"for `flo run replay`: the engine makes the calls for real, as for any run, and writes a " +
+			"recording beside the run's log, readable by you only, kept as long as outputs (90 days). The " +
+			"redact paths of the flow's nodes are dropped from it, env values and credential headers are " +
+			"never stored, and a recording of a local-only flow stays on this machine. Only reads and pure " +
+			"nodes are recorded: a replay does not execute writes.",
 		Args: cobra.NoArgs,
 	}
 	flow := c.Flags().String("flow", "", "the flow to run")
@@ -199,6 +209,7 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 	vars := c.Flags().StringArray("var", nil, "a flow var: name=value, typed per its declaration (repeatable)")
 	varFile := c.Flags().String("var-file", "", "a JSON object of vars; --var wins over it")
 	trigFile := c.Flags().String("trigger-file", "", "a JSON object read as the run's trigger payload (trigger.<key> in expressions)")
+	record := c.Flags().Bool("record", false, "record the run's exec and HTTP calls for `flo run replay`")
 	wait := c.Flags().Bool("wait", false, "wait until the run succeeds, fails, is cancelled or parks on an approval")
 	timeout := c.Flags().Duration("timeout", 0, "with --wait, give up after this long (exit 6); 0 waits for ever")
 	_ = c.MarkFlagRequired("flow")
@@ -207,7 +218,7 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 		// write; here it is the run key.
 		key, _ := cmd.Flags().GetString("idempotency-key")
 		return runCreate(cmd, root, svc, alive, createArgs{
-			flow: *flow, version: *ver, vars: *vars, varFile: *varFile, key: key, trigFile: *trigFile, wait: *wait, timeout: *timeout,
+			flow: *flow, version: *ver, vars: *vars, varFile: *varFile, key: key, trigFile: *trigFile, record: *record, wait: *wait, timeout: *timeout,
 		})
 	}
 	kitcli.SetSideEffect(c, kitcli.SideEffectWriteShared)
@@ -217,10 +228,12 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 	_ = kitcli.SetExamples(c, []kitcli.Example{
 		{Title: "start a run", Command: "flo run create --flow dependency-watch"},
 		{Title: "start it once per day, wait for the outcome", Command: "flo run create --flow dependency-watch --idempotency-key 2026-11-18 --wait"},
+		{Title: "record the run, to replay it offline", Command: "flo run create --flow dependency-watch --record --wait"},
 		{Title: "bind vars", Command: "flo run create --flow dependency-watch --var lookback=7d --var repos='[\"example-org/api\"]'"},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
 		{When: "the run was created", Suggest: "flo run logs <run> --follow", Reason: "follow its events"},
+		{When: "the run was recorded and has ended", Suggest: "flo run replay <run>", Reason: "run it again offline, in a sandbox"},
 		{When: "exit 7", Suggest: "flo approval list --status open", Reason: "decide what the run waits for"},
 	})
 	return c
@@ -229,7 +242,7 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 type createArgs struct {
 	flow, version, varFile, key, trigFile string
 	vars                                  []string
-	wait                                  bool
+	wait, record                          bool
 	timeout                               time.Duration
 }
 
@@ -268,15 +281,15 @@ func runCreate(cmd *cobra.Command, root *kitcli.Root, svc ServicesFunc, alive fu
 		}
 		if kitcli.IsDryRun(cmd) {
 			return kitcli.RenderPlan(cmd, kitcli.Plan{
-				Args:    map[string]any{"flow": req.Flow, "version": req.Version, "vars": req.Vars, "idempotency_key": req.IdemKey, "by": caller},
-				Effects: []kitcli.Effect{{Kind: "create", Target: "run:" + req.Flow, Reversible: true, Detail: "a queued run the engine advances"}},
+				Args:    map[string]any{"flow": req.Flow, "version": req.Version, "vars": req.Vars, "idempotency_key": req.IdemKey, "by": caller, "record": req.Record},
+				Effects: dryRunEffects(req),
 			})
 		}
 		if res, err = s.Starter.Start(ctx, req); err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
 	}
-	out := runCreated{Flow: a.flow, Created: res.Created, Queued: res.Queued, Skipped: res.Skipped}
+	out := runCreated{Flow: a.flow, Created: res.Created, Queued: res.Queued, Skipped: res.Skipped, Recording: res.Run.Record}
 	for _, id := range res.Cancelled {
 		out.Cancels = append(out.Cancels, string(id))
 	}
@@ -388,8 +401,16 @@ func startRequest(ctx context.Context, s *core.Services, tenant core.TenantID, c
 	}
 	return core.StartRequest{
 		Tenant: tenant, Flow: a.flow, Version: fv.Hash, Vars: vars,
-		Trigger: core.TriggerInfo{Kind: specrun.TriggerManual, Payload: payload}, IdemKey: a.key, StartedBy: caller,
+		Trigger: core.TriggerInfo{Kind: specrun.TriggerManual, Payload: payload}, IdemKey: a.key, StartedBy: caller, Record: a.record,
 	}, nil
+}
+
+func dryRunEffects(req core.StartRequest) []kitcli.Effect {
+	effects := []kitcli.Effect{{Kind: "create", Target: "run:" + req.Flow, Reversible: true, Detail: "a queued run the engine advances"}}
+	if req.Record {
+		effects = append(effects, kitcli.Effect{Kind: "write", Target: "recording:" + req.Flow, Reversible: true, Detail: "the run's calls, kept beside its log for `flo run replay`"})
+	}
+	return effects
 }
 
 // parseVars reads --var-file, then --var over it: name -> raw text, which
@@ -683,5 +704,74 @@ func runCancelCmd(root *kitcli.Root, svc ServicesFunc) *cobra.Command {
 	_ = kitcli.SetOutputSchema(c, kitcli.OutputSchema{Type: &runCancelled{}, Version: runSchemaVersion})
 	_ = kitcli.SetExamples(c, []kitcli.Example{{Title: "cancel a run", Command: "flo run cancel run_01 --yes"}})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{{When: "the run was cancelled", Suggest: "flo run show <run>", Reason: "see how it ended"}})
+	return c
+}
+
+func runReplayCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
+	c := &cobra.Command{
+		Use:   "replay <run>",
+		Short: "Replay a recorded run offline, in a sandbox",
+		Long: "Run a run started with `flo run create --record` again: the flow version it ran, its recorded " +
+			"trigger payload, vars and starting state, with every process and request answered from its " +
+			"recording. Nothing is made for real and nothing reaches the live engine: the replay's run, " +
+			"state, outputs and approvals live in a sandbox that is deleted afterwards. Nodes that write " +
+			"shared state or cannot be undone are not executed (their plan is recorded), and an approval " +
+			"is auto-approved, as in `flo flow test`.\n\n" +
+			"It says where the replay differs from the run (status, step statuses, outputs). Paths a node " +
+			"lists under redact are not in the recording, so a step that used one can differ. Exits 1 when " +
+			"the replay differs. A run with no recording, an unfinished one, or a partial one is refused " +
+			"with the reason.",
+		Args: cobra.ExactArgs(1),
+	}
+	timeout := c.Flags().Duration("timeout", serve.DefaultTestTimeout, "give up after this long")
+	c.RunE = func(cmd *cobra.Command, args []string) error {
+		id, err := core.ParseRunID(args[0])
+		if err != nil {
+			return err //nolint:wrapcheck // *core.Error
+		}
+		e, err := flowOps(cmd, eng)
+		if err != nil {
+			return err
+		}
+		tenant, err := accessTenant(root)
+		if err != nil {
+			return err //nolint:wrapcheck // *core.Error
+		}
+		caller, err := accessCaller(root)
+		if err != nil {
+			return err
+		}
+		res, err := e.ReplayRun(cmd.Context(), tenant, serve.ReplayRequest{Run: id, Caller: caller, Timeout: *timeout})
+		if err != nil {
+			return err //nolint:wrapcheck // *core.Error
+		}
+		if err := output.Dispatch(cmd, root.Viper, res); err != nil {
+			return err //nolint:wrapcheck // kit output error
+		}
+		if res.Matches {
+			return nil
+		}
+		msg := "the replay differs from the run"
+		switch {
+		case len(res.Problems) > 0:
+			msg = res.Problems[0].Message
+		case len(res.Diffs) > 0:
+			msg = res.Diffs[0]
+		}
+		return core.Errorf(core.CodeRunFailed, "replay of run %s: %s", id, msg).
+			WithDetail("diffs", res.Diffs).WithDetail("problems", res.Problems)
+	}
+	kitcli.SetSideEffect(c, kitcli.SideEffectRead)
+	kitcli.SetIdempotency(c, kitcli.IdempotencyYes)
+	kitcli.SetRetryable(c, true)
+	_ = kitcli.SetOutputSchema(c, kitcli.OutputSchema{Type: &serve.ReplayResult{}, Version: runSchemaVersion})
+	_ = kitcli.SetExamples(c, []kitcli.Example{
+		{Title: "replay a recorded run", Command: "flo run replay run_01"},
+		{Title: "as JSON", Command: "flo run replay run_01 --format json"},
+	})
+	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
+		{When: "the run has no recording", Suggest: "flo run create --flow <flow> --record", Reason: "record a run"},
+		{When: "the replay differs", Suggest: "flo run show <run>", Reason: "compare with the run's steps"},
+	})
 	return c
 }
