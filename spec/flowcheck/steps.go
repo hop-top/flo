@@ -1,7 +1,6 @@
 package flowcheck
 
 import (
-	"net"
 	"slices"
 	"strings"
 
@@ -124,7 +123,7 @@ func (c *checker) privacy(st *spec.Step, n *node.Spec) {
 	how := "declared " + string(n.Privacy)
 	if _, takesModel := n.Inputs["model"]; takesModel {
 		if m, ok := st.With["model"].(string); ok && !strings.Contains(m, "{{") {
-			if p, ok := modelPrivacy(m); ok {
+			if p, ok := node.ModelPrivacy(m); ok {
 				eff, how = p, "its model "+m+" is "+string(p)
 			}
 		}
@@ -132,49 +131,6 @@ func (c *checker) privacy(st *spec.Step, n *node.Spec) {
 	if ceil := c.ceiling(st); eff == node.PrivacyCloud && ceil == run.PrivacyLocalOnly {
 		c.err("V19", CodePrivacyViolation, st.ID, "privacy", "%s is cloud (%s) under a local-only ceiling", n.Node, how)
 	}
-}
-
-// modelPrivacy derives the level of a model URI: ollama:// and an openai://
-// host on this machine or its private network are local; every other
-// scheme is hosted.
-func modelPrivacy(model string) (node.Privacy, bool) {
-	scheme, rest, ok := strings.Cut(model, "://")
-	if !ok || scheme == "" {
-		return "", false
-	}
-	switch scheme {
-	case "ollama":
-		return node.PrivacyLocal, true
-	case "openai":
-		if isLocalHost(hostOf(rest)) {
-			return node.PrivacyLocal, true
-		}
-	}
-	return node.PrivacyCloud, true
-}
-
-// hostOf extracts the host of the authority part of rest ("h:8080/path",
-// "[::1]:80/x"). Model names after the host may hold characters a URL
-// parser refuses ("gemma4:e4b"), so it is cut by hand.
-func hostOf(rest string) string {
-	auth, _, _ := strings.Cut(rest, "/")
-	if strings.HasPrefix(auth, "[") {
-		host, _, _ := strings.Cut(strings.TrimPrefix(auth, "["), "]")
-		return host
-	}
-	host, _, _ := strings.Cut(auth, ":")
-	return host
-}
-
-func isLocalHost(h string) bool {
-	if h == "" {
-		return false
-	}
-	if h == "localhost" || strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(h)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
 }
 
 // guard is V20: an irreversible step has an ancestor flo/approval@1 step,
