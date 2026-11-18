@@ -64,6 +64,8 @@ shipped with the code that implements them; declared specs *are* the node.
 | `idempotency_key` | placeholder | no | §11 |
 | `cost` | `{class, estimate}` | no | §13. Default class `free` |
 | `timeout` | duration | no | Default per attempt, default `30s` |
+| `rate_limit` | `{bucket, max, per}` | no | A provider quota the node draws on (§13.1) |
+| `exit_codes` | `{ok, retry}` | no | Command nodes, §4.1 |
 | `retry` | `{max_attempts, backoff}` | no | Default `{1, 0}` |
 | `placement` | `{runner, isolation}` | no | §15. Default `{local, none}` |
 | `record` | bool | no | §16. Default `true` for declared and plugin, per-node for built-in |
@@ -118,7 +120,7 @@ A JSON-Schema subset: `type` (one or a list of `string`, `integer`,
 `required: true` with a `default` is an error.
 
 Inputs reach the node as `in` (a map). Inside a node spec, templates see
-`in`, `config`, `run` (read only) and, in a command or HTTP node, nothing
+`in`, `config`, `run` (read only; includes `run.step_dir`, §4.3) and, in a command or HTTP node, nothing
 else: a node cannot read other steps' results or flow state. A node gets
 its data only through `with`.
 
@@ -131,7 +133,8 @@ their type is known from the expression, and always at dispatch.
 outputs:
   from: body.results          # where the value comes from (§4.3, §5.3)
   format: json                # json | lines | text (command nodes)
-  map: "{{ ... }}"            # optional reshaping, CEL over `out`
+  map: "{{ ... }}"            # optional reshaping, CEL over `out` (and `in`)
+  fail_when: "{{ ... }}"      # optional: true fails the step, CEL over `out` (after `map`)
   schema: schemas/find.json   # JSON Schema file or inline map
 ```
 
@@ -190,7 +193,15 @@ timeout: 30s
   excess is dropped and flagged.
 - `exit_codes.ok` lists success codes (default `[0]`). A code in
   `exit_codes.retry` fails transiently (retried per `retry`); any other
-  fails permanently.
+  fails permanently. Engines read only the exit code and the parsed
+  output: a wrapped CLI that exits non-zero for conditions that are not
+  failures (a "not modified" answer, a client error that is data) is
+  wrapped so it exits as documented here and reports the condition in its
+  output.
+- A `null` value renders as an empty string in `argv`, `env` and `cwd`.
+- **Exit 0 is not success.** A tool may exit 0 and report failures in its
+  output; `outputs.fail_when` (§3.2) turns such a report into a step
+  failure (`node_reported_failure`, output kept in the record).
 
 ### 4.2 stdin
 
@@ -201,16 +212,25 @@ appear in process listings); use `env` with a secret reference (§5.4).
 
 ### 4.3 Outputs from a command
 
+`run.step_dir` is a scratch directory the engine creates per step
+attempt and removes after the output is read. `file:<path>` is relative
+to it.
+
 `outputs.from`:
 
 - `stdout` (default), `stderr`; or `file:<path>` (read after exit, path
-  rendered, relative to `cwd`); or `exit_code`.
+  rendered, relative to `run.step_dir`); or `exit_code`.
 - `format: json` parses the text as one JSON document; `lines` yields a
   list of strings (one per non-empty line); `text` the raw string.
 - `map` (optional) then reshapes the parsed value. In `map`, `out` is the
   parsed value and the expression's value becomes the output. Example:
   `map: "{{ {'run': out.stamp, 'pending': out.items.filter(i, i.state == 'pending')} }}"`.
 - Then `schema` validates.
+
+Prefer `file:` over `stdout` for large or JSON outputs: a runner that
+filters secrets from child output can alter a JSON document on stdout, and
+runner status lines may share the stream. File output is read byte for
+byte.
 
 The raw exec result (`exit_code`, `stdout`, `stderr`, `duration_ms`,
 `truncated`) is always kept in the step record; flows read the parsed
@@ -357,14 +377,19 @@ with a version, so a recorded run names the prompt text it used.
 | `surface` | `tlc` \| `none` | where the human sees it (default `tlc`); the brief and `flo approval` always list it |
 | `trust` | string | a trust provider name (§10.3) |
 | `context` | object | passed to the trust provider |
+| `verdicts` | array of `approve` \| `reject` \| `correct` | decisions a person may give; default all three. A flow limits it when the guarded tool cannot take a correction |
 | `title` | string | task title |
 | `timeout` | duration | optional; see below |
 | `on_timeout` | `reject` | the only value in 0.1 |
 
 ApprovalItem: `{id: string (stable, unique), action: string, why: string,
-class?: string, capability?: string, args?: object, …}`. `class` is the
-trust action type (`archive`, `unsubscribe`); with a `trust` provider the
-item is auto-approved when the provider says the class is `auto`.
+class?: string | string[], capability?: string, args?: object, …}`. `id`
+should be stable across runs when the underlying thing is (a message id,
+not a position). `class` is the trust action type, or a list when one item
+carries several actions (`archive`, `label:Finance`); with a `trust`
+provider the item is auto-approved when the provider says **every** class
+is `auto`. Extra fields travel with the item to the provider and to the
+output.
 `capability` + `args` (the exact operation) is optional in phase 1 and
 required for proposals later (§10.4).
 
@@ -566,24 +591,35 @@ A **trust provider** is a pack-declared object, referenced by name
 ```yaml
 trust: inbox
 kind: command
-read:                                   # → [{class, level: ask|auto, streak, last_reset}]
+read:                                   # → [{class, level: ask|auto, streak, threshold, resets, last_reset}]
   argv: [inbox, trust, list, --format, json]
-decide:                                 # called once per recorded batch of decisions
-  argv: [inbox, approve, "{{ in.context.run }}"]
+decide:                                 # once per approval, after every item has a decision
+  argv: [inbox, approve, "{{ in.context.run }}", --decisions, "-", --format, json]
   stdin: { json: "{{ in.decisions }}" }
-set:
-  argv: [inbox, trust, set, "{{ in.class }}", "{{ in.level }}"]
+set:                                    # backs `flo trust set`
+  argv: [inbox, trust, "{{ in.level == 'auto' ? 'promote' : 'reset' }}", "{{ in.class }}"]
 ```
 
-- `read` supplies levels at approval time; items whose `class` is `auto`
-  become `auto` items.
+- `read` supplies levels at approval time; items whose classes are all
+  `auto` become `auto` items. A tool with finer levels maps them onto
+  `ask` and `auto`.
 - `decide` records the person's decisions with the system that owns the
-  counters, so graduation and resets stay in one place. While a wrapped
-  tool owns the trust state, it is the **only writer**; the engine never
-  writes the counters itself.
-- `set` backs `flo trust set` (promote or demote).
+  counters, so graduation and resets stay in one place. `in.decisions` is
+  `[{id, verdict, reason?, item}]` plus whatever the item carried. It
+  prints `{applied: [...], skipped: [...]}`; any `skipped` entry fails the
+  approval step (`decision_not_recorded`) rather than being ignored. A
+  rejection caused by cancelling a run is **not** reported to `decide`,
+  so it does not reset trust.
+- `set` backs `flo trust set` (promote or demote). A provider may refuse a
+  level (`trust_capped`), e.g. for destructive classes.
+- The wrapped tool owns the counters; the engine never writes them. That
+  makes the provider the single writer only while every other entry point
+  of the tool uses the same store under a lock. A tool with other writers
+  needs that lock before flo relies on its counters (a script-side
+  prerequisite, not engine behavior).
 - Providers are `kind: command` or `http` with the same execution rules
-  as §4–§5. They are checked at install time to be at most `write-shared`.
+  as §4–§5, and may use `env`, `cwd` and pack `config`. They are checked at
+  install time to be at most `write-shared`.
 - Later backends (a business-governance engine's graduated autonomy, an
   admission service) implement the same three operations behind the
   admission port; then the local provider is off.
@@ -651,6 +687,15 @@ uses before a step runs and the node corrects with the real figure
 after. The static check (flow.md V21) and run-time budget check
 (flow.md §7.7) use these. Declared nodes use fixed estimates; AI nodes
 compute from the model client's price table and the input size.
+
+### 13.1 Rate limits
+
+`rate_limit: {bucket, max, per}` declares a quota the node draws on.
+Nodes sharing a `bucket` name share the count. The engine counts calls
+(including calls that fail with a client error, since providers may count
+them) and, when the bucket is exhausted, delays the step up to its
+`timeout` or fails it with `provider_rate_limited` (transient, exit 6).
+A provider's own limit response is handled by `retry`.
 
 ---
 
@@ -745,7 +790,9 @@ flows:    [flows/…]             # template flows
   on nodes that can use one (`write-shared`, `irreversible`). **N10**
   `lowers_to: exec` only where §14 allows. **N11** `record: false` only on
   `none` nodes. **N12** secrets by reference only (§5.4). **N13**
-  `examples` validate against `inputs` and `outputs`.
+  `examples` validate against `inputs` and `outputs`. **N14** `fail_when`
+  and `map` reference only `out`, `in`, `config`, `run`. **N15** `rate_limit`
+  `max` positive and `per` a duration.
 
 ---
 

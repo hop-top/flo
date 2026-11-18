@@ -264,7 +264,8 @@ reason, as in recipe 0.1 §12.3.
 ### 4.5 Functions
 
 CEL standard library, plus the lists extension (`flatten`, `slice`,
-`sort`, `distinct`, …). Flows rely on `flatten()` (§5.6). If an engine's
+`sort`, `distinct`, …) and the strings extension (`join`, `split`,
+`lowerAscii`, …). Flows rely on `flatten()` (§5.6). If an engine's
 CEL environment lacks a function a flow uses, validation fails with
 `unknown_function`. No other functions are added in 0.1.
 
@@ -808,7 +809,8 @@ step lists with the same rules per list.
 6. **Block-level `for_each`.** Only step-level and sub-flow `for_each` in
    0.1.
 7. **Cancellation of a parked run's pending approval items.** Chosen:
-   cancelling a run rejects its undecided items with reason `run_cancelled`.
+   cancelling a run rejects its undecided items with reason `run_cancelled`;
+   such rejections are not reported to a trust provider (node.md §10.3).
 8. **State size and shape.** 1 MiB per key, JSON only; a set type with a
    bound may be preferable to lists.
 9. **CEL list extension in the engine.** `flatten` depends on the engine's
