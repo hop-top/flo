@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/serve"
+	"hop.top/flo/spec/cel"
 )
 
 const flowSchemaVersion = "1.0"
@@ -88,12 +91,12 @@ func flowRows(fs []core.FlowSummary) []flowRow {
 	return rows
 }
 
-// addFlow registers the `flo flow` noun: apply, list, show, validate, set.
+// addFlow registers the `flo flow` noun: apply, list, show, validate, test, set.
 func addFlow(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) {
 	f := &cobra.Command{Use: "flow", Short: "flows: documents, versions, activation"}
 	f.AddCommand(
 		flowApplyCmd(root, svc, eng), flowListCmd(root, svc), flowShowCmd(root, svc),
-		flowValidateCmd(root, svc, eng), flowSetCmd(root, svc, eng),
+		flowValidateCmd(root, svc, eng), flowTestCmd(root, svc, eng), flowSetCmd(root, svc, eng),
 	)
 	root.Cmd.AddCommand(f)
 }
@@ -119,10 +122,13 @@ func flowApplyCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Co
 		Long: "Read the flow, validate it (document, expressions, node specs, privacy, irreversible " +
 			"guards) and check that you may use its run_as and that profile holds every capability its " +
 			"nodes declare. A new version is stored, as a draft, only when the content changed: " +
-			"applying the same bytes again changes nothing. Activate it with `flo flow set`.",
+			"applying the same bytes again changes nothing. Without --yes it asks for confirmation at a " +
+			"terminal, and fails with confirmation_required without one. Test it with `flo flow test`, " +
+			"then activate it with `flo flow set`.",
 		Args: cobra.NoArgs,
 	}
 	file := flowFileFlag(c)
+	yes := c.Flags().Bool("yes", false, "confirm without asking")
 	c.RunE = func(cmd *cobra.Command, _ []string) error {
 		src, err := serve.ReadSource(*file)
 		if err != nil {
@@ -155,6 +161,9 @@ func flowApplyCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Co
 				}},
 			})
 		}
+		if err := confirmWrite(*yes, fmt.Sprintf("store flow %s as a new version?", flowNameOf(src))); err != nil {
+			return err
+		}
 		res, err := e.Flows.Apply(cmd.Context(), tenant, caller, src)
 		if err != nil {
 			return err //nolint:wrapcheck // *core.Error
@@ -172,13 +181,22 @@ func flowApplyCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Co
 	kitcli.SetRetryable(c, true)
 	_ = kitcli.SetOutputSchema(c, kitcli.OutputSchema{Type: &flowApplied{}, Version: flowSchemaVersion})
 	_ = kitcli.SetExamples(c, []kitcli.Example{
-		{Title: "apply a bundle", Command: "flo flow apply -f flows/dependency-watch"},
+		{Title: "apply a bundle", Command: "flo flow apply -f flows/dependency-watch --yes"},
 		{Title: "preview", Command: "flo flow apply -f flows/dependency-watch/flow.yaml --dry-run"},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
-		{When: "the version is a draft", Suggest: "flo flow set <flow> --state active", Reason: "make new runs and triggers use it"},
+		{When: "the version is a draft", Suggest: "flo flow test <flow>", Reason: "activation needs a passing test of this version"},
 	})
 	return c
+}
+
+// flowNameOf is the name a source's document declares, for a question to the
+// person; the path when it does not parse (the apply that follows reports why).
+func flowNameOf(src serve.Source) string {
+	if f, err := cel.ParseFlow(bytes.NewReader(src.Data), filepath.Base(src.File)); err == nil {
+		return f.Name
+	}
+	return src.File
 }
 
 func flowValidateCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Command {
@@ -307,8 +325,9 @@ func flowSetCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Comm
 		Long: "Set the state of a flow: active makes a version the one new runs start on (the newest, or " +
 			"--version) and registers its triggers; paused stops its triggers while its runs continue. " +
 			"Activating validates the version again, checks that you may use its run_as and that profile " +
-			"holds the capabilities its nodes declare, and runs the activation gate (phase 1: the version " +
-			"validates). Setting the state a version has is a no-op.",
+			"holds the capabilities its nodes declare, and runs the activation gate: the version must have " +
+			"a passing `flo flow test` of that exact version, bundle files included (flow_not_tested " +
+			"otherwise). Setting the state a version has is a no-op.",
 		Args: cobra.ExactArgs(1),
 	}
 	state := c.Flags().String("state", "", "active or paused")
@@ -352,7 +371,7 @@ func flowSetCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Comm
 	kitcli.SetRetryable(c, true)
 	_ = kitcli.SetOutputSchema(c, kitcli.OutputSchema{Type: &flowSet{}, Version: flowSchemaVersion})
 	_ = kitcli.SetExamples(c, []kitcli.Example{
-		{Title: "activate", Command: "flo flow set dependency-watch --state active --yes"},
+		{Title: "activate a tested version", Command: "flo flow set dependency-watch --state active --yes"},
 		{Title: "pause", Command: "flo flow set dependency-watch --state paused --yes"},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
