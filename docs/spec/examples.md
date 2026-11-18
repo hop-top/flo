@@ -435,6 +435,7 @@ on:
       when: "trigger.event.attendees.size() > 1"
 run_as: automation
 privacy: local-only             # attendees, notes, threads and tasks stay on this machine
+budget: { usd: 0.10 }
 tasks: none
 steps:
   # What the knowledge store holds on each attendee: one search per person, by
