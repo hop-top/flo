@@ -21,6 +21,8 @@ const (
 	EnvProfile = "FLO_PROFILE"
 	// ConfigOwnerProfile is the config key of the owner's profile.
 	ConfigOwnerProfile = "owner_profile"
+	// EnvOwnerProfile is the environment form of owner_profile.
+	EnvOwnerProfile = EnvPrefix + "_OWNER_PROFILE"
 	// EnvTenant and ConfigTenant name the tenant a command works in.
 	EnvTenant    = "FLO_TENANT"
 	ConfigTenant = "tenant"
@@ -47,10 +49,7 @@ func accessCaller(root *kitcli.Root) (string, error) {
 // accessTenant resolves the tenant: FLO_TENANT, else the config, else the
 // default tenant of a single-user install.
 func accessTenant(root *kitcli.Root) (core.TenantID, error) {
-	s := strings.TrimSpace(os.Getenv(EnvTenant))
-	if s == "" && root != nil && root.Viper != nil {
-		s = strings.TrimSpace(root.Viper.GetString(ConfigTenant))
-	}
+	s := setting(root, EnvTenant, ConfigTenant)
 	return core.ParseTenant(core.TenantID(s).OrDefault().String())
 }
 

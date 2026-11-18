@@ -1,0 +1,14 @@
+flow: config-ctxt
+version: 0.1.0
+description: One ctxt search, for the config tests (the server comes from packs.ctxt.url).
+on:
+  - manual: {}
+run_as: automation
+privacy: local-only
+tasks: none
+steps:
+  - id: people
+    uses: ctxt/find@1
+    with:
+      query: Ada Lovelace
+      limit: 5

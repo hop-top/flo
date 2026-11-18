@@ -55,11 +55,42 @@ flo run cancel <run> --yes
   (`owner_profile`, else `$USER`) holds the wildcard grant; the engine's
   profile (`FLO_ENGINE_PROFILE`, default `flo`) holds what installed packs
   declare. Packs are read when a process starts.
-- Engine settings: `FLO_ENGINE_POLLERS`, `FLO_ENGINE_INTERVAL`,
-  `FLO_ENGINE_CLAIM_TTL` (how long a killed engine's runs wait before another
-  engine takes them), `FLO_ENGINE_SHUTDOWN_GRACE`, `FLO_APPROVAL_POLL`,
-  `FLO_TLC_DIR`, `FLO_TLC_PROFILE`, `FLO_EVA_URL`. Secrets of HTTP nodes come
-  from `FLO_SECRET_<TENANT>_<PROFILE>_<NAME>`.
+- Config: one loader for every command and `flo engine serve`, kit's `-c`
+  convention (as tlc and aps). Precedence, highest first: `-c key=value`,
+  `FLO_*` environment, config files, default. Files merge in order
+  `/etc/flo/config.yaml`, `$XDG_CONFIG_HOME/flo/config.yaml` (kit's xdg
+  default when unset: `~/.config/flo` on Linux, `~/Library/Application
+  Support/flo` on macOS), then each `-c <path>` (later over earlier; a missing `-c` path is an error, a missing
+  default file is skipped). `FLO_CONFIG` is `-c <path>` in the environment. A
+  key's variable is `FLO_` + the key upper-cased, dots as underscores
+  (`packs.ctxt.url` is `FLO_PACKS_CTXT_URL`); the one exception is
+  `engine.approval_poll`, which is `FLO_APPROVAL_POLL`. `flo status` shows
+  the merged values (`effective-config`) and the files read (`config`).
+  Secrets are never read from a config file or this loader: they stay in the
+  secret store (`FLO_SECRET_<TENANT>_<PROFILE>_<NAME>`).
+
+  ```yaml
+  # $XDG_CONFIG_HOME/flo/config.yaml
+  tenant: default
+  owner_profile: jad            # FLO_OWNER_PROFILE
+  engine_profile: flo           # FLO_ENGINE_PROFILE
+  tlc: { dir: /path, profile: p }               # FLO_TLC_DIR, FLO_TLC_PROFILE
+  engine:                                       # FLO_ENGINE_*, FLO_APPROVAL_POLL
+    pollers: 4
+    interval: 1s
+    claim_ttl: 2m
+    shutdown_grace: 30s
+    approval_poll: 1m
+  ai: { classifier: rules, generator: template }  # FLO_AI_*
+  eva: { url: http://127.0.0.1:9000 }             # FLO_EVA_URL
+  packs:                        # config.<pack>.<key> in node specs and triggers
+    ctxt: { url: http://127.0.0.1:8080 }          # FLO_PACKS_CTXT_URL
+    calendar: { url: /path/work.ics, sync_interval: 10m }
+  ```
+
+  Pack keys are flat: `packs.<pack>.<key>`; as a variable, the first `_`
+  after `FLO_PACKS_` ends the pack name, so a hyphenated pack name is set in a
+  file or with `-c` only.
 - Classifier: `ai.classifier` (env `FLO_AI_CLASSIFIER`) picks the backend of
   `flo/ai.classify@1`: `rules` (deterministic, no model; security by advisory,
   breaking by major bump, else routine) or `judge` (kit go/ai/judge; refused

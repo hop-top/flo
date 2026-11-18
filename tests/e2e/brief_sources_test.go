@@ -174,9 +174,9 @@ func briefSourcesEnv(t *testing.T, extra ...string) *env {
 }
 
 // briefEngine is the engine in this process, over the env's HOME, XDG tree,
-// PATH of fakes and secrets: the shipped binary has no way yet to set
-// packs.ctxt.url (kit's config is not read from a file or the environment), so
-// the pack config goes in through serve.Config as the calendar test does.
+// PATH of fakes and secrets, with the pack config passed through
+// serve.Config. The shipped binary reads packs.ctxt.url from the config file,
+// FLO_PACKS_CTXT_URL or -c (see config_test.go).
 type briefEngine struct {
 	e   *env
 	eng *serve.Engine

@@ -50,16 +50,14 @@ const (
 	EnvEvaURL     = "FLO_EVA_URL"
 )
 
-// setting reads one engine setting: the environment variable, else the config
-// key.
+// setting reads one setting of the config of root, which holds every source in
+// kit's order (-c override, flag, environment, file, default; see config.go).
+// Without a root only the environment variable env is read.
 func setting(root *kitcli.Root, env, key string) string {
-	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		return v
-	}
 	if root != nil && root.Viper != nil {
 		return strings.TrimSpace(root.Viper.GetString(key))
 	}
-	return ""
+	return strings.TrimSpace(os.Getenv(env))
 }
 
 func durationSetting(root *kitcli.Root, env, key string) (time.Duration, error) {
@@ -78,10 +76,8 @@ func durationSetting(root *kitcli.Root, env, key string) (time.Duration, error) 
 // config, else the login name. It holds the wildcard grant. It is not the
 // caller (FLO_PROFILE names who is acting now).
 func ownerProfile(root *kitcli.Root) string {
-	if root != nil && root.Viper != nil {
-		if p := strings.TrimSpace(root.Viper.GetString(ConfigOwnerProfile)); p != "" {
-			return p
-		}
+	if p := setting(root, EnvOwnerProfile, ConfigOwnerProfile); p != "" {
+		return p
 	}
 	return strings.TrimSpace(os.Getenv("USER"))
 }
@@ -126,11 +122,15 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 }
 
 // exprConfig is the `config` namespace of expressions: config.<pack>.* from
-// the `packs` section of the config, and config.eva.url.
+// the `packs` section of the config (file, FLO_PACKS_<PACK>_<KEY>, -c), and
+// config.eva.url.
 func exprConfig(root *kitcli.Root) map[string]any {
 	out := map[string]any{}
 	if root != nil && root.Viper != nil {
-		for name, v := range root.Viper.GetStringMap("packs") {
+		// AllSettings, not GetStringMap: only it merges the keys that come from
+		// the environment.
+		packs, _ := root.Viper.AllSettings()[packsKey].(map[string]any)
+		for name, v := range packs {
 			out[name] = v
 		}
 	}

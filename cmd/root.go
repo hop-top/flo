@@ -36,17 +36,24 @@ func NewRootOver(open EngineFunc) *kitcli.Root {
 }
 
 func build(svc ServicesFunc, eng EngineFunc, real bool) *kitcli.Root {
-	root := kitcli.New(
+	var root *kitcli.Root
+	cfg := &configLoader{}
+	root = kitcli.New(
 		kitcli.Config{
 			Name:    "flo",
 			Version: version.Version(),
 			Short:   "flo",
+			// -c files, the config files and FLO_PACKS_* load before a
+			// command runs.
+			Hooks: kitcli.Hooks{PrePersistentRunE: cfg.hook(func() *kitcli.Root { return root })},
 		},
 		// Reserved `status` subcommand (12fc factor 8).
 		kitcli.WithStatus(kitcli.StatusConfig{
 			ExtraEnvKeys: []string{"FLO_*"},
 		}),
 	)
+	bindEnv(root)
+	cfg.registerStatus(root)
 	var alive func() error
 	if real {
 		alive = engineAlive
