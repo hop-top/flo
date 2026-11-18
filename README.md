@@ -64,6 +64,16 @@ flo run cancel <run> --yes
 - `packs/github` holds the GitHub nodes of `flows/dependency-watch.yaml`. Its
   wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.
+- `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
+  command, and the `inbox` trust provider. The nodes run `inbox` and the
+  wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`; they
+  need `jq`) as the flow's profile, so both go on that profile's `PATH`,
+  with the script's credentials, `INBOX_HOME` and `INBOX_RUNS`. The trust
+  provider runs on the engine's own `PATH` and environment, which must name
+  the same directories. `inbox/lanes@1` acts on mail outside the plan and is
+  not used by the flow. Re-record the flow's `record/` with
+  `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` after a
+  change to the flow, its tests or its nodes.
 - `flo status` reports the engine: running, stopped, or stale after a crash.
 - Tests: `go test ./tests/e2e` builds the binary and runs it against fake
   `aps`, `gh`, `tlc` and `inbox` executables on `PATH`; nothing reaches a
