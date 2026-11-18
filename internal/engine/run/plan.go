@@ -53,6 +53,10 @@ type stepPlan struct {
 	check   *cel.Value
 	state   map[string]*cel.Template // outputs.state, by key (sorted at use)
 	node    *core.NodeInfo
+	// raw are `with` leaves that read item/index in a step with no for_each:
+	// the node binds those per element itself (flo/dedupe key, flo/filter
+	// where), so they reach it unrendered. token -> original text.
+	raw map[string]string
 }
 
 // loadPlan parses, expands and compiles the flow of a run. A flow the engine
@@ -175,7 +179,11 @@ func (e *Executor) compileStep(ctx context.Context, p *plan, run core.Run, s *sp
 		}
 	}
 	if len(s.With) > 0 {
-		if sp.with, err = p.env.CompileValue("with", s.With); err != nil {
+		with := any(s.With)
+		if s.ForEach == "" {
+			with, sp.raw = p.holdItemRefs(s.With)
+		}
+		if sp.with, err = p.env.CompileValue("with", with); err != nil {
 			return nil, bad("with", err)
 		}
 	}
@@ -279,4 +287,65 @@ func (p *plan) guardsOf(sp *stepPlan) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// holdItemRefs replaces every string leaf of a `with` tree that references
+// item or index by an inert token, and returns the tokens' original text.
+func (p *plan) holdItemRefs(with map[string]any) (map[string]any, map[string]string) {
+	raw := map[string]string{}
+	var walk func(v any) any
+	walk = func(v any) any {
+		switch t := v.(type) {
+		case string:
+			tm, err := p.env.CompileTemplate(t)
+			if err != nil {
+				return t // reported by the real compile
+			}
+			for _, x := range tm.Exprs() {
+				if slices.ContainsFunc(x.Refs().Namespaces, func(n string) bool { return n == "item" || n == "index" }) {
+					tok := fmt.Sprintf("\x00raw:%d", len(raw))
+					raw[tok] = t
+					return tok
+				}
+			}
+			return t
+		case []any:
+			out := make([]any, len(t))
+			for i, e := range t {
+				out[i] = walk(e)
+			}
+			return out
+		case map[string]any:
+			out := make(map[string]any, len(t))
+			for k, e := range t {
+				out[k] = walk(e)
+			}
+			return out
+		}
+		return v
+	}
+	out, _ := walk(with).(map[string]any)
+	if len(raw) == 0 {
+		raw = nil
+	}
+	return out, raw
+}
+
+// restoreRaw puts the held leaves back into a rendered value.
+func restoreRaw(v any, raw map[string]string) any {
+	switch t := v.(type) {
+	case string:
+		if r, ok := raw[t]; ok {
+			return r
+		}
+	case []any:
+		for i := range t {
+			t[i] = restoreRaw(t[i], raw)
+		}
+	case map[string]any:
+		for k := range t {
+			t[k] = restoreRaw(t[k], raw)
+		}
+	}
+	return v
 }

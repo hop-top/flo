@@ -309,3 +309,36 @@ steps:
 	h.wantRun(id, core.RunAwaitingApproval, "")
 	h.wantStep(id, "x", core.StepWaiting, core.ReasonUncertain)
 }
+
+func TestRetryAfterIsTheMinimumDelay(t *testing.T) {
+	h := newH(t)
+	h.reads("t/flaky@1")
+	n := 0
+	h.fx.Runner.Handle(func(inv core.Invocation) bool { return inv.StepID == "r" },
+		func(core.Invocation) (core.Result, error) {
+			n++
+			if n == 1 {
+				r := coretest.Fail(core.CodeProviderRateLimited, "slow", core.EffectNone)
+				r.Err = r.Err.WithDetail("retry_after_ms", int64(90000))
+				return r, nil
+			}
+			return coretest.OK(nil), nil
+		})
+	id := h.start(h.flow(`flow: after
+version: 1.0.0
+steps:
+  - id: r
+    uses: t/flaky@1
+    retry: { max_attempts: 2, backoff: 10s }
+`), nil)
+	done := h.drainAsync()
+	h.fx.Clock.BlockUntil(1)
+	h.fx.Clock.Advance(60 * time.Second)
+	time.Sleep(20 * time.Millisecond)
+	if len(h.fx.Runner.Calls()) != 1 {
+		t.Fatal("retried before retry_after elapsed")
+	}
+	h.fx.Clock.Advance(30 * time.Second)
+	finished(t, done)
+	h.wantRun(id, core.RunSucceeded, "")
+}

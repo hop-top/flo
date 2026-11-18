@@ -205,7 +205,7 @@ func (u *unit) build() (map[string]any, core.Invocation, error) {
 			if err != nil {
 				return nil, inv, err //nolint:wrapcheck // classified by the caller
 			}
-			in, _ = v.(map[string]any)
+			in, _ = restoreRaw(v, sp.raw).(map[string]any)
 		}
 		if inv.Timeout == 0 && sp.node.Spec.Timeout != "" {
 			inv.Timeout, _ = spec.ParseDuration(sp.node.Spec.Timeout)
@@ -380,7 +380,8 @@ func (u *unit) attempts(ctx context.Context, inv core.Invocation, resume *core.R
 			}
 			rec.Status = core.StepPending
 			u.put(ctx)
-			if err := u.t.e.d.Clock.Sleep(ctx, u.backoff(len(rec.Attempts))); err != nil {
+			wait := max(u.backoff(len(rec.Attempts)), retryAfter(pending.err))
+			if err := u.t.e.d.Clock.Sleep(ctx, wait); err != nil {
 				return u.stopped(ctx, pending)
 			}
 			pending = nil
@@ -676,3 +677,18 @@ func (u *unit) put(ctx context.Context) {
 }
 
 func sortedKeys[V any](m map[string]V) []string { return slices.Sorted(maps.Keys(m)) }
+
+// retryAfter is the minimum delay a failure asks for (Retry-After, a
+// rate-limit bucket) in Detail["retry_after_ms"].
+func retryAfter(e *core.Error) time.Duration {
+	var ms float64
+	switch v := e.Detail["retry_after_ms"].(type) {
+	case int:
+		ms = float64(v)
+	case int64:
+		ms = float64(v)
+	case float64:
+		ms = v
+	}
+	return time.Duration(ms * float64(time.Millisecond))
+}

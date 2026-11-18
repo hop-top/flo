@@ -21,7 +21,6 @@ package run
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"hop.top/flo/internal/core"
@@ -133,11 +132,4 @@ func (e *Executor) stateSnapshot(ctx context.Context, run core.Run, p *plan) (ma
 		m = map[string]any{}
 	}
 	return m, nil
-}
-
-func describe(err error) string {
-	if err == nil {
-		return ""
-	}
-	return fmt.Sprint(err)
 }

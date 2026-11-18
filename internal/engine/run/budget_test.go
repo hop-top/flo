@@ -147,12 +147,12 @@ steps:
     uses: t/read@1
     depends_on: [approve]
 `, nil)
-	r := h.wantRun(id, core.RunAwaitingApproval, "")
+	h.wantRun(id, core.RunAwaitingApproval, "")
 	s := h.wantStep(id, "approve", core.StepWaiting, core.ReasonApproval)
 	h.fx.Clock.Advance(48 * time.Hour) // parked for two days
 	h.decideAll(s.Approval, core.VerdictApprove)
 	h.drain()
-	r = h.wantRun(id, core.RunSucceeded, "")
+	r := h.wantRun(id, core.RunSucceeded, "")
 	if r.Usage.Active > time.Minute {
 		t.Errorf("active = %v, parked time must not count", r.Usage.Active)
 	}

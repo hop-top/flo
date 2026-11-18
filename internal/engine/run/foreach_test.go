@@ -6,6 +6,7 @@ import (
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/core/coretest"
+	"hop.top/flo/spec/node"
 )
 
 const eachFlow = `flow: each
@@ -221,5 +222,77 @@ steps:
 	seen := map[string]bool{calls[0].Contract: true, calls[1].Contract: true}
 	if !seen["c-a"] || !seen["c-b"] || calls[0].URL != "http://eva" {
 		t.Errorf("checks = %+v", calls)
+	}
+}
+
+// Each element parks on its own approval; the run waits on all of them and
+// finishes the elements as their decisions come in.
+func TestForEachElementsParkAndResumeOneByOne(t *testing.T) {
+	h := newH(t)
+	h.reads("t/read@1")
+	h.node(&node.Spec{Node: "t/gate@1", SideEffect: node.SideEffectRead})
+	h.fx.Runner.ForStep("list", coretest.OK(items("a", "b")))
+	h.fx.Runner.ForNode("t/gate@1", func(inv core.Invocation) (core.Result, error) {
+		if inv.Resume == nil {
+			return coretest.Park(core.ApprovalRequest{
+				Kind: core.ApprovalHuman, Title: "ok?", Items: []core.ApprovalItem{{ID: core.HumanItemID}},
+			}), nil
+		}
+		return coretest.OK(inv.In["name"]), nil
+	})
+	id := h.do(`flow: eachgate
+version: 1.0.0
+steps:
+  - id: list
+    uses: t/read@1
+  - id: each
+    uses: t/gate@1
+    for_each: "{{ results.list.items }}"
+    with: { name: "{{ item.name }}" }
+`, nil)
+	h.wantRun(id, core.RunAwaitingApproval, "")
+	h.wantStep(id, "each", core.StepWaiting, core.ReasonHuman)
+	els := h.elements(id, "each")
+	if len(els) != 2 || els[0].Approval == "" || els[1].Approval == "" || els[0].Approval == els[1].Approval {
+		t.Fatalf("elements = %+v", els)
+	}
+
+	h.decideAll(els[0].Approval, core.VerdictApprove)
+	h.drain()
+	r := h.wantRun(id, core.RunAwaitingApproval, "")
+	if r.WaitingFor != core.WaitingForApproval(els[1].Approval) {
+		t.Errorf("waiting_for = %q, want the second element's approval", r.WaitingFor)
+	}
+	if got := h.elements(id, "each"); got[0].Status != core.StepSucceeded || got[1].Status != core.StepWaiting {
+		t.Errorf("elements = %s, %s", got[0].Status, got[1].Status)
+	}
+
+	h.decideAll(els[1].Approval, core.VerdictApprove)
+	h.drain()
+	h.wantRun(id, core.RunSucceeded, "")
+	if out := h.steps(id)["each"].Output.([]any); len(out) != 2 || out[0] != "a" || out[1] != "b" {
+		t.Errorf("output = %v", out)
+	}
+	if n := len(h.fx.Runner.CallsFor("each")); n != 4 {
+		t.Errorf("element calls = %d, want a park and a resume each", n)
+	}
+}
+
+// A node that evaluates expressions per item binds item itself: a step with
+// no for_each gets those leaves unrendered.
+func TestItemRefsInPlainStepReachNodeUnrendered(t *testing.T) {
+	h := newH(t)
+	h.reads("t/dedupe@1")
+	id := h.do(`flow: raw
+version: 1.0.0
+steps:
+  - id: d
+    uses: t/dedupe@1
+    with: { key: "{{ item.id }}", n: "{{ 1 + 1 }}", nest: ["{{ index }}"] }
+`, nil)
+	h.wantRun(id, core.RunSucceeded, "")
+	in := h.fx.Runner.CallsFor("d")[0].In
+	if in["key"] != "{{ item.id }}" || in["n"] != int64(2) || in["nest"].([]any)[0] != "{{ index }}" {
+		t.Errorf("in = %v", in)
 	}
 }
