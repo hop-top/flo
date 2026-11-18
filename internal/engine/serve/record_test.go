@@ -267,6 +267,8 @@ type echoExec struct {
 const (
 	secretToken = "tok-4f9c1d7a-input"  //nolint:gosec // a fake: a redacted input
 	secretOut   = "out-8b2e6a30-field"  //nolint:gosec // a fake: a redacted output field
+	varSecret   = "pass-3c7d1e90-var"   //nolint:gosec // a fake: a secret-looking var
+	stateSecret = "pw-default-9z8y7x"   //nolint:gosec // a fake: a state value
 	envSecret   = "env-secret-5d3b9e21" //nolint:gosec // a fake: a secret of the environment
 )
 
@@ -361,7 +363,7 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 	}
 	res, err := e.Services.Starter.Start(bg, core.StartRequest{
 		Tenant: core.DefaultTenant, Flow: "lookup", Version: a.Version.Hash, StartedBy: "jad", Record: true,
-		Vars:    map[string]any{"query": "alpha", "passphrase": "pass-3c7d1e90-var"},
+		Vars:    map[string]any{"query": "alpha", "passphrase": varSecret},
 		Trigger: core.TriggerInfo{Payload: map[string]any{"token": secretToken, "note": "kept"}},
 	})
 	if err != nil {
@@ -393,7 +395,7 @@ func TestRedactAndSecretsNeverReachTheRecording(t *testing.T) {
 		t.Fatalf("only %d recording files", files)
 	}
 	text := all.String()
-	for what, secret := range map[string]string{"a trigger field under a redact path": secretToken, "a secret-looking var": "pass-3c7d1e90-var", "a state key named by a redact path": "pw-default-9z8y7x", "a redacted input": secretToken, "a redacted output field": secretOut, "a secret of the environment": envSecret} {
+	for what, secret := range map[string]string{"a trigger field under a redact path": secretToken, "a secret-looking var": varSecret, "a state key named by a redact path": stateSecret, "a redacted input": secretToken, "a redacted output field": secretOut, "a secret of the environment": envSecret} {
 		if strings.Contains(text, secret) {
 			t.Errorf("the recording keeps %s (%s)", what, secret)
 		}
