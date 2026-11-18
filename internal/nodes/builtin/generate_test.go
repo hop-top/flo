@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hop.top/flo/internal/core"
@@ -152,6 +153,10 @@ func TestGenerateRuntimePrivacyCeiling(t *testing.T) {
 		{"public ollama host under local-only", "ollama://ollama.example.com/gemma", specrun.PrivacyLocalOnly, true},
 		{"public openai host under local-only", "openai://api.example.com:8080/m", specrun.PrivacyLocalOnly, true},
 		{"not a URI under local-only", "gemma", specrun.PrivacyLocalOnly, true},
+		{"dotted ollama name, no slash, under local-only", "ollama://llama3.1", specrun.PrivacyLocalOnly, true},
+		{"dotted ollama via empty authority", "ollama:///llama3.1", specrun.PrivacyLocalOnly, false},
+		{"dotted ollama via localhost", "ollama://localhost/llama3.1", specrun.PrivacyLocalOnly, false},
+		{"dotted ollama name under cloud-allowed", "ollama://llama3.1", specrun.PrivacyCloudAllowed, false},
 		{"local ollama under local-only", "ollama://gemma4:e4b", specrun.PrivacyLocalOnly, false},
 		{"private openai under local-only", "openai://10.0.0.7:8080/m", specrun.PrivacyLocalOnly, false},
 		{"cloud under cloud-allowed", "anthropic://claude-sonnet-5-5", specrun.PrivacyCloudAllowed, false},
@@ -162,6 +167,9 @@ func TestGenerateRuntimePrivacyCeiling(t *testing.T) {
 			if c.refused {
 				if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodePrivacyViolation {
 					t.Fatalf("not refused: %+v", res)
+				}
+				if strings.Contains(c.model, "://llama3.1") && !strings.Contains(res.Err.Suggestion, "ollama:///<model>") {
+					t.Errorf("suggestion lacks the local spelling: %q", res.Err.Suggestion)
 				}
 				return
 			}

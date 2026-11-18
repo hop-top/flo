@@ -73,8 +73,12 @@ func generate(ctx context.Context, g Generator, src PromptSource, inv core.Invoc
 	// An invocation that carries no ceiling is read as the strictest.
 	localOnly := inv.Privacy != specrun.PrivacyCloudAllowed
 	if lvl, ok := node.ModelPrivacy(model); localOnly && (!ok || lvl == node.PrivacyCloud) {
+		hint := "name a local model (ollama://, a local openai://host:port) or set privacy: cloud-allowed"
+		if node.AmbiguousOllama(model) {
+			hint = node.LocalOllamaHint
+		}
 		return pureFail(core.Errorf(core.CodePrivacyViolation, "model %q is not local under a local-only ceiling", model).
-			WithSuggestion("name a local model (ollama://, a local openai://host:port) or set privacy: cloud-allowed")), nil
+			WithSuggestion(hint)), nil
 	}
 	if g == nil {
 		return pureFail(core.New(core.CodeEngineFeature, "flo/ai.generate@1 has no backend configured").

@@ -187,6 +187,8 @@ func TestRules(t *testing.T) {
 			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'anthropic://claude' } }\n", false, ""},
 		{"V19 public ollama host under local-only", "V19", CodePrivacyViolation,
 			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://ollama.example.com/gemma' } }\n", false, ""},
+		{"V19 dotted ollama name without a slash is ambiguous", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://llama3.1' } }\n", false, "ollama:///<model>"},
 		{"V20 irreversible, no approval", "V20", CodeUnguardedIrreversible,
 			head + "privacy: local-only\nsteps:\n  - { id: f, uses: inbox/fetch@1 }\n  - { id: a, uses: inbox/apply@1, depends_on: [f], with: { run: x } }\n", false, ""},
 		{"V20 an exec step does not guard", "V20", CodeUnguardedIrreversible,
@@ -237,12 +239,14 @@ func TestLegalVariants(t *testing.T) {
 		"guard through results edge": head + "steps:\n" +
 			"  - { id: ap, uses: flo/approval@1, with: { items: [] } }\n" +
 			"  - { id: a, uses: inbox/apply@1, with: { run: \"{{ results.ap.approved }}\" } }\n",
-		"local model under local-only":        head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma' } }\n",
-		"ollama on a private host":            head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://10.0.0.4:11434/gemma' } }\n",
-		"ollama default daemon, tagged model": head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma4:e4b' } }\n",
-		"private-network openai":              head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://192.168.1.5:8080/m' } }\n",
-		"retry on an idempotent node":         head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, retry: { max_attempts: 3 } }\n",
-		"narrowing step privacy":              head + "privacy: cloud-allowed\nsteps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, privacy: local-only }\n",
+		"local model under local-only":         head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma' } }\n",
+		"ollama on a private host":             head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://10.0.0.4:11434/gemma' } }\n",
+		"ollama default daemon, tagged model":  head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma4:e4b' } }\n",
+		"ollama dotted model, empty authority": head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama:///llama3.1' } }\n",
+		"ollama dotted model on localhost":     head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://localhost/llama3.1' } }\n",
+		"private-network openai":               head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://192.168.1.5:8080/m' } }\n",
+		"retry on an idempotent node":          head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, retry: { max_attempts: 3 } }\n",
+		"narrowing step privacy":               head + "privacy: cloud-allowed\nsteps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, privacy: local-only }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {

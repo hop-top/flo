@@ -125,6 +125,9 @@ func (c *checker) privacy(st *spec.Step, n *node.Spec) {
 		if m, ok := st.With["model"].(string); ok && !strings.Contains(m, "{{") {
 			if p, ok := node.ModelPrivacy(m); ok {
 				eff, how = p, "its model "+m+" is "+string(p)
+				if node.AmbiguousOllama(m) {
+					how += "; " + node.LocalOllamaHint
+				}
 			}
 		}
 	}

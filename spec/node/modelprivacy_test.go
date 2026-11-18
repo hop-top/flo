@@ -21,6 +21,11 @@ func TestModelPrivacy(t *testing.T) {
 		{"ollama:///var/run/ollama.sock", PrivacyLocal, true},
 		{"ollama://unix:/var/run/ollama.sock", PrivacyLocal, true},
 		{"ollama://%2Fvar%2Frun%2Follama.sock/gemma", PrivacyLocal, true},
+		{"ollama://ollama.example.com", PrivacyCloud, true}, // dotted, no slash: ambiguous
+		{"ollama://llama3.1", PrivacyCloud, true},
+		{"ollama://llama3.1:8b", PrivacyCloud, true},
+		{"ollama:///llama3.1", PrivacyLocal, true},
+		{"ollama://localhost/llama3.1", PrivacyLocal, true},
 		{"ollama://ollama.example.com/gemma", PrivacyCloud, true},
 		{"ollama://8.8.8.8:11434/gemma", PrivacyCloud, true},
 		{"ollama://172.32.0.1/gemma", PrivacyCloud, true},

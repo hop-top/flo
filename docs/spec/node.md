@@ -525,10 +525,14 @@ Rules:
 
 - A flow with `privacy: local-only` is refused if any node is `cloud`
   (flow.md V19).
-- For AI nodes the level is derived from the `model` URI: `ollama://<model>`
-  (the daemon on this machine), `ollama://<host>/<model>` and
+- For AI nodes the level is derived from the `model` URI: `ollama://<name>`
+  (the daemon on this machine; the name has no dot), `ollama://<host>/<model>` and
   `openai://<host>/<model>` with a local host, and an `ollama://` unix
-  socket are `local`; hosted providers and any other host are `cloud`. A host
+  socket are `local`; hosted providers and any other host are `cloud`. An
+  `ollama://<authority>` with no slash after it and a dot in the authority
+  (`ollama://llama3.1`) is ambiguous (host or dotted model name) and is
+  `cloud`; a local dotted model is written `ollama:///llama3.1` or
+  `ollama://localhost/llama3.1`. A host
   is local when it is `localhost`, `*.local`, loopback (127.0.0.0/8, `::1`) or
   private (RFC 1918). The engine applies the same rule at run time: under a
   local-only ceiling a cloud model fails `privacy_violation` before any call. The node spec states the default; the validator resolves the

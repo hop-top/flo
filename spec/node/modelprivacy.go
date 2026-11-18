@@ -8,7 +8,9 @@ import (
 // ModelPrivacy derives the level of a model URI (node.md §9). The static
 // check (V19) and the engine's runtime ceiling both use it.
 //
-//   - ollama://<model> names the daemon on this machine: local.
+//   - ollama://<name> (no slash, no dot) names the daemon on this machine:
+//     local. With a dot it is ambiguous (host or dotted model name) and
+//     reads as cloud; write ollama:///<model> or ollama://localhost/<model>.
 //     ollama://<host>[:port]/<model> is local only when the host is; a unix
 //     socket (ollama:///path, ollama://unix:/path) is local.
 //   - openai://<host>[:port]/<model> is local only when the host is.
@@ -24,6 +26,9 @@ func ModelPrivacy(model string) (Privacy, bool) {
 	}
 	switch scheme {
 	case "ollama":
+		if AmbiguousOllama(model) {
+			return PrivacyCloud, true
+		}
 		if !strings.Contains(rest, "/") || isSocket(rest) {
 			return PrivacyLocal, true // bare model: the default local daemon
 		}
@@ -36,6 +41,16 @@ func ModelPrivacy(model string) (Privacy, bool) {
 		}
 	}
 	return PrivacyCloud, true
+}
+
+// LocalOllamaHint says how to write a local model whose name has a dot.
+const LocalOllamaHint = "write a local dotted model as ollama:///<model> or ollama://localhost/<model>"
+
+// AmbiguousOllama reports an ollama:// URI with no slash after an authority
+// holding a dot: a host or a dotted model name, so never read as local.
+func AmbiguousOllama(model string) bool {
+	rest, ok := strings.CutPrefix(model, "ollama://")
+	return ok && !strings.Contains(rest, "/") && strings.Contains(rest, ".") && !isSocket(rest)
 }
 
 // isSocket reports an authority that is empty (ollama:///run/x.sock) or a
