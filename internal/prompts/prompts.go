@@ -207,7 +207,7 @@ func (l Loader) Load(bundle, ref string) (*Prompt, error) {
 
 // read loads one file; a missing file is returned as fs.ErrNotExist.
 func read(r Ref, path string) (*Prompt, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: a prompt file of the flow bundle or an installed pack
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, err //nolint:wrapcheck // the caller tests for absence
