@@ -1,0 +1,44 @@
+[
+  {
+    "url": "https://api.github.com/repos/hop-top/poly-kit/releases/447422558",
+    "id": 447422558,
+    "tag_name": "kit/v0.5.0-beta.14",
+    "name": "kit: v0.5.0-beta.14",
+    "draft": false,
+    "prerelease": true,
+    "created_at": "2026-11-16T18:23:34Z",
+    "published_at": "2026-11-16T18:24:30Z",
+    "target_commitish": "ac292a9e71faad44f3c9eea8f85ba67f57ee4a01",
+    "immutable": false,
+    "body": "## [0.5.0-beta.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.13...kit/v0.5.0-beta.14) (2026-11-16)\n\n\n### Bug Fixes\n\n* **output:** whole table cells off-tty; id columns never ellipsiz",
+    "assets": 7
+  },
+  {
+    "url": "https://api.github.com/repos/hop-top/poly-kit/releases/446851320",
+    "id": 446851320,
+    "tag_name": "kit/v0.5.0-beta.13",
+    "name": "kit: v0.5.0-beta.13",
+    "draft": false,
+    "prerelease": true,
+    "created_at": "2026-11-16T09:52:17Z",
+    "published_at": "2026-11-16T09:52:46Z",
+    "target_commitish": "253caae0ec126c41a03d2373f450a3f7203037ce",
+    "immutable": false,
+    "body": "## [0.5.0-beta.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.12...kit/v0.5.0-beta.13) (2026-11-16)\n\n\n### Bug Fixes\n\n* **cmdsurface:** emit --flag=false for caller-set false bools ([7",
+    "assets": 7
+  },
+  {
+    "url": "https://api.github.com/repos/hop-top/poly-kit/releases/446572378",
+    "id": 446572378,
+    "tag_name": "kit/v0.5.0-beta.12",
+    "name": "kit: v0.5.0-beta.12",
+    "draft": false,
+    "prerelease": true,
+    "created_at": "2026-11-16T03:22:26Z",
+    "published_at": "2026-11-16T03:22:48Z",
+    "target_commitish": "9fb3deb2975bcbffe013a744327f534d41504a8c",
+    "immutable": false,
+    "body": "## [0.5.0-beta.12](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.11...kit/v0.5.0-beta.12) (2026-11-16)\n\n\n### Bug Fixes\n\n* **output:** truncate table cells with ellipsis instead of droppi",
+    "assets": 7
+  }
+]
