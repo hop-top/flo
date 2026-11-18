@@ -1,0 +1,16 @@
+xrr: "1"
+adapter: exec
+fingerprint: 847c03cf
+recorded_at: "2026-11-18T21:23:15Z"
+payload:
+    argv:
+        - aps
+        - run
+        - automation
+        - --
+        - inbox-plan
+        - --out
+        - <step_dir>/out.json
+        - 20261118-090001
+    env:
+        FLO_IDEMPOTENCY_KEY: ""

@@ -1,0 +1,207 @@
+[
+  {
+    "step": "approve",
+    "node": "flo/approval@1",
+    "plan": {
+      "capability": "flo/approval@1",
+      "args": {
+        "context": {
+          "run": "20261118-090001",
+          "run_dir": "/tmp/flo-inbox-record/inbox/runs/20261118-090001"
+        },
+        "items": [
+          {
+            "action": "label:Finance, archive",
+            "actions": [
+              {
+                "label": "Finance"
+              },
+              "archive"
+            ],
+            "class": [
+              "label:Finance",
+              "archive"
+            ],
+            "from": "billing@example.org",
+            "guard": null,
+            "id": "\u003cm2@example.org\u003e",
+            "n": 2,
+            "subject": "Invoice 2291",
+            "why": "invoice from a known sender"
+          },
+          {
+            "action": "reply:draft",
+            "actions": [
+              {
+                "reply": {
+                  "body": "Friday works.",
+                  "cc": [],
+                  "mode": "draft",
+                  "reply_all": false
+                }
+              }
+            ],
+            "class": [
+              "reply:draft"
+            ],
+            "from": "sam@example.org",
+            "guard": null,
+            "id": "\u003cm3@example.org\u003e",
+            "n": 3,
+            "subject": "Lunch on Friday?",
+            "why": "a person asks a question"
+          },
+          {
+            "action": "archive",
+            "actions": [
+              "archive"
+            ],
+            "class": [],
+            "from": "legal@example.org",
+            "guard": "folder rule: approval always",
+            "id": "\u003cm5@example.org\u003e",
+            "n": 4,
+            "subject": "Contract renewal",
+            "why": "renewal notice"
+          },
+          {
+            "action": "read, archive",
+            "actions": [
+              "read",
+              "archive"
+            ],
+            "class": [
+              "read",
+              "archive"
+            ],
+            "from": "news@example.org",
+            "id": "\u003cm1@example.org\u003e",
+            "n": 1,
+            "subject": "Weekly digest",
+            "why": "newsletter, nothing to answer"
+          }
+        ],
+        "surface": "tlc",
+        "title": "Triage the inbox",
+        "trust": "inbox",
+        "verdicts": [
+          "approve",
+          "reject"
+        ]
+      },
+      "idempotency_key": "run_01m7r8nqyfefmrf7enxnzmj5bv/approve",
+      "rendered": {
+        "builtin": "flo/approval@1",
+        "in": {
+          "context": {
+            "run": "20261118-090001",
+            "run_dir": "/tmp/flo-inbox-record/inbox/runs/20261118-090001"
+          },
+          "items": [
+            {
+              "action": "label:Finance, archive",
+              "actions": [
+                {
+                  "label": "Finance"
+                },
+                "archive"
+              ],
+              "class": [
+                "label:Finance",
+                "archive"
+              ],
+              "from": "billing@example.org",
+              "guard": null,
+              "id": "\u003cm2@example.org\u003e",
+              "n": 2,
+              "subject": "Invoice 2291",
+              "why": "invoice from a known sender"
+            },
+            {
+              "action": "reply:draft",
+              "actions": [
+                {
+                  "reply": {
+                    "body": "Friday works.",
+                    "cc": [],
+                    "mode": "draft",
+                    "reply_all": false
+                  }
+                }
+              ],
+              "class": [
+                "reply:draft"
+              ],
+              "from": "sam@example.org",
+              "guard": null,
+              "id": "\u003cm3@example.org\u003e",
+              "n": 3,
+              "subject": "Lunch on Friday?",
+              "why": "a person asks a question"
+            },
+            {
+              "action": "archive",
+              "actions": [
+                "archive"
+              ],
+              "class": [],
+              "from": "legal@example.org",
+              "guard": "folder rule: approval always",
+              "id": "\u003cm5@example.org\u003e",
+              "n": 4,
+              "subject": "Contract renewal",
+              "why": "renewal notice"
+            },
+            {
+              "action": "read, archive",
+              "actions": [
+                "read",
+                "archive"
+              ],
+              "class": [
+                "read",
+                "archive"
+              ],
+              "from": "news@example.org",
+              "id": "\u003cm1@example.org\u003e",
+              "n": 1,
+              "subject": "Weekly digest",
+              "why": "newsletter, nothing to answer"
+            }
+          ],
+          "surface": "tlc",
+          "title": "Triage the inbox",
+          "trust": "inbox",
+          "verdicts": [
+            "approve",
+            "reject"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "step": "apply",
+    "node": "inbox/apply@1",
+    "plan": {
+      "capability": "inbox/apply@1",
+      "args": {
+        "run": "20261118-090001"
+      },
+      "idempotency_key": "run_01m7r8nqyfefmrf7enxnzmj5bv/apply",
+      "rendered": {
+        "argv": [
+          "inbox",
+          "apply",
+          "20261118-090001",
+          "--no-task",
+          "--json"
+        ],
+        "env": {
+          "FLO_IDEMPOTENCY_KEY": "run_01m7r8nqyfefmrf7enxnzmj5bv/apply"
+        },
+        "profile": "automation"
+      }
+    }
+  }
+]

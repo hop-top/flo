@@ -1,0 +1,126 @@
+xrr: "1"
+adapter: exec
+fingerprint: 847c03cf
+recorded_at: "2026-11-18T21:23:15Z"
+payload:
+    stdout: ""
+    exit_code: 0
+    files:
+        - path: out.json
+          content: |
+            {
+              "schema_version": 1,
+              "run": "20261118-090001",
+              "run_dir": "/tmp/flo-inbox-record/inbox/runs/20261118-090001",
+              "counts": {
+                "total": 5,
+                "auto": 1,
+                "pending": 3,
+                "superseded": 1
+              },
+              "task": null,
+              "files": [
+                "/tmp/flo-inbox-record/inbox/runs/20261118-090001/plan.json"
+              ],
+              "items": [
+                {
+                  "n": 1,
+                  "account": "acme",
+                  "message_id": "<m1@example.org>",
+                  "from": "news@example.org",
+                  "subject": "Weekly digest",
+                  "status": "auto",
+                  "verdict": null,
+                  "keys": [
+                    "read",
+                    "archive"
+                  ],
+                  "actions": [
+                    "read",
+                    "archive"
+                  ],
+                  "why": "newsletter, nothing to answer",
+                  "guard": null,
+                  "recipients": null,
+                  "errors": [],
+                  "executed": null
+                },
+                {
+                  "n": 2,
+                  "account": "acme",
+                  "message_id": "<m2@example.org>",
+                  "from": "billing@example.org",
+                  "subject": "Invoice 2291",
+                  "status": "pending",
+                  "verdict": null,
+                  "keys": [
+                    "label:Finance",
+                    "archive"
+                  ],
+                  "actions": [
+                    {
+                      "label": "Finance"
+                    },
+                    "archive"
+                  ],
+                  "why": "invoice from a known sender",
+                  "guard": null,
+                  "recipients": null,
+                  "errors": [],
+                  "executed": null
+                },
+                {
+                  "n": 3,
+                  "account": "acme",
+                  "message_id": "<m3@example.org>",
+                  "from": "sam@example.org",
+                  "subject": "Lunch on Friday?",
+                  "status": "pending",
+                  "verdict": null,
+                  "keys": [
+                    "reply:draft"
+                  ],
+                  "actions": [
+                    {
+                      "reply": {
+                        "mode": "draft",
+                        "body": "Friday works.",
+                        "reply_all": false,
+                        "cc": []
+                      }
+                    }
+                  ],
+                  "why": "a person asks a question",
+                  "guard": null,
+                  "recipients": {
+                    "to": [
+                      "sam@example.org"
+                    ],
+                    "cc": [],
+                    "redirected": false
+                  },
+                  "errors": [],
+                  "executed": null
+                },
+                {
+                  "n": 4,
+                  "account": "beta",
+                  "message_id": "<m5@example.org>",
+                  "from": "legal@example.org",
+                  "subject": "Contract renewal",
+                  "status": "pending",
+                  "verdict": null,
+                  "keys": [
+                    "archive"
+                  ],
+                  "actions": [
+                    "archive"
+                  ],
+                  "why": "renewal notice",
+                  "guard": "folder rule: approval always",
+                  "recipients": null,
+                  "errors": [],
+                  "executed": null
+                }
+              ]
+            }

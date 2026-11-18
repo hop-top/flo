@@ -1,0 +1,20 @@
+# The default scenario of the fake script: four messages, one automatic
+# (every action trusted), three pending (one of them held back by a rule that
+# always asks). A test approves every item and runs no irreversible step; the
+# approval and the apply are planned, not executed.
+expect:
+  - step: fetch
+    output:
+      run: "20261118-090001"
+      rows: 4
+      new: 4
+      carried: 0
+      failed_accounts: []
+  - step: decide
+    output: { run: "20261118-090001", rows: 4 }
+  - step: plan
+    output:
+      run: "20261118-090001"
+      counts: { auto: 1, pending: 3, superseded: 1 }
+  - step: approve
+  - step: apply

@@ -1,0 +1,49 @@
+flow: inbox-triage
+version: 0.1.0
+description: Classify new mail, ask about what needs a person, apply the rest.
+on:
+  - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
+  - manual: {}
+run_as: automation
+privacy: cloud-allowed          # `decide` sends headers only
+tasks: per-run
+concurrency: { on_overlap: skip }
+steps:
+  # No lanes: fetch only reads and snapshots. The script's own state (seen
+  # mail, pending locks, trust) lives between the steps, so they are ordered
+  # with depends_on; the run id is the data they share.
+  - id: fetch
+    uses: inbox/fetch@1
+
+  - id: decide
+    uses: inbox/decide@1
+    depends_on: [fetch]
+    with: { run: "{{ results.fetch.run }}" }
+
+  - id: plan
+    uses: inbox/plan@1
+    depends_on: [decide]
+    with: { run: "{{ results.fetch.run }}" }
+
+  # Everything apply would touch goes through the approval, so the guard of the
+  # irreversible step always finds a decision: the script's automatic items
+  # (every action at a trusted level) are decided by trust and cost no one a
+  # look; only the pending ones park the run. Nothing to do skips both.
+  - id: approve
+    uses: flo/approval@1
+    when: "{{ size(results.plan.pending) + size(results.plan.auto) > 0 }}"
+    with:
+      title: Triage the inbox
+      items: "{{ results.plan.pending + results.plan.auto }}"
+      verdicts: [approve, reject]
+      trust: inbox
+      surface: tlc
+      context: { run: "{{ results.fetch.run }}", run_dir: "{{ results.plan.run_dir }}" }
+
+  # Runs only when something was approved or automatic: a run whose pending
+  # items were all rejected applies nothing.
+  - id: apply
+    uses: inbox/apply@1
+    when: "{{ size(results.approve.approved) + size(results.approve.auto) > 0 }}"
+    depends_on: [plan, approve]
+    with: { run: "{{ results.fetch.run }}" }

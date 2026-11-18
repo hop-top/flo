@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: exec
+fingerprint: ee1372da
+recorded_at: "2026-11-18T21:23:15Z"
+payload:
+    stdout: |
+        {"schema_version":1,"command":"decide","exit":0,"ok":true,"run":"20261118-090001","run_dir":"/tmp/flo-inbox-record/inbox/runs/20261118-090001","engine":"model","already_decided":false,"rows":4,"carried":0,"asked":4,"answered":0,"attention":0,"needs_review":0,"cost":0.0123,"files":["/tmp/flo-inbox-record/inbox/runs/20261118-090001/decisions.json"]}
+    exit_code: 0
