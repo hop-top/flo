@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -127,14 +126,15 @@ func (e *Engine) openRecording(ctx context.Context, run core.Run) (*recSession, 
 		Status: runrec.StatusRecording, CreatedAt: e.Config.Clock.Now().UTC(), Redacted: slices.Compact(slices.Sorted(slices.Values(paths))),
 	}
 	// What the replay starts from, except the state, which the run takes at
-	// its first turn (endRecording). Redacted paths are dropped.
-	trigger := map[string]any{}
+	// its first turn (closeTurn). These are the run's own inputs, copied as
+	// the run record holds them: a replay needs them whole, and the copy
+	// exposes nothing the run record does not. Redaction is for the calls.
+	trigger, vars := map[string]any{}, map[string]any{}
 	if run.Trigger.Payload != nil {
-		trigger, _ = s.redact.Doc(run.Trigger.Payload).(map[string]any)
+		trigger = run.Trigger.Payload
 	}
-	vars := map[string]any{}
 	if run.Vars != nil {
-		vars, _ = s.redact.Doc(run.Vars).(map[string]any)
+		vars = run.Vars
 	}
 	for name, doc := range map[string]any{runrec.TriggerFile: trigger, runrec.VarsFile: vars} {
 		if err := rs.WriteJSON(run.Tenant, run.ID, name, doc); err != nil {
@@ -162,12 +162,7 @@ func (e *Engine) closeTurn(ctx context.Context, s *recSession) error {
 	}
 	rs := e.Recordings
 	if run.StateSnapshot != nil && !rs.Exists(s.tenant, s.run, runrec.StateFile) {
-		state := maps.Clone(run.StateSnapshot)
-		for _, name := range s.redact.Names() {
-			delete(state, name)
-		}
-		doc, _ := s.redact.Doc(state).(map[string]any)
-		if err := rs.WriteJSON(s.tenant, s.run, runrec.StateFile, doc); err != nil {
+		if err := rs.WriteJSON(s.tenant, s.run, runrec.StateFile, run.StateSnapshot); err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
 	}

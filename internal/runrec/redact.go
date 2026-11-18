@@ -57,18 +57,6 @@ func (r *Redactor) With(literals ...string) *Redactor {
 	return out
 }
 
-// Names are the last segments of the paths: the state keys and fields a
-// flow-wide redaction drops by name.
-func (r *Redactor) Names() []string {
-	var out []string
-	for _, p := range r.paths {
-		if n := p[len(p)-1]; !slices.Contains(out, n) {
-			out = append(out, n)
-		}
-	}
-	return out
-}
-
 func containsPath(all [][]string, p []string) bool {
 	return slices.ContainsFunc(all, func(q []string) bool { return slices.Equal(p, q) })
 }

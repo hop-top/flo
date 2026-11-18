@@ -120,6 +120,12 @@ func (t *Tape) save(adapter xrr.Adapter, req xrr.Request, resp xrr.Response, doE
 		}
 		err = t.cass.Save(adapter.ID(), fp, sreq, sresp, doErr)
 	}
+	if err == nil {
+		// xrr writes 0644; a recording is for its owner
+		for _, kind := range []string{"req", "resp"} {
+			_ = os.Chmod(filepath.Join(t.dir, fmt.Sprintf("%s-%s.%s.yaml", adapter.ID(), fp, kind)), 0o600)
+		}
+	}
 	if err != nil {
 		t.notePartial(what + ": " + err.Error())
 		return

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"time"
 
 	"hop.top/flo/internal/core"
@@ -74,9 +75,9 @@ func (e *Engine) ReplayRun(ctx context.Context, tenant core.TenantID, req Replay
 		return ReplayResult{}, err //nolint:wrapcheck // *core.Error
 	}
 	rs := e.Recordings
-	meta, found, err := rs.Load(tenant, run.ID)
+	meta, found, err := e.loadClosed(ctx, tenant, run)
 	if err != nil {
-		return ReplayResult{}, err //nolint:wrapcheck // *core.Error
+		return ReplayResult{}, err
 	}
 	if !found {
 		return ReplayResult{}, core.Errorf(core.CodeNotFound, "run %s has no recording", run.ID).
@@ -225,11 +226,56 @@ func diffSteps(orig, replay []core.StepRun) []string {
 	return out
 }
 
+// sameJSON compares two outputs as JSON, with the ids the engine mints
+// (out_01..., which differ in every run) taken as equal.
 func sameJSON(a, b any) bool {
 	na, ea := core.NormalizeJSON(a)
 	nb, eb := core.NormalizeJSON(b)
 	if ea != nil || eb != nil {
 		return false
 	}
-	return reflect.DeepEqual(na, nb)
+	return reflect.DeepEqual(maskIDs(na), maskIDs(nb))
+}
+
+var mintedID = regexp.MustCompile(`^[a-z]{2,5}_[0-9a-z]{20,}$`)
+
+func maskIDs(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, val := range x {
+			out[k] = maskIDs(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, val := range x {
+			out[i] = maskIDs(val)
+		}
+		return out
+	case string:
+		if mintedID.MatchString(x) {
+			return "<id>"
+		}
+	}
+	return v
+}
+
+// closeWait is how long a replay of a run that has just ended waits for the
+// engine to close its recording: the run is finished a moment before.
+const closeWait = 5 * time.Second
+
+func (e *Engine) loadClosed(ctx context.Context, tenant core.TenantID, run core.Run) (runrec.Meta, bool, error) {
+	end := time.Now().Add(closeWait)
+	for {
+		meta, found, err := e.Recordings.Load(tenant, run.ID)
+		if err != nil || !found || meta.Status == runrec.StatusComplete || !run.Status.Terminal() || time.Now().After(end) {
+			return meta, found, err //nolint:wrapcheck // *core.Error
+		}
+		select {
+		case <-ctx.Done():
+			return meta, found, nil
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
 }

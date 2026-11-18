@@ -98,6 +98,7 @@ func (e *eva) Do(req *http.Request) (*http.Response, error) {
 }
 
 type rig struct {
+	root string
 	e    *serve.Engine
 	live *liveExec
 	eva  *eva
@@ -111,7 +112,7 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	copyTree(t, testdata("packs", "inbox"), filepath.Join(packs, "inbox"))
-	r := &rig{live: &liveExec{t: t}, eva: &eva{status: 200}}
+	r := &rig{root: root, live: &liveExec{t: t}, eva: &eva{status: 200}}
 	e, err := serve.Open(bg, serve.Config{Root: root, Owner: "jad", NoSync: true, Exec: r.live, HTTP: r.eva})
 	if err != nil {
 		t.Fatal(err)
