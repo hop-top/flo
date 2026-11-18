@@ -19,3 +19,18 @@ func TestRootPackageDoesNotImportCEL(t *testing.T) {
 		}
 	}
 }
+
+// The spec module is the part tlc and other tools import: it must never
+// link kit or any package of the flo engine.
+func TestModuleHasNoKitOrEngineDependency(t *testing.T) {
+	out, err := exec.Command("go", "list", "-deps", "./...").Output()
+	if err != nil {
+		t.Skipf("go list unavailable: %v", err)
+	}
+	for _, pkg := range strings.Fields(string(out)) {
+		if strings.HasPrefix(pkg, "hop.top/kit") || strings.HasPrefix(pkg, "hop.top/flo/internal") ||
+			pkg == "hop.top/flo/cmd" || pkg == "hop.top/flo" {
+			t.Errorf("the spec module depends on %s", pkg)
+		}
+	}
+}
