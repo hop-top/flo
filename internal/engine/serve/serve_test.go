@@ -336,3 +336,17 @@ func TestCalendarPackIsServed(t *testing.T) {
 		t.Error("no calendar syncer")
 	}
 }
+
+// Stopping an engine while it starts is a stop, not a fault: the start-up
+// pass is cut short by the cancelled context and Serve returns nil.
+func TestServeCancelledDuringStartupIsNotAFault(t *testing.T) {
+	e := open(t)
+	ctx, cancel := context.WithCancel(bg)
+	cancel()
+	if err := e.Serve(ctx); err != nil {
+		t.Fatalf("Serve with a cancelled context: %v", err)
+	}
+	if _, ok, _ := serve.ReadState(e.Config.Root); ok {
+		t.Error("a stopped engine leaves its state file")
+	}
+}

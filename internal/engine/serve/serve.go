@@ -34,6 +34,9 @@ func (e *Engine) Serve(ctx context.Context) error {
 	}
 	defer release()
 	if err := e.startup(ctx); err != nil {
+		if ctx.Err() != nil {
+			return nil //nolint:nilerr // stopped while starting: the pass was cut short, not faulty
+		}
 		return err
 	}
 	e.Config.Logger.Info("engine serving", "root", e.Config.Root, "tenant", e.Config.Tenant, "pollers", e.pollers())
