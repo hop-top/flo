@@ -16,7 +16,7 @@ func TestKillAndRestartFinishesWithoutRerunningSucceededSteps(t *testing.T) {
 	// a claim lives 2s without a heartbeat, so a killed engine's job is
 	// released soon enough for the test
 	e := newEnv(t, "FLO_ENGINE_CLAIM_TTL=2s")
-	e.ok("flow", "apply", "-f", testdata("flows", "slow-chain"))
+	e.applyTested("slow-chain")
 	e.ok("flow", "set", "slow-chain", "--state", "active", "--yes")
 
 	first := e.startEngine()

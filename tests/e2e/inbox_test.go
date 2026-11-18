@@ -18,7 +18,7 @@ func setupInbox(t *testing.T, e *env) *engine {
 	e.installPack("inbox")
 	e.ok("grant", "set", "automation", "mail.read", "--yes")
 	e.ok("grant", "set", "automation", "mail.write", "--yes")
-	e.ok("flow", "apply", "-f", testdata("flows", "inbox-triage"))
+	e.applyTested("inbox-triage")
 	e.ok("flow", "set", "inbox-triage", "--state", "active", "--yes")
 	return e.startEngine()
 }

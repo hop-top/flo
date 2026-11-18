@@ -73,9 +73,11 @@ func TestScheduleFiresOnTheClock(t *testing.T) {
 		}
 		return out.String(), err
 	}
+	bundle := copyBundle(t, "dependency-watch") // recording writes into the bundle
 	for _, args := range [][]string{
 		{"grant", "set", "automation", "vcs.read", "--yes"},
-		{"flow", "apply", "-f", testdata("flows", "dependency-watch")},
+		{"flow", "apply", "-f", bundle, "--yes"},
+		{"flow", "test", "dependency-watch", "--record", "--yes"},
 		{"flow", "set", "dependency-watch", "--state", "active", "--yes"},
 	} {
 		if out, err := flo(args...); err != nil {

@@ -37,32 +37,33 @@ func copyBundle(t *testing.T, name string) string {
 // the second run dedupes, and a failing run leaves state alone.
 func TestWatcher(t *testing.T) {
 	e := newEnv(t)
-	bundle := testdata("flows", "dependency-watch")
+	bundle := copyBundle(t, "dependency-watch")
 
 	// Apply is checked against grants: automation holds nothing yet.
-	if r := e.run("flow", "apply", "-f", bundle); r.Exit != core.ExitPermission || !strings.Contains(r.Stderr, "grant_denied") {
+	if r := e.run("flow", "apply", "-f", bundle, "--yes"); r.Exit != core.ExitPermission || !strings.Contains(r.Stderr, "grant_denied") {
 		t.Fatalf("apply without the grant: exit %d, stderr %s", r.Exit, r.Stderr)
 	}
 	e.ok("grant", "set", "automation", "vcs.read", "--yes")
 
 	var a applied
-	e.okJSON(&a, "flow", "apply", "-f", bundle)
+	e.okJSON(&a, "flow", "apply", "-f", bundle, "--yes")
 	if !a.Changed || a.Seq != 1 || a.State != "draft" {
 		t.Fatalf("first apply = %+v", a)
 	}
 	first := a.Hash
-	e.okJSON(&a, "flow", "apply", "-f", bundle)
+	e.okJSON(&a, "flow", "apply", "-f", bundle, "--yes")
 	if a.Changed || a.Hash != first {
 		t.Errorf("the same content must be the same version: %+v", a)
 	}
 	// New content is a new version; the old content is not stored again.
 	changed := copyBundle(t, "dependency-watch")
 	rewrite(t, filepath.Join(changed, "flow.yaml"), "version: 0.1.0", "version: 0.2.0")
-	e.okJSON(&a, "flow", "apply", "-f", changed)
+	e.okJSON(&a, "flow", "apply", "-f", changed, "--yes")
 	if !a.Changed || a.Seq != 2 || a.Hash == first {
 		t.Fatalf("changed content = %+v", a)
 	}
-	e.okJSON(&a, "flow", "apply", "-f", bundle)
+	second := a.Hash
+	e.okJSON(&a, "flow", "apply", "-f", bundle, "--yes")
 	if a.Changed || a.Hash != first || a.Seq != 1 {
 		t.Errorf("re-applying the first content = %+v", a)
 	}
@@ -74,6 +75,16 @@ func TestWatcher(t *testing.T) {
 		t.Errorf("validate of a flow naming a missing node: exit %d\n%s", r.Exit, r.Stderr)
 	}
 
+	// Activation needs a passing test of that exact version; the second version
+	// has none.
+	if r := e.run("flow", "set", "dependency-watch", "--version", first, "--state", "active", "--yes"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "flow_not_tested") {
+		t.Fatalf("activating an untested version: exit %d, stderr %s", r.Exit, r.Stderr)
+	}
+	e.ok("flow", "test", "dependency-watch", "--version", first, "--record", "--yes")
+	e.resetScratch()
+	if r := e.run("flow", "set", "dependency-watch", "--version", second, "--state", "active", "--yes"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "flow_not_tested") {
+		t.Fatalf("activating the other, untested version: exit %d, stderr %s", r.Exit, r.Stderr)
+	}
 	e.okJSON(&a, "flow", "set", "dependency-watch", "--version", first, "--state", "active", "--yes")
 	if a.State != "active" || !a.Changed {
 		t.Fatalf("activate = %+v", a)

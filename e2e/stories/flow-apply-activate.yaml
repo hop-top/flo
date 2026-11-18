@@ -1,11 +1,11 @@
 schema_version: "1"
 story_id: flo.flow.apply-activate
-title: Store a flow as a version and activate it
+title: Store a flow as a version, test it and activate it
 binary: flo
 intent: |
   An operator has a flow bundle and wants it to run on its triggers.
-  They validate it, store it as a version, make it the active one and
-  read when its triggers fire next.
+  They validate it, store it as a version, record a test of that
+  version, make it the active one and read when its triggers fire next.
 steps:
   - id: validate
     intent: |
@@ -15,11 +15,22 @@ steps:
   - id: apply
     intent: |
       Store the flow. Applying the same content again changes nothing.
-    invoke: ["flo", "flow", "apply", "-f", "flows/dependency-watch", "--format", "json"]
+    invoke: ["flo", "flow", "apply", "-f", "flows/dependency-watch", "--yes", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: record
+    intent: |
+      Run the flow once with real reads, keep them as cassettes and the
+      skipped writes as plans; the result binds to this exact version.
+    invoke: ["flo", "flow", "test", "dependency-watch", "--record", "--yes", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: replay
+    intent: |
+      Test the version again on the recordings alone, offline.
+    invoke: ["flo", "flow", "test", "dependency-watch", "--replay", "--format", "json"]
     capture: [exit_code, stdout]
   - id: activate
     intent: |
-      Make the stored version the one new runs and triggers use.
+      Make the tested version the one new runs and triggers use.
     invoke: ["flo", "flow", "set", "dependency-watch", "--state", "active", "--yes", "--format", "json"]
     capture: [exit_code, stdout]
   - id: triggers

@@ -15,8 +15,10 @@ jobs and advances them.
 ```sh
 flo grant set automation vcs.read --yes        # the profile the flow runs as
 flo flow validate -f flows/dependency-watch    # a bundle: flow.yaml + nodes/
-flo flow apply -f flows/dependency-watch       # new version only when content changed
-flo flow set dependency-watch --state active --yes
+flo flow apply -f flows/dependency-watch --yes # new version only when content changed
+flo flow test dependency-watch --record --yes  # reads run once for real, cassettes in record/
+flo flow test dependency-watch                 # replay: offline, writes only planned
+flo flow set dependency-watch --state active --yes   # needs a passing test of this version
 flo trigger list                               # next fire of each trigger
 flo engine serve &                             # SIGTERM drains running steps
 flo run create --flow dependency-watch --wait  # 0 done, 7 awaiting approval
@@ -29,6 +31,18 @@ flo run cancel <run> --yes
 - `run create`: `--var name=value` (typed per the flow), `--var-file`,
   `--idempotency-key` (same key, same run), `--trigger-file` (trigger payload),
   `--version`, `--wait [--timeout]`. `--wait` needs a serving engine.
+- `flow test <flow>`: runs a stored version once in a sandbox (nothing reaches
+  the real stores). Writes (`write-shared`, `irreversible`) are not executed:
+  their plans are recorded; approvals are auto-approved. Replay (default)
+  answers processes, HTTP and eva checks from the xrr cassettes in the bundle's
+  `record/cassettes/`; a call without one fails the test. `--record` makes the
+  reads for real and writes `record/` (`cassettes/`, `trigger.json`,
+  `plans.json`). Pass: run succeeded, outputs match node specs, `check:`s pass,
+  every `expect:` of `tests/*.yaml` holds. `--trigger-file`, `--var`,
+  `--version`, `--timeout`. Exit 1 when the test fails. The latest result of a
+  version (flow hash + bundle digest) is what activation reads
+  (`flow_not_tested`, exit 2). `apply` and `test --record` ask for
+  confirmation (`--yes`).
 - Identity: `FLO_PROFILE`, else `owner_profile` of the config, else `$USER`;
   tenant `FLO_TENANT`, else `tenant`, else `default`. The owner profile
   (`owner_profile`, else `$USER`) holds the wildcard grant; the engine's

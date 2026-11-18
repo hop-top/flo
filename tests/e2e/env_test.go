@@ -411,3 +411,30 @@ func rewrite(t *testing.T, path, old, replacement string) {
 		t.Fatal(err)
 	}
 }
+
+// resetScratch empties the scratch directory: what the fake tools logged while
+// a flow was being recorded is not what a later assertion is about.
+func (e *env) resetScratch() {
+	e.t.Helper()
+	ents, err := os.ReadDir(e.scratch)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, ent := range ents {
+		if err := os.RemoveAll(filepath.Join(e.scratch, ent.Name())); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+}
+
+// applyTested stores a copy of a testdata flow bundle (recording writes into
+// the bundle, never into the repository) and records a passing test of it, so
+// the flow can be activated. It returns the copy's path.
+func (e *env) applyTested(name string) string {
+	e.t.Helper()
+	bundle := copyBundle(e.t, name)
+	e.ok("flow", "apply", "-f", bundle, "--yes")
+	e.ok("flow", "test", name, "--record", "--yes")
+	e.resetScratch()
+	return bundle
+}
