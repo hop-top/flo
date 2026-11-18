@@ -207,8 +207,7 @@ func TestMeetingBriefEndToEnd(t *testing.T) {
 		t.Errorf("two attendees returned the same objects: want 3 notes after dedupe:\n%s", body)
 	}
 
-	// The sources: a search per attendee by name, else the local part of the
-	// address, with the secret; the wrappers' calls; the people merged by id.
+	// The sources: a search per attendee by name, else by address, with the secret; the wrappers' calls; the people merged by id.
 	reqs, auths := m.stub.calls()
 	if len(reqs) != len(reqs0)+2 {
 		t.Fatalf("the run searched ctxt %d times", len(reqs)-len(reqs0))
@@ -216,12 +215,14 @@ func TestMeetingBriefEndToEnd(t *testing.T) {
 	var queries []string
 	for _, q := range reqs[len(reqs0):] {
 		queries = append(queries, q["query"].(string))
-		if f, _ := q["filter"].(map[string]any); f["person"] != q["query"] {
+		// a name narrows to the notes that name the person; an address is text only
+		f, _ := q["filter"].(map[string]any)
+		if q["query"] == "Ada Lovelace" && f["person"] != "Ada Lovelace" || q["query"] != "Ada Lovelace" && f["person"] != "" {
 			t.Errorf("filter %v for query %v", q["filter"], q["query"])
 		}
 	}
 	slices.Sort(queries)
-	if !slices.Equal(queries, []string{"Ada Lovelace", "bob"}) {
+	if !slices.Equal(queries, []string{"Ada Lovelace", "bob@example.org"}) {
 		t.Errorf("queries %v", queries)
 	}
 	if a := auths[len(auths)-1]; a != "Bearer "+ctxtToken {
@@ -271,16 +272,119 @@ func TestMeetingBriefEmptySources(t *testing.T) {
 		}
 	}
 
-	// ctxt gone: its searches are skipped, the other sections stay.
-	m.stub.Close()
-	var d created
-	if r := m.jsonOf(&d, "run", "create", "--flow", mbFlow, "--trigger-file", m.event, "--wait"); r.Exit != 0 || d.Status != "succeeded" {
-		t.Fatalf("run with ctxt down: exit %d %+v\n%s", r.Exit, d, r.Stderr)
+}
+
+// briefOf runs the flow on the recorded event, with the extra args, and returns
+// its brief and how long the run took.
+func (m *mbEnv) briefOf(args ...string) (string, time.Duration) {
+	m.t.Helper()
+	var c created
+	t0 := time.Now()
+	if r := m.jsonOf(&c, append([]string{"run", "create", "--flow", mbFlow, "--trigger-file", m.event, "--wait"}, args...)...); r.Exit != 0 || c.Status != "succeeded" {
+		m.t.Fatalf("run: exit %d %+v\n%s", r.Exit, c, r.Stderr)
 	}
+	d := time.Since(t0)
 	for _, b := range m.briefs() {
-		if b.Run == d.Run && (!strings.Contains(b.Body, "Nothing in the knowledge store on these people.") || !strings.Contains(b.Body, "c1 [open]") || !strings.Contains(b.Body, "T-0101")) {
-			t.Errorf("the brief with ctxt down:\n%s", b.Body)
+		if b.Run == c.Run {
+			return b.Body, d
 		}
+	}
+	m.t.Fatalf("no brief for run %s", c.Run)
+	return "", 0
+}
+
+// TestMeetingBriefDegrades: a source that is down (ctxt unreachable, heo with
+// no daemon through its retries, tlc failing) does not fail the run. Its
+// section says "source unavailable: <source>", the others stay, and the run
+// does not wait out the nodes' default retries.
+func TestMeetingBriefDegrades(t *testing.T) {
+	m := newMBEnv(t)
+	m.record()
+	m.ok("flow", "set", mbFlow, "--state", "active", "--yes")
+	m.startEngine()
+
+	const unavailable = "source unavailable: "
+	has := func(body string, want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !strings.Contains(body, w) {
+				t.Errorf("the brief lacks %q:\n%s", w, body)
+			}
+		}
+	}
+	lacks := func(body string, bad ...string) {
+		t.Helper()
+		for _, w := range bad {
+			if strings.Contains(body, w) {
+				t.Errorf("the brief holds %q:\n%s", w, body)
+			}
+		}
+	}
+
+	// heo: exit 70 on every attempt.
+	if err := os.WriteFile(filepath.Join(m.scratch, "heo-down"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, took := m.briefOf()
+	has(body, unavailable+"heo", "Ada runs the platform team.", "T-0101")
+	lacks(body, unavailable+"ctxt", unavailable+"tlc", "c1 [open]", "No conversation")
+	if took > 8*time.Second {
+		t.Errorf("heo down: the run took %s", took)
+	}
+	if n := len(slices.DeleteFunc(logOf(m.env, "heo.log"), func(l string) bool { return !strings.HasPrefix(l, "heo conversation") })); n < 2 {
+		t.Errorf("heo exit 70 was not retried: %v", logOf(m.env, "heo.log"))
+	}
+	if err := os.Remove(filepath.Join(m.scratch, "heo-down")); err != nil {
+		t.Fatal(err)
+	}
+
+	// tlc: a failing exit.
+	if err := os.WriteFile(filepath.Join(m.shims, "tlc"), []byte("#!/bin/sh\necho 'tlc: database is locked' >&2\nexit 1\n"), 0o755); err != nil { //nolint:gosec // an executable fake
+		t.Fatal(err)
+	}
+	body, _ = m.briefOf()
+	has(body, unavailable+"tlc", "Ada runs the platform team.", "c1 [open]")
+	lacks(body, unavailable+"ctxt", unavailable+"heo", "T-0101", "No open task")
+
+	// ctxt gone too (heo is back up, tlc still fails): the store's section says
+	// so at once, not after ctxt's default retries.
+	m.stub.Close()
+	body, took = m.briefOf()
+	has(body, unavailable+"ctxt", unavailable+"tlc", "# Brief: Review", "Ada Lovelace <ada@example.org> (accepted)", "c1 [open]")
+	lacks(body, unavailable+"heo")
+	if took > 3*time.Second {
+		t.Errorf("ctxt down: the run took %s", took)
+	}
+}
+
+// TestMeetingBriefContextBudget: the notes, threads and tasks given to the
+// model are cut to the flow's context_chars; the counts still say how many
+// there were, and a section the budget empties says so rather than "nothing".
+func TestMeetingBriefContextBudget(t *testing.T) {
+	m := newMBEnv(t)
+	m.record()
+	m.ok("flow", "set", mbFlow, "--state", "active", "--yes")
+	m.startEngine()
+
+	full, _ := m.briefOf() // the default budget holds the recorded facts
+	if !strings.Contains(full, "3 of 3 notes") || !strings.Contains(full, "3 of 3 conversations") || !strings.Contains(full, "3 of 3 tasks") {
+		t.Fatalf("the default budget cuts the recorded facts:\n%s", full)
+	}
+
+	small, _ := m.briefOf("--var", "context_chars=600")
+	for _, want := range []string{"3 notes, none within the size of this brief.", "2 of 3 conversations", "1 of 3 tasks", "c1 [open]", "T-0101"} {
+		if !strings.Contains(small, want) {
+			t.Errorf("the brief at 600 characters lacks %q:\n%s", want, small)
+		}
+	}
+	for _, bad := range []string{"c4 [resolved]", "T-0102", "obj-1", "Nothing in the knowledge store"} {
+		if strings.Contains(small, bad) {
+			t.Errorf("the brief at 600 characters holds %q:\n%s", bad, small)
+		}
+	}
+
+	if tiny, _ := m.briefOf("--var", "context_chars=0"); !strings.Contains(tiny, "3 notes, none within") || !strings.Contains(tiny, "3 conversations in the last 30 days, none within") || !strings.Contains(tiny, "3 tasks, none within") {
+		t.Errorf("the brief at 0 characters:\n%s", tiny)
 	}
 }
 

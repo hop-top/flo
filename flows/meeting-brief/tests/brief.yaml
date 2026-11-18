@@ -6,7 +6,7 @@ expect:
   - step: people
   - step: notes
   - step: threads
-    output: { scanned: 5, truncated: false }
+    output: [{ scanned: 5, truncated: false }]
   - step: open
   - step: brief
     output:

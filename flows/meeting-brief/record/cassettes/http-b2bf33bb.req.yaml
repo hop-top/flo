@@ -1,0 +1,11 @@
+xrr: "1"
+adapter: http
+fingerprint: b2bf33bb
+recorded_at: "2026-11-18T23:55:17Z"
+payload:
+    body: '{"filter":{"person":""},"limit":5,"mode":"hybrid","query":"bob@example.org"}'
+    headers:
+        Accept: application/json
+        Content-Type: application/json
+    method: POST
+    url: http://127.0.0.1:8080/api/v1/find

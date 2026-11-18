@@ -1,7 +1,7 @@
 xrr: "1"
 adapter: http
 fingerprint: 8fec64c7
-recorded_at: "2026-11-18T23:29:56Z"
+recorded_at: "2026-11-18T23:55:17Z"
 payload:
     body: '{"filter":{"person":"Ada Lovelace"},"limit":5,"mode":"hybrid","query":"Ada Lovelace"}'
     headers:
