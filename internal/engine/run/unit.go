@@ -285,7 +285,7 @@ func derefTime(t *time.Time) time.Time {
 // node without one gets the step's identity (node.md §11).
 func (u *unit) idempotencyKey(in map[string]any) string {
 	if k := u.sp.node.Spec.IdempotencyKey; k != "" {
-		if v, err := inTemplate(k, in); err == nil {
+		if v, err := u.inTemplate(k, in); err == nil {
 			return v
 		}
 	}

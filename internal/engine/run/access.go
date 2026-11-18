@@ -2,10 +2,7 @@ package run
 
 import (
 	"context"
-	"fmt"
-	"regexp"
 	"slices"
-	"strings"
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/spec/node"
@@ -76,7 +73,7 @@ func (u *unit) guard(ctx context.Context, in map[string]any) error {
 	}
 	q := core.GuardQuery{Tenant: u.t.run.Tenant, Run: u.t.run.ID, StepID: u.sp.step.ID, Approvals: u.sp.guards}
 	if tr := u.sp.node.Spec.Trust; tr != nil {
-		class, err := inTemplate(tr.Class, in)
+		class, err := u.inTemplate(tr.Class, in)
 		if err != nil {
 			return err
 		}
@@ -93,32 +90,18 @@ func (u *unit) guard(ctx context.Context, in map[string]any) error {
 	return nil
 }
 
-// inRef is a placeholder over the step's inputs.
-var inRef = regexp.MustCompile(`^\s*\{\{\s*in\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*\}\}\s*$`)
-
-// inTemplate resolves a node-spec field that may template over the step's
-// inputs (trust.class, idempotency_key; node.md §10.1, §11): a literal, or one
-// `{{ in.<path> }}` placeholder. `in` is a CEL keyword, so the
-// expression environment cannot bind it and the lookup is done here.
-func inTemplate(class string, in map[string]any) (string, error) {
-	m := inRef.FindStringSubmatch(class)
-	if m == nil {
-		if strings.Contains(class, "{{") {
-			return "", core.Errorf(core.CodeEvalError, "template %q: want a literal or {{ in.<input> }}", class)
-		}
-		return class, nil
+// inTemplate renders a node-spec field that templates over the step's
+// inputs (trust.class, idempotency_key; node.md §10.1, §11) with `in` bound.
+func (u *unit) inTemplate(src string, in map[string]any) (string, error) {
+	tmpl, err := u.t.p.env.CompileTemplate(src)
+	if err != nil {
+		return "", core.Errorf(core.CodeEvalError, "template %q: %w", src, err)
 	}
-	var cur any = in
-	for _, k := range strings.Split(m[1], ".") {
-		obj, ok := cur.(map[string]any)
-		if !ok {
-			return "", core.Errorf(core.CodeUnresolvedRef, "template %q: no input %s", class, m[1])
-		}
-		if cur, ok = obj[k]; !ok {
-			return "", core.Errorf(core.CodeUnresolvedRef, "template %q: no input %s", class, m[1])
-		}
+	v, err := tmpl.Render(u.with(map[string]any{"in": in}))
+	if err != nil {
+		return "", core.Errorf(core.CodeEvalError, "template %q: %w", src, err)
 	}
-	return fmt.Sprint(cur), nil
+	return str(v), nil
 }
 
 // admit asks the admission port when the step has a side effect above read

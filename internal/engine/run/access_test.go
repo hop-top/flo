@@ -202,3 +202,19 @@ func TestIrreversibleAfterApprovalAncestorRuns(t *testing.T) {
 		t.Errorf("apply calls = %d", n)
 	}
 }
+
+func TestIdempotencyKeyRendersOverInputs(t *testing.T) {
+	h := newH(t)
+	h.node(&node.Spec{Node: "t/keyed@1", SideEffect: node.SideEffectWriteShared, IdempotencyKey: "msg-{{ in.id }}"})
+	id := h.do(`flow: keyed
+version: 1.0.0
+steps:
+  - id: k
+    uses: t/keyed@1
+    with: { id: m7 }
+`, nil)
+	h.wantRun(id, core.RunSucceeded, "")
+	if got := h.fx.Runner.CallsFor("k")[0].IdempotencyKey; got != "msg-m7" {
+		t.Errorf("key = %q", got)
+	}
+}
