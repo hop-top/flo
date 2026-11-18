@@ -1,0 +1,17 @@
+pack: calendar
+version: 0.1.0
+description: Upcoming calendar events as VEVENTs, from ICS feeds and CalDAV collections, for calendar-relative triggers.
+config:
+  calendar:
+    source:
+      type: string
+      enum: [ics, caldav, crm]
+      description: Where events come from. Default is inferred from url (a path or an .ics url is ics, any other url is caldav).
+    url: { type: string, description: "ICS file path or URL, or the CalDAV collection URL." }
+    credentials:
+      type: string
+      description: Secret name holding "user:password" (basic) or "bearer:<token>".
+    tz: { type: string, default: UTC, description: "IANA zone for floating times." }
+    sync_interval: { type: string, default: 10m, description: "How often the calendar is re-read and fires re-planned." }
+nodes: [nodes/events.yaml]
+plugins: [calendar]

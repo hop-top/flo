@@ -1,0 +1,35 @@
+node: calendar/events@1
+kind: plugin
+role: trigger
+description: Upcoming calendar events, with start times, as VEVENTs.
+config:
+  source: { type: string, enum: [ics, caldav, crm] }
+  url: { type: string }
+  credentials: { type: string }
+  tz: { type: string, default: UTC }
+inputs:
+  calendar: { type: string, description: "Which calendar of the source (CalDAV: a collection path relative to url)." }
+outputs:
+  schema:
+    type: object
+    required: [uid, start, end, title, attendees]
+    properties:
+      uid: { type: string }
+      recurrence_id: { type: [string, 'null'] }
+      start: { type: string, format: date-time }
+      end: { type: string, format: date-time }
+      title: { type: string }
+      location: { type: string }
+      status: { type: string }
+      organizer: { type: string }
+      attendees:
+        type: array
+        items:
+          type: object
+          properties:
+            email: { type: string }
+            name: { type: string }
+            status: { type: string }
+side_effect: read
+privacy: local
+capabilities: [calendar.read]
