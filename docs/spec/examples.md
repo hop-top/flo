@@ -445,7 +445,7 @@ steps:
   - id: people
     uses: ctxt/find@1
     with:
-      query: "{{ trigger.event.attendees.map(a, a.email) }}"
+      query: "{{ trigger.event.attendees.map(a, a.email).join(' ') }}"
       limit: 20
 
   - id: threads
@@ -458,7 +458,7 @@ steps:
     uses: tlc/task.list@1
     with:
       search: "{{ trigger.event.title }}"
-      status: [todo, in_progress, blocked]
+      status: [TODO, IN_PROGRESS]
 
   - id: brief
     uses: flo/ai.generate@1
@@ -491,7 +491,7 @@ What this exercises:
   and the model scheme is `ollama://` (flow.md §7.6, V19). A hosted model
   would need `cloud-allowed` and would send the same data off the
   machine.
-- Whole-placeholder fields keep their types: `query` is a list,
+- Whole-placeholder fields keep their types: `participants` is a list,
   `context` is a map.
 
 The prompt `prompts/meeting-brief@1` lives in the flow bundle's
@@ -535,70 +535,239 @@ capabilities: [calendar.read]
 ```yaml
 node: ctxt/find@1
 kind: http
-lowers_to: engine
-description: Look up people, decisions and notes in the knowledge store.
+lowers_to: engine               # reshapes the response with `map`
+description: >-
+  Search the knowledge store, full-text, vector or hybrid, optionally narrowed
+  by metadata. Returns a compact projection of each object, never its content.
 request:
   method: POST
   url: "{{ config.ctxt.url }}/api/v1/find"
-  json: { query: "{{ in.query }}", limit: "{{ in.limit }}" }
+  headers: { Accept: application/json }
+  json:
+    query: "{{ in.query }}"
+    mode: "{{ in.mode }}"
+    limit: "{{ in.limit }}"
+    filter: "{{ in.filter }}"
+  auth: { secret: ctxt_token, scheme: bearer }
+response: { success: [200] }
 inputs:
-  query: { type: [string, array], required: true }
-  limit: { type: integer, default: 10 }
+  query: { type: string, required: true, description: Search text; the server refuses an empty one. }
+  mode: { type: string, enum: [fts, vector, hybrid], default: hybrid }
+  limit: { type: integer, default: 10, minimum: 1, maximum: 100 }
+  filter:
+    type: object
+    default: {}
+    description: >-
+      Metadata facets, all optional: meta_type, topic, person (an element of the
+      object's metadata.people, a name as ctxt extracted it, not an address),
+      source_type, and since and until (YYYY-MM-DD, compared with the dates the
+      object mentions).
+    properties:
+      meta_type: { type: string }
+      topic: { type: string }
+      person: { type: string }
+      source_type: { type: string }
+      since: { type: string }
+      until: { type: string }
 outputs:
-  from: body.results
-  schema: { type: array, items: { type: object } }
+  from: body
+  format: json
+  map: >-
+    {{ {'query': out.query, 'mode': out.mode, 'total': out.total,
+        'objects': out.objects.map(o,
+          {'id': o.id, 'type': o.type,
+           'source': has(o.source) ? o.source : '',
+           'created_at': o.created_at,
+           'summary': has(o.summaries) && size(o.summaries) > 0 ? o.summaries[0] :
+                      (has(o.text_content) ? (size(o.text_content) > 600 ? o.text_content.substring(0, 600) : o.text_content) : ''),
+           'tags': has(o.tags) ? o.tags.map(t, t.label) : []})} }}
+  schema:
+    type: object
+    required: [objects, total]
+    properties:
+      query: { type: string }
+      mode: { type: string, description: The mode that ran; hybrid answers full-text only when the semantic leg is down. }
+      total: { type: integer }
+      objects:
+        type: array
+        items:
+          type: object
+          required: [id, type]
+          properties:
+            id: { type: string }
+            type: { type: string }
+            source: { type: string }
+            created_at: { type: string }
+            summary: { type: string, description: The first summary, else the first 600 characters of the text. }
+            tags: { type: array, items: { type: string } }
 side_effect: read
 privacy: local
+idempotent: true
 capabilities: [knowledge.read]
 timeout: 10s
 retry: { max_attempts: 3, backoff: 2s }
-record: true
 ```
 
 ```yaml
 node: heo/conversation.list@1
 kind: command
-lowers_to: exec
-description: Conversations involving the given participants.
-argv: [heo, conversation, list, --participants, "{{ in.participants }}", --since, "{{ in.since }}", --format, json]
+lowers_to: engine
+description: >-
+  Conversations with activity since a time in which one of the given people
+  takes part, newest first. Snoozed ones included.
+argv:
+  - heo-conversations
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --since
+  - "{{ in.since }}"
+  - --status
+  - "{{ in.status.join(',') }}"
+  - --limit
+  - "{{ in.limit }}"
+  - --
+  - "{{ in.participants }}"
 inputs:
-  participants: { type: array, items: { type: string }, required: true }
-  since: { type: string, format: duration, default: 30d }
+  participants:
+    type: array
+    items: { type: string }
+    required: true
+    description: Email addresses. Matched, case-insensitively, against the address of each identity heo knows.
+  since:
+    type: string
+    default: 30d
+    description: A lookback (30d, 12h, 2w) or an RFC 3339 time or date; heo keeps conversations whose last activity is after it.
+  status:
+    type: array
+    items: { type: string, enum: [open, pending, resolved, closed] }
+    default: []
+    description: Empty is every status.
+  limit: { type: integer, default: 25, minimum: 1, maximum: 100, description: At most this many conversations are returned. }
+exit_codes: { ok: [0], retry: [70] }    # 70: heo's daemon is not running (transient)
 outputs:
-  from: stdout
+  from: file:out.json
   format: json
   schema:
-    type: array
-    items:
-      type: object
-      properties:
-        subject: { type: string }
-        last_message: { type: string }
-        state: { type: string }
+    type: object
+    required: [conversations, scanned]
+    properties:
+      conversations:
+        type: array
+        items:
+          type: object
+          required: [id, status]
+          properties:
+            id: { type: string }
+            inbox: { type: string }
+            status: { type: string }
+            mode: { type: string }
+            created_at: { type: string }
+            last_activity: { type: [string, 'null'] }
+            participants:
+              type: array
+              description: The identities that matched, with the address that matched.
+              items:
+                type: object
+                properties:
+                  identity: { type: string }
+                  email: { type: string }
+                  role: { type: string }
+      scanned: { type: integer, description: Conversations read from heo. }
+      matched_identities: { type: integer }
+      truncated: { type: boolean, description: True when a page cap or the limit stopped the scan early. }
 side_effect: read
 privacy: local
+idempotent: true
 capabilities: [mail.read]
-timeout: 20s
+timeout: 60s
+retry: { max_attempts: 3, backoff: 5s }
 ```
 
 ```yaml
 node: tlc/task.list@1
 kind: command
-lowers_to: exec
-description: Tasks matching a search and status.
-argv: [tlc, task, list, --search, "{{ in.search }}", --status, "{{ in.status }}", --format, json]
+lowers_to: engine               # reshapes its output with `map`
+description: Open tasks, across all projects, matching a free-text search.
+argv:
+  - tlc
+  - task
+  - list
+  - --all-projects
+  - --status
+  - "{{ in.status.join(',') }}"
+  - --limit
+  - "{{ in.limit }}"
+  - --format
+  - json
+  - --
+  - "{{ in.search }}"
 inputs:
-  search: { type: string, required: true }
-  status: { type: array, items: { type: string }, default: [] }
+  search:
+    type: string
+    default: ""
+    description: Free-text query, one positional argument (after `--`, so a leading dash is text). Empty matches every task of the statuses.
+  status:
+    type: array
+    items: { type: string, enum: [TODO, IN_PROGRESS, DONE, SKIPPED] }
+    default: [TODO, IN_PROGRESS]
+    description: Uppercase, as tlc spells them. tlc has no BLOCKED status.
+  limit: { type: integer, default: 25, minimum: 1, maximum: 200 }
+exit_codes: { ok: [0] }
 outputs:
   from: stdout
   format: json
-  schema: { type: array, items: { type: object } }
+  map: >-
+    {{ out.map(t,
+        {'id': t.display_id, 'title': t.title, 'status': t.status,
+         'priority': has(t.priority) ? t.priority : null,
+         'due_at': has(t.due_at) ? t.due_at : null,
+         'tags': has(t.tags) && t.tags != null ? t.tags : []}) }}
+  schema:
+    type: array
+    items:
+      type: object
+      required: [id, title, status]
+      properties:
+        id: { type: string, description: The task display id. }
+        title: { type: string }
+        status: { type: string }
+        priority: { type: [string, 'null'] }
+        due_at: { type: [string, 'null'] }
+        tags: { type: array, items: { type: string } }
 side_effect: read
 privacy: local
+idempotent: true
 capabilities: [tasks.read]
 timeout: 15s
 ```
+
+The three read nodes are the packs `packs/ctxt`, `packs/heo` and `packs/tlc`,
+written against the tools as they are, not as a first draft assumed:
+
+- **ctxt** takes one search `query` string (a list is a 400), a `mode`, a
+  `limit` and a metadata `filter`; `filter.person` matches the names ctxt
+  extracted into an object's `metadata.people`, not addresses. The response
+  is `{query, mode, objects, total, diagnostics}` and each object carries its
+  whole content, so the node projects `id`, `type`, `source`, `created_at`,
+  one `summary` and the tag labels. The server is where `ctxt find` goes
+  (`server.url` or the first `server.urls` entry of the ctxt config, else
+  `http://127.0.0.1:8080`); the flo side is `packs.ctxt.url`. A protected
+  or public instance needs the token as the secret `ctxt_token`.
+- **heo** has no participant filter and no `--since`: `conversation list`
+  takes `--updated-since` and lists identity ids, not addresses. The node
+  runs the wrapper `heo-conversations`, which resolves the addresses through
+  `heo identity list`, pages `conversation list --updated-since --sort
+  last-activity --snoozed include` and keeps the conversations with a
+  matching participant. It goes when heo ships `--participant`. heo exits 70
+  without its daemon, which the node retries. A conversation has no subject
+  or snippet: the node returns ids, status and activity.
+- **tlc** takes the free-text search as a positional argument, statuses in
+  upper case (`TODO`, `IN_PROGRESS`, `DONE`, `SKIPPED`; no `BLOCKED`) and
+  must be told `--all-projects`: a read in a directory without a project
+  can create a database there. Its output is a bare array, projected to
+  `id` (the display id), `title`, `status`, `priority`, `due_at`, `tags`.
+
+---
 
 ## 3. inbox-triage
 

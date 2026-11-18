@@ -87,7 +87,16 @@ flo run cancel <run> --yes
   not used by the flow. Re-record the flow's `record/` with
   `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` after a
   change to the flow, its tests or its nodes.
+- `packs/ctxt`, `packs/heo` and `packs/tlc` hold the read nodes of the meeting
+  brief. `ctxt/find@1` posts to `{config.ctxt.url}/api/v1/find`: the server
+  `ctxt find` uses (`server.url` or the first `server.urls` entry of the ctxt
+  config, else `http://127.0.0.1:8080`); a protected or public instance also
+  needs its token as the secret `ctxt_token` of the flow's profile. The
+  `heo` pack runs `wrappers/heo-conversations` (needs `heo`, its daemon and
+  `jq`; stand-in for a participant filter heo lacks); `tlc/task.list@1` runs
+  `tlc task list --all-projects`. Their capabilities are `knowledge.read`,
+  `mail.read` and `tasks.read`.
 - `flo status` reports the engine: running, stopped, or stale after a crash.
 - Tests: `go test ./tests/e2e` builds the binary and runs it against fake
-  `aps`, `gh`, `tlc` and `inbox` executables on `PATH`; nothing reaches a
+  `aps`, `gh`, `heo`, `tlc` and `inbox` executables on `PATH`; nothing reaches a
   real tool.
