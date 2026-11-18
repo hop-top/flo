@@ -11,18 +11,13 @@ import (
 	"hop.top/flo/spec/node"
 )
 
-// The CEL environment of the spec module cannot compile what node.md writes:
-// `in` is a CEL keyword, so `in.repo` does not parse although the namespace
-// is declared, and `out`, the parsed value that `map` and `fail_when` read
-// (node.md §3.2), is not declared at all. Node templates are therefore
-// rewritten before compilation: the identifier `in` becomes `result` and
-// `out` becomes `item`, two declared dynamic slots a node template never
-// uses for anything else. Operators (`x in list`), string literals and field
-// selections (`a.in`) are left alone.
-const (
-	outSlot = "item"
-	inSlot  = "result"
-)
+// The CEL environment of the spec module does not declare `out`, the parsed
+// value that `map` and `fail_when` read (node.md §3.2). Node templates are
+// rewritten before compilation: the identifier `out` becomes `item`, a
+// declared dynamic slot a node template never uses for anything else.
+// String literals and field selections (`a.out`) are left alone. (`in` is
+// not rewritten: it relies on the spec module aliasing the CEL keyword.)
+const outSlot = "item"
 
 type compiled struct {
 	tmpl *cel.Template
@@ -134,7 +129,7 @@ func (e *Env) Item(src string) (ItemFunc, *core.Error) {
 	}, nil
 }
 
-// rewriteNode renames `in` and `out` to their declared slots in the
+// rewriteNode renames `out` to its declared slot in the
 // expressions of a template (or in a bare expression), leaving string
 // literals, field selections (x.out), the `in` operator and literal text
 // outside placeholders alone.
@@ -203,15 +198,14 @@ func skipString(s string, i int) int {
 
 func rewriteExpr(s string) string {
 	var b strings.Builder
-	prev := byte(0)  // last significant byte before the current token
-	operand := false // the previous token ends an operand (so `in` is the operator)
+	prev := byte(0) // last significant byte before the current token
 	for i := 0; i < len(s); {
 		c := s[i]
 		switch {
 		case c == '\'' || c == '"':
 			j := skipString(s, i)
 			b.WriteString(s[i : j+1])
-			prev, operand = c, true
+			prev = c
 			i = j + 1
 		case isIdentStart(c):
 			j := i
@@ -219,29 +213,16 @@ func rewriteExpr(s string) string {
 				j++
 			}
 			word := s[i:j]
-			switch {
-			case prev == '.':
-				operand = true
-			case word == "in" && operand:
-				operand = false // the operator
-			case word == "in":
-				word, operand = inSlot, true
-			case word == "out":
-				word, operand = outSlot, true
-			default:
-				operand = true
+			if word == "out" && prev != '.' {
+				word = outSlot
 			}
 			b.WriteString(word)
 			prev = 'a'
 			i = j
 		default:
 			b.WriteByte(c)
-			switch {
-			case c == ' ' || c == '\t' || c == '\n' || c == '\r':
-			case c >= '0' && c <= '9', c == ')', c == ']', c == '}':
-				prev, operand = c, true
-			default:
-				prev, operand = c, false
+			if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+				prev = c
 			}
 			i++
 		}

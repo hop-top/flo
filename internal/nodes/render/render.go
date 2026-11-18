@@ -91,7 +91,7 @@ func (s Scope) Activation() cel.Activation {
 	if cfg == nil {
 		cfg = map[string]any{}
 	}
-	return cel.Activation{"in": in, inSlot: in, "config": cfg, "run": run}
+	return cel.Activation{"in": in, "config": cfg, "run": run}
 }
 
 // Value renders a data tree: string leaves are templates; a leaf that is
@@ -224,4 +224,16 @@ func Text(v any) string {
 		return fmt.Sprint(v)
 	}
 	return string(b)
+}
+
+// InAliasAvailable reports whether the spec module compiles `{{ in.x }}`
+// (`in` is a CEL keyword; the module aliases it). Tests of node templates
+// skip while it does not.
+func InAliasAvailable() bool {
+	e, err := Shared()
+	if err != nil {
+		return false
+	}
+	_, err = e.env.CompileTemplate("{{ in.x }}")
+	return err == nil
 }

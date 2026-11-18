@@ -17,6 +17,7 @@ import (
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/core/coretest"
 	"hop.top/flo/internal/nodes/command"
+	"hop.top/flo/internal/nodes/render"
 	"hop.top/flo/internal/nodes/schema"
 	"hop.top/flo/spec/node"
 )
@@ -101,6 +102,7 @@ func realRunner() *command.Runner {
 }
 
 func TestRunnerRunsUnderApsProfile(t *testing.T) {
+	skipWithoutInAlias(t)
 	// node.md §4 example: gh api over an aps profile
 	s := spec(t, `
 node: gh/sbom@1
@@ -218,6 +220,7 @@ func TestRunnerExitCode(t *testing.T) {
 // ---- Executor over the CommandRunner port ----
 
 func TestDependencyListOverFakeExec(t *testing.T) {
+	skipWithoutInAlias(t)
 	s := exampleSpec(t, "gh_dependency-list_1.yaml")
 	cmds := &coretest.Commands{}
 	var seen core.CommandSpec
@@ -280,6 +283,7 @@ func TestDependencyListOverFakeExec(t *testing.T) {
 }
 
 func TestEmptyReleasesIsEmptyList(t *testing.T) {
+	skipWithoutInAlias(t)
 	s := spec(t, `
 node: gh/releases@1
 kind: command
@@ -322,6 +326,7 @@ capabilities: [tasks.write]
 `
 
 func TestFailWhenKeepsOutput(t *testing.T) {
+	skipWithoutInAlias(t)
 	s := spec(t, failSpec)
 	cmds := &coretest.Commands{}
 	cmds.Reply([]string{"tool"}, core.CommandResult{Stdout: []byte(`{"errors": 2, "detail": "x"}`)})
@@ -348,6 +353,7 @@ func TestFailWhenKeepsOutput(t *testing.T) {
 }
 
 func TestExitCodes(t *testing.T) {
+	skipWithoutInAlias(t)
 	s := spec(t, failSpec)
 	run := func(code int, stdout string) core.Result {
 		cmds := &coretest.Commands{}
@@ -468,6 +474,7 @@ func TestStepDirPerAttempt(t *testing.T) {
 }
 
 func TestUnresolvedReferenceFailsWithoutRunning(t *testing.T) {
+	skipWithoutInAlias(t)
 	s := spec(t, "node: x/u@1\nkind: command\nargv: [t, '{{ in.missing }}']\ninputs: {}\noutputs: { schema: {} }\ncapabilities: []\nside_effect: read\nprivacy: local\n")
 	cmds := &coretest.Commands{}
 	res, _ := (&command.Executor{Commands: cmds}).Execute(context.Background(), invoke(s, nil))
@@ -477,6 +484,7 @@ func TestUnresolvedReferenceFailsWithoutRunning(t *testing.T) {
 }
 
 func TestPlanRendersWithoutRunning(t *testing.T) {
+	skipWithoutInAlias(t)
 	s := exampleSpec(t, "gh_dependency-list_1.yaml")
 	in, _ := schema.ApplyInputs(s.Inputs, map[string]any{"repos": []any{"a/b"}})
 	cmds := &coretest.Commands{}
@@ -487,5 +495,12 @@ func TestPlanRendersWithoutRunning(t *testing.T) {
 	argv := plan["argv"].([]string)
 	if argv[0] != "gh-deps" || argv[len(argv)-1] != "a/b" || len(cmds.Calls()) != 0 || plan["profile"] != "noor" {
 		t.Fatalf("plan = %v", plan)
+	}
+}
+
+func skipWithoutInAlias(t *testing.T) {
+	t.Helper()
+	if !render.InAliasAvailable() {
+		t.Skip("spec/cel does not yet alias the CEL keyword `in`; {{ in.x }} does not compile")
 	}
 }

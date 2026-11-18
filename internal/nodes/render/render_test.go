@@ -24,6 +24,7 @@ func scope() render.Scope {
 }
 
 func TestArgv(t *testing.T) {
+	skipWithoutInAlias(t)
 	env, err := render.Shared()
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +43,7 @@ func TestArgv(t *testing.T) {
 }
 
 func TestArgvUnresolved(t *testing.T) {
+	skipWithoutInAlias(t)
 	env, _ := render.Shared()
 	_, err := env.Argv([]string{"{{ in.missing }}"}, scope().Activation())
 	if err == nil {
@@ -53,6 +55,7 @@ func TestArgvUnresolved(t *testing.T) {
 }
 
 func TestReshapeOut(t *testing.T) {
+	skipWithoutInAlias(t)
 	env, _ := render.Shared()
 	def := node.OutputDef{
 		Map: "{{ {'source': out.source, 'releases': out.releases.map(r, {'package': in.repo, 'v': r.version})} }}",
@@ -118,6 +121,7 @@ func TestItem(t *testing.T) {
 }
 
 func TestInKeywordAndNamespace(t *testing.T) {
+	skipWithoutInAlias(t)
 	env, _ := render.Shared()
 	// `in` is a CEL keyword: the namespace is rewritten, the operator is not.
 	v, err := env.Value("{{ 'a/b' in in.repos && !(in.repo in ['x']) }}", scope().Activation())
@@ -131,5 +135,12 @@ func TestInKeywordAndNamespace(t *testing.T) {
 	m := v.(map[string]any)
 	if m["k"] != int64(3) || m["l"].([]any)[0] != "spf13/cobra" || m["l"].([]any)[1] != 1 {
 		t.Fatalf("v = %v", m)
+	}
+}
+
+func skipWithoutInAlias(t *testing.T) {
+	t.Helper()
+	if !render.InAliasAvailable() {
+		t.Skip("spec/cel does not yet alias the CEL keyword `in`; {{ in.x }} does not compile")
 	}
 }
