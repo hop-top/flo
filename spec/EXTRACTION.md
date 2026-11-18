@@ -85,3 +85,79 @@ config_dirs}.go`, `storage/{recipe_run_store,task_codec}.go`,
   The flow spec makes `when`/`until` CEL; that is new code, not extraction.
 - No track materialization inside the pure files: tracks enter only through
   `RecipeTrack` (title/type/plan, plain data) and `Materializer`.
+
+## Status: moved into this module
+
+Moved: parse, validate, expand, template, render, select, vars, condition,
+locator, and the leaf types (`Kind`, `ExecSpec`, `HumanSpec`, `RetrySpec`,
+`Check`, `ParseDuration`), with their tests. Package imports stdlib and
+yaml.v3 only.
+
+Renames applied (flow spec §1.2): recipe to flow (`flow:` key, `run.flow`,
+`Flow`, `ParseFlow`, `ValidateFlow`, `FlowInfo`, ...), gate to check (`check:`
+key, `Check`), `RecipeStep` to `Step`, `TaskKind` to `Kind`.
+
+Added so the worked examples load (flow spec §1.3, §3, §4.2): run-level
+keys kept untyped and uninterpreted (`on`, `state`, `run_as`, `privacy`,
+`budget`, `tasks`, `concurrency`, `returns`; step `uses`, `for_each`,
+`on_item_error`, `concurrency`, `outputs`, `timeout`, `run_as`, `privacy`,
+`budget`, `task`, `runner`); var `type`; engine namespaces (`trigger`,
+`state`, `item`, `index`, `config`, `in`, `result`, `decisions`) accepted by
+validation and left verbatim by render; `run.started_at`;
+`results.<step>` without a field; results references as implicit edges
+(`ImplicitDeps`); reserved keys `subject`, `stages`, nodes `flo/context@1`,
+`flo/propose@1`.
+
+Conditions: legacy single comparison keeps its grammar and loose
+equality; any other expression is CEL, accepted unparsed, `until`
+negated as `!( ... )`, evaluation returns `ErrNeedsCEL`.
+
+## Gaps against the flow spec docs
+
+- No CEL parser/evaluator: V15 (expression syntax, `unknown_function`) and
+  typed `{{ }}` rendering (§4.3) are engine work. Non-trivial placeholders
+  are neither parsed nor rendered; render leaves them verbatim.
+- `x-*` extension keys (§2.2) not accepted; unknown keys stay errors.
+- Not implemented: V06 beyond `state.<key>` refs, V07, V11, V12, V14 for
+  `item`/`index`/`result` scoping, V16 for `budget`, V17, V18 to V28.
+  Run-level values (`on`, `budget`, ...) are not validated.
+- Var `type` is validated by name only; no coercion of `--var` strings (§3).
+- Plan-level refusals (`engine_node`, `engine_feature`, §9) not implemented:
+  the module parses `uses`/`for_each`; the plan implementer must refuse.
+- Error codes (`reserved_key`, ...) appear as message prefixes, not as a
+  typed code field.
+- Bundle layout and pack/bundle search layers (§2.4): `DirLocator` is the
+  recipe 0.1 directory + builtin search path only.
+- Recipe file compat: the `flow:` key replaces `recipe:`; `recipe:` is
+  rejected by name. `gate:` is an unknown key.
+
+## For switching tlc over (shims, not built)
+
+tlc keeps the `recipe` command noun and recipe vocabulary in its UI. Forces:
+
+1. Key compat: existing recipe files (`recipe:`, `gate:`, `{{run.recipe}}`)
+   need a loader shim that rewrites keys before `ParseFlow`, or an alias
+   option in the module. Built-in `decision-record.yaml` and
+   `track-consolidate.yaml` use `recipe:`.
+2. Messages: module errors say "flow" and "check"; tlc e2e tests and docs
+   assert "recipe"/"gate" wording.
+3. Type aliases in `core`: `Recipe = spec.Flow`, `RecipeStep = spec.Step`,
+   `TaskKind = spec.Kind`, `StepGate = spec.Check`, `ExecSpec`, `HumanSpec`,
+   `RetrySpec` (JSON tags unchanged, so `Task.Spec` rows keep their shape).
+   `TaskSpec.Gate` JSON key stays `gate`.
+4. `Task.EffectiveKind`, `TaskKind*` constants, `ParseRecipeDuration`,
+   `CompareRecipeVersions`, `RecipeNotFoundError` become thin wrappers or
+   aliases.
+5. Behavior changes tlc inherits: a `results.<id>` reference without
+   `depends_on` is now an implicit edge, not an error. The materializer
+   builds `blocked_by` from `depends_on` only; it must fold in
+   `spec.ImplicitDeps` or tlc runs such steps in parallel.
+   `when`/`until` text that is not a single comparison is no longer a
+   validation error (it is CEL); tlc's executor evaluates only the legacy
+   form and now sees `ErrNeedsCEL` instead of a load-time error.
+6. `core` keeps `Materializer`, `Reconcile`, `RecipeRun*`, capture, importer,
+   executor; they switch to `spec.Step`/`spec.Flow` and take `Hash`, `Key()`.
+7. flowtest and `recipe test` call `core.Locator`/`DirLocator`/`Expand`:
+   re-point to `spec`.
+8. Module wiring: tlc needs `hop.top/flo/spec` in go.mod (replace or tag);
+   the spec module has no tag yet.
