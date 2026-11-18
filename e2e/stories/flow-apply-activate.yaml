@@ -21,7 +21,7 @@ steps:
     intent: |
       Run the flow once with real reads, keep them as cassettes and the
       skipped writes as plans; the result binds to this exact version.
-    invoke: ["flo", "flow", "test", "dependency-watch", "--record", "--yes", "--format", "json"]
+    invoke: ["flo", "flow", "test", "dependency-watch", "--record", "--yes", "--allow-live", "--format", "json"]
     capture: [exit_code, stdout]
   - id: replay
     intent: |

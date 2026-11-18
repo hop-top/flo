@@ -16,7 +16,7 @@ jobs and advances them.
 flo grant set automation vcs.read --yes        # the profile the flow runs as
 flo flow validate -f flows/dependency-watch    # a bundle: flow.yaml + nodes/
 flo flow apply -f flows/dependency-watch --yes # new version only when content changed
-flo flow test dependency-watch --record --yes  # reads run once for real, cassettes in record/
+flo flow test dependency-watch --record --yes --allow-live  # reads run once for real, cassettes in record/
 flo flow test dependency-watch                 # replay: offline, writes only planned
 flo flow set dependency-watch --state active --yes   # needs a passing test of this version
 flo trigger list                               # next fire of each trigger
@@ -37,7 +37,11 @@ flo run cancel <run> --yes
   answers processes, HTTP and eva checks from the xrr cassettes in the bundle's
   `record/cassettes/`; a call without one fails the test. `--record` makes the
   reads for real and writes `record/` (`cassettes/`, `trigger.json`,
-  `plans.json`). Pass: run succeeded, outputs match node specs, `check:`s pass,
+  `plans.json`, `state.json`), scrubbed as a run recording is (node `redact:`
+  paths, secrets, credential headers, env values; bundles may be committed).
+  It refuses when a declared command, http or plugin node with `side_effect`
+  read or write-local would reach real systems, unless `--allow-live`: point
+  the node's profile env at temp dirs first (`--dry-run` lists those nodes). Pass: run succeeded, outputs match node specs, `check:`s pass,
   every `expect:` of `tests/*.yaml` holds. `--trigger-file`, `--var`,
   `--version`, `--timeout`, `--state default|current|<file>` (the flow state
   the run starts from; `record/state.json` is kept by `--record` and reused by

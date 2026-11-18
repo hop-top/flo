@@ -742,7 +742,10 @@ stdout, exit; HTTP: request and response; model calls: request and
 response) and replayed deterministically in tests and dry runs. A node
 that is `write-shared` or `irreversible` never executes during a
 recording; its plan is recorded instead. Secrets and `redact:` paths are
-removed from cassettes. A node with `record: false` is a validation error
+removed from cassettes, the trigger payload, the state seed and the plans.
+A declared command, http or plugin node with side effect `read` or
+`write-local` runs for real in a recording, so `flo flow test --record`
+refuses a flow with such a node unless `--allow-live` is given. A node with `record: false` is a validation error
 for a flow that must be tested, unless it is pure (`none`).
 
 ---

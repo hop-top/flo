@@ -60,6 +60,7 @@ inputs:
   trust: { type: string }
   context: { type: object }
   verdicts: { type: array }
+  title: { type: string }
 outputs: { schema: { type: object } }
 capabilities: []
 side_effect: write-shared

@@ -91,7 +91,8 @@ func TestDecodeInboxTriage(t *testing.T) {
 	if s.Concurrency.OnOverlap != OverlapSkip || s.Concurrency.Max != 1 || s.Tasks != TasksPerRun {
 		t.Errorf("settings = %+v", s)
 	}
-	if len(s.Triggers) != 1 || s.Triggers[0].TZ != DefaultTZ || s.Triggers[0].RRule != "FREQ=MINUTELY;INTERVAL=15" {
+	// a schedule, and a manual trigger so a person can start it
+	if len(s.Triggers) != 2 || s.Triggers[0].TZ != DefaultTZ || s.Triggers[0].RRule != "FREQ=MINUTELY;INTERVAL=15" || s.Triggers[1].Kind != TriggerManual {
 		t.Errorf("triggers = %+v", s.Triggers)
 	}
 }

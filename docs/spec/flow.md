@@ -725,6 +725,16 @@ Safety and access (these need the node specs and the author's grants):
   or `trust: <provider>` set on the step and the node declares a trust
   class (`unguarded_irreversible`). A step of a core kind (`exec`, `agent`)
   is never accepted as guarded by trust.
+
+  Pattern: items that trust decides automatically still go through
+  `flo/approval@1`. The approval node decides those items itself (its
+  `auto` output) and parks the run only for the rest, so a flow passes
+  both sets (`items: pending + auto`) and the guard of the irreversible
+  step always finds a decided approval. Skip the approval only when there
+  is nothing to decide, and gate the irreversible step on something having
+  been approved or automatic. A skipped approval does not count as a guard:
+  that alternative was rejected because it weakens the guard (it would hold
+  for a run that decided nothing). See examples.md §3.
 - **V21** the budget is at least the sum of the minimum estimates of
   nodes that must run (*warning*).
 - **V22** `retry.max_attempts > 1` on a non-idempotent node without an

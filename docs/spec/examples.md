@@ -612,11 +612,15 @@ version: 0.1.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
+  - manual: {}
 run_as: automation
 privacy: cloud-allowed          # `decide` sends headers only
 tasks: per-run
 concurrency: { on_overlap: skip }
 steps:
+  # No lanes: fetch only reads and snapshots. The script's own state (seen
+  # mail, pending locks, trust) lives between the steps, so they are ordered
+  # with depends_on; the run id is the data they share.
   - id: fetch
     uses: inbox/fetch@1
 
@@ -630,18 +634,26 @@ steps:
     depends_on: [decide]
     with: { run: "{{ results.fetch.run }}" }
 
+  # Everything apply would touch goes through the approval, so the guard of the
+  # irreversible step always finds a decision: the script's automatic items
+  # (every action at a trusted level) are decided by trust and cost no one a
+  # look; only the pending ones park the run. Nothing to do skips both.
   - id: approve
     uses: flo/approval@1
-    when: "{{ size(results.plan.pending) > 0 }}"
+    when: "{{ size(results.plan.pending) + size(results.plan.auto) > 0 }}"
     with:
-      items: "{{ results.plan.pending }}"
+      title: Triage the inbox
+      items: "{{ results.plan.pending + results.plan.auto }}"
       verdicts: [approve, reject]
       trust: inbox
       surface: tlc
-      context: { run: "{{ results.fetch.run }}" }
+      context: { run: "{{ results.fetch.run }}", run_dir: "{{ results.plan.run_dir }}" }
 
+  # Runs only when something was approved or automatic: a run whose pending
+  # items were all rejected applies nothing.
   - id: apply
     uses: inbox/apply@1
+    when: "{{ size(results.approve.approved) + size(results.approve.auto) > 0 }}"
     depends_on: [plan, approve]
     with: { run: "{{ results.fetch.run }}" }
 ```
@@ -665,11 +677,21 @@ What this exercises:
   its record can repeat the send on a re-run. So the engine never retries
   it automatically, and an unknown outcome parks the run for a person
   (node.md §11, flow.md §7.9). V20 accepts the step because `approve` is
-  an ancestor. `approve` may be skipped when nothing is pending; dependents
-  of a skipped step still run (flow.md §5.4), and what the script applies
-  is exactly what the plan marked automatic plus what was approved. At
-  dispatch the engine still checks that a decision or an `auto` record
-  exists for the run's items.
+  an ancestor.
+- **Items that trust decides still go through the approval.** `approve`
+  is given `plan.pending + plan.auto`: the items a person must decide and
+  the ones trust already decided (every action at a trusted level). With
+  `trust: inbox` the node decides the automatic items itself and parks the
+  run only for the pending ones, so they cost no one a look, yet the
+  irreversible guard always finds a decided approval for every item
+  `apply` will touch (flow.md V20). `approve` is skipped only when
+  there is nothing at all (`size(pending) + size(auto) == 0`), and `apply`
+  runs only when something was approved or automatic: a run whose pending
+  items were all rejected applies nothing. At dispatch the engine still
+  checks that a decision or an `auto` record exists for the run's items. A
+  skipped approval is not treated as a guard: that alternative was rejected
+  because it weakens the guard, which would then hold for a run that
+  decided nothing.
 - **Failures in the output, not the exit code.** The script exits 0 when
   accounts fail or actions fail. The nodes read a JSON summary and fail the
   step with `fail_when` (node.md §3.2).
