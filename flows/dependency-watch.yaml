@@ -1,0 +1,96 @@
+flow: dependency-watch
+version: 0.1.0
+description: New releases and advisories for what our repos depend on.
+on:
+  - schedule: { rrule: "FREQ=DAILY;BYHOUR=7", tz: America/Toronto }
+  - manual: {}
+vars:
+  repos:
+    default: [example-org/api, example-org/web, example-org/worker]
+    type: list
+  lookback: { default: 14d, type: duration }
+run_as: automation
+privacy: cloud-allowed          # only public package data leaves the machine
+budget: { usd: 0.50 }
+tasks: none
+state:
+  seen:     { default: [] }     # package@version of releases already reported
+  seen_adv: { default: [] }     # advisory@package@version already reported
+  cursor:   { default: null }
+steps:
+  - id: deps
+    uses: gh/dependency-list@1
+    with: { repos: "{{ vars.repos }}", mode: sbom }
+
+  - id: advisories
+    uses: gh/advisories@1
+    with:
+      packages: >-
+        {{ results.deps.packages.map(p,
+           {'ecosystem': p.ecosystem, 'name': p.name, 'version': p.version,
+            'used_by': p.used_by}) }}
+
+  - id: newadv
+    uses: flo/dedupe@1
+    with:
+      items: "{{ results.advisories.advisories }}"
+      key: "{{ item.ghsa_id + '@' + item.package + '@' + item.version }}"
+      seen: "{{ state.seen_adv }}"
+      max: 5000
+    outputs:
+      state: { seen_adv: "{{ result.seen }}" }
+
+  - id: releases
+    uses: gh/releases-since@1
+    for_each: "{{ results.deps.packages.filter(p, has(p.source_repo)) }}"
+    concurrency: 4
+    on_item_error: skip
+    with:
+      source_repo: "{{ item.source_repo }}"
+      package: "{{ item.name }}"
+      version: "{{ item.version }}"
+      tag_prefix: "{{ has(item.tag_prefix) ? item.tag_prefix : '' }}"
+      prerelease: match
+      used_by: "{{ item.used_by }}"
+      since: "{{ state.cursor }}"
+      lookback: "{{ vars.lookback }}"
+
+  - id: fresh
+    uses: flo/dedupe@1
+    with:
+      items: "{{ results.releases.map(r, r.releases).flatten() }}"
+      key: "{{ item.package + '@' + item.version }}"
+      seen: "{{ state.seen }}"
+      max: 5000
+    outputs:
+      state:
+        seen: "{{ result.seen }}"
+        cursor: "{{ run.started_at }}"
+
+  # The classifier backend is configuration (ai.classifier / FLO_AI_CLASSIFIER):
+  # `rules` labels without a model; `model` is used by the judge backend only.
+  - id: judge
+    uses: flo/ai.classify@1
+    with:
+      model: anthropic://claude-haiku-5-5
+      labels: [security, breaking, routine, noise]
+      instructions: "Label each release by what it means for a team that depends on it."
+      items: "{{ results.fresh.items }}"
+
+  - id: findings
+    uses: flo/output@1
+    when: >-
+      {{ size(results.newadv.items) > 0 ||
+         results.judge.items.exists(x, x.label != 'noise') }}
+    with:
+      kind: findings
+      title: dependency-watch
+      items: >-
+        {{ results.newadv.items.map(a,
+             {'title': a.package + ' ' + a.version + ' ' + a.ghsa_id,
+              'label': 'security', 'detail': a.summary, 'url': a.url,
+              'refs': a.used_by})
+           + results.judge.items.filter(x, x.label != 'noise').map(x,
+             {'title': x.item.package + ' ' + x.item.version,
+              'label': x.label, 'detail': x.why, 'url': x.item.url,
+              'refs': x.item.used_by}) }}
