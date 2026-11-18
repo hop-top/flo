@@ -191,7 +191,7 @@ func TestSecretNeverLeaks(t *testing.T) {
 		w.Header().Set("X-Echo", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = io.WriteString(w, `{"you_sent":"`+r.Header.Get("Authorization")+`"}`)
+		_ = json.NewEncoder(w).Encode(map[string]string{"you_sent": r.Header.Get("Authorization")})
 	}))
 	defer srv.Close()
 	s := spec(t, findSpec)

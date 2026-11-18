@@ -37,7 +37,7 @@ func spec(t *testing.T, y string) *node.Spec {
 
 func exampleSpec(t *testing.T, name string) *node.Spec {
 	t.Helper()
-	b, err := os.ReadFile(examples + name)
+	b, err := os.ReadFile(examples + name) //nolint:gosec // repo fixture
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func exampleSpec(t *testing.T, name string) *node.Spec {
 
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()
-	b, err := os.ReadFile(githubData + name)
+	b, err := os.ReadFile(githubData + name) //nolint:gosec // repo fixture
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,17 +98,6 @@ func (f *fakeExec) Output(*exec.Cmd) ([]byte, error) { return nil, errors.New("u
 // exist, so a test that names a profile by mistake cannot start aps.
 func realRunner() *command.Runner {
 	return &command.Runner{Exec: real.Exec{}, Aps: "/nonexistent/aps-never-run-in-tests"}
-}
-
-// exitError is what a real process exiting with code n reports.
-func exitError(t *testing.T, n string) error {
-	t.Helper()
-	err := exec.Command("sh", "-c", "exit "+n).Run()
-	var ee *exec.ExitError
-	if !errors.As(err, &ee) {
-		t.Fatalf("want ExitError, got %v", err)
-	}
-	return err
 }
 
 func TestRunnerRunsUnderApsProfile(t *testing.T) {

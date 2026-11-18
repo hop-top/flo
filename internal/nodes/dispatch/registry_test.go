@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"hop.top/flo/internal/core"
@@ -14,7 +15,7 @@ import (
 )
 
 func decl(ns, name string, major int, desc string) string {
-	return "node: " + ns + "/" + name + "@" + string(rune('0'+major)) + "\nkind: command\ndescription: " + desc +
+	return "node: " + ns + "/" + name + "@" + strconv.Itoa(major) + "\nkind: command\ndescription: " + desc +
 		"\nargv: [x]\ninputs: {}\noutputs: { schema: {} }\ncapabilities: []\nside_effect: read\nprivacy: local\n"
 }
 
