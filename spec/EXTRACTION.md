@@ -109,17 +109,54 @@ validation and left verbatim by render; `run.started_at`;
 `flo/propose@1`.
 
 Conditions: legacy single comparison keeps its grammar and loose
-equality; any other expression is CEL, accepted unparsed, `until`
-negated as `!( ... )`, evaluation returns `ErrNeedsCEL`.
+equality; any other expression is CEL. The root package accepts it unparsed,
+negates `until` as `!( ... )`, and returns `ErrNeedsCEL` on evaluation; it
+never links cel-go. Compiling and evaluating CEL is `hop.top/flo/spec/cel`
+(below).
+
+### CEL subpackage `hop.top/flo/spec/cel`
+
+Same module, so `spec` stays free of `cel.dev/cel-go` (a test asserts it with
+`go list -deps`). `cel.ParseFlow` is `spec.ParseFlow` plus `cel.Validate`.
+
+- Env: lists and strings extensions; `vars`, `subject`, `run`, `steps`,
+  `results`, `trigger`, `state`, `config`, `in`, `result`, `decisions` as
+  `map<string, dyn>`, `item` dyn, `index` int; flow vars by bare name, typed
+  for `string`, `integer`, `boolean`, `list`, `map` (`number`, `duration`
+  and non-string untyped defaults are dyn).
+- Compile: every `when`/`until` (legacy single comparison first, through
+  the existing shim; CEL otherwise) and every `{{ }}` placeholder, split by a
+  CEL-aware scanner. Errors carry step id, field path, line:col in the field
+  text and a stable code.
+- Evaluate: pure `Condition.Eval`, `Template.Render`, `Expr.Eval` over an
+  activation map; an exact single placeholder returns the typed value.
+- Closed: V15 (syntax, types of declared names, `unknown_function`,
+  boolean condition, `for_each` is a list); V06 for CEL refs; V13 for CEL
+  `results` refs (unknown step, own results, cycles with CEL edges;
+  `Env.ImplicitDeps` lists them); V14 for `result` (outputs and check only)
+  and `item`/`index` (under `for_each`, or a `uses` step); trigger `when`/
+  `source` against `trigger` only; typed `{{ }}` rendering (§4.3).
+- Not closed: with-values against node inputs (needs node specs); fields
+  read through map namespaces are dyn, so a wrong field type fails at
+  evaluation, not at validation; `trigger.event` payload check; absent
+  results (§5.7) are the engine's.
+- Step ids with `-` or `/` in CEL: `results.a/b.x` is read as step `a/b`; `-`
+  only for ids the flow declares; otherwise write `results['a-b']`. Index
+  form is not renamed by include/repeat expansion; inside blocks write the
+  dotted form.
+- A literal `{{` in a field now starts a placeholder under `cel.Validate`
+  (an unclosed one is `unterminated_placeholder`).
 
 ## Gaps against the flow spec docs
 
-- No CEL parser/evaluator: V15 (expression syntax, `unknown_function`) and
-  typed `{{ }}` rendering (§4.3) are engine work. Non-trivial placeholders
-  are neither parsed nor rendered; render leaves them verbatim.
+- The root package has no CEL parser/evaluator: non-trivial placeholders
+  are neither parsed nor rendered there; render leaves them verbatim. V15
+  and typed `{{ }}` rendering live in `spec/cel`.
 - `x-*` extension keys (§2.2) not accepted; unknown keys stay errors.
 - Not implemented: V06 beyond `state.<key>` refs, V07, V11, V12, V14 for
-  `item`/`index`/`result` scoping, V16 for `budget`, V17, V18 to V28.
+  `trigger.event`, V16 for `budget`, V17, V18 to V28 (V06 for CEL refs, V13
+  for CEL results edges and V14 `item`/`index`/`result` scoping are in
+  `spec/cel`).
   Run-level values (`on`, `budget`, ...) are not validated.
 - Var `type` is validated by name only; no coercion of `--var` strings (§3).
 - Plan-level refusals (`engine_node`, `engine_feature`, §9) not implemented:

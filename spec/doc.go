@@ -8,5 +8,6 @@
 // outputs, ...) are parsed and kept but not interpreted. Conditions are
 // evaluated only in the single-comparison form of recipe spec 0.1; a CEL
 // expression is accepted unparsed and reported as ErrNeedsCEL on
-// evaluation.
+// evaluation. Compiling and evaluating CEL is the subpackage
+// hop.top/flo/spec/cel, kept apart so this package links no CEL library.
 package spec

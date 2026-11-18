@@ -704,7 +704,11 @@ Steps (recursively into blocks):
   when some trigger declares an `event` payload.
 - **V15** expressions parse and type-check against known types where the
   node spec gives them (`with` values against `inputs`, `for_each` is a
-  list); functions exist (`unknown_function`).
+  list); functions exist (`unknown_function`). Checking is partial: only
+  top-level names have types (`index` is an int, declared var types, the
+  namespaces are maps); fields read through `results`, `state`, `trigger`
+  and the other namespaces are dynamic, so a wrong field type is found at
+  evaluation. Errors carry the step, the field and the line:column in it.
 - **V16** durations parse; `retry`, `budget` well-formed.
 - **V17** at most one step writes a given state key; `outputs` only has
   `state`.
