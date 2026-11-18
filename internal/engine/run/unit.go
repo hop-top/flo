@@ -285,8 +285,8 @@ func derefTime(t *time.Time) time.Time {
 // node without one gets the step's identity (node.md §11).
 func (u *unit) idempotencyKey(in map[string]any) string {
 	if k := u.sp.node.Spec.IdempotencyKey; k != "" {
-		if v, err := u.render(k, map[string]any{"in": in}); err == nil {
-			return str(v)
+		if v, err := inTemplate(k, in); err == nil {
+			return v
 		}
 	}
 	key := fmt.Sprintf("%s/%s", u.t.run.ID, u.sp.step.ID)
@@ -294,15 +294,6 @@ func (u *unit) idempotencyKey(in map[string]any) string {
 		key += fmt.Sprintf("/%d", *u.index)
 	}
 	return key
-}
-
-// render evaluates one template over the unit's activation.
-func (u *unit) render(src string, extra map[string]any) (any, error) {
-	tmpl, err := u.t.p.env.CompileTemplate(src)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // caller wraps
-	}
-	return tmpl.Render(u.with(extra))
 }
 
 // repeatable reports whether executing the step twice is safe: the node is

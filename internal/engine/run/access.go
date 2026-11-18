@@ -3,7 +3,9 @@ package run
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
+	"strings"
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/spec/node"
@@ -74,11 +76,11 @@ func (u *unit) guard(ctx context.Context, in map[string]any) error {
 	}
 	q := core.GuardQuery{Tenant: u.t.run.Tenant, Run: u.t.run.ID, StepID: u.sp.step.ID, Approvals: u.sp.guards}
 	if tr := u.sp.node.Spec.Trust; tr != nil {
-		class, err := u.render(tr.Class, map[string]any{"in": in})
+		class, err := inTemplate(tr.Class, in)
 		if err != nil {
-			return core.Errorf(core.CodeEvalError, "trust class: %w", err)
+			return err
 		}
-		q.TrustProvider, q.TrustClass = tr.Provider, fmt.Sprint(class)
+		q.TrustProvider, q.TrustClass = tr.Provider, class
 	}
 	ok, err := u.t.e.d.ApprovalSvc.GuardSatisfied(ctx, q)
 	if err != nil {
@@ -89,6 +91,33 @@ func (u *unit) guard(ctx context.Context, in map[string]any) error {
 			WithSuggestion("put a flo/approval@1 step before it")
 	}
 	return nil
+}
+
+// inRef is a trust class given as a placeholder over the step's inputs.
+var inRef = regexp.MustCompile(`^\s*\{\{\s*in\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*\}\}\s*$`)
+
+// trustClass resolves the trust class of a node (node.md §10.1): a literal,
+// or one `{{ in.<path> }}` placeholder. `in` is a CEL keyword, so the
+// expression environment cannot bind it and the lookup is done here.
+func inTemplate(class string, in map[string]any) (string, error) {
+	m := inRef.FindStringSubmatch(class)
+	if m == nil {
+		if strings.Contains(class, "{{") {
+			return "", core.Errorf(core.CodeEvalError, "template %q: want a literal or {{ in.<input> }}", class)
+		}
+		return class, nil
+	}
+	var cur any = in
+	for _, k := range strings.Split(m[1], ".") {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return "", core.Errorf(core.CodeUnresolvedRef, "template %q: no input %s", class, m[1])
+		}
+		if cur, ok = obj[k]; !ok {
+			return "", core.Errorf(core.CodeUnresolvedRef, "template %q: no input %s", class, m[1])
+		}
+	}
+	return fmt.Sprint(cur), nil
 }
 
 // admit asks the admission port when the step has a side effect above read
