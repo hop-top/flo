@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	"hop.top/flo/internal/core"
@@ -223,49 +222,6 @@ func (s *Store) Exists(tenant core.TenantID, run core.RunID, name string) bool {
 	}
 	_, err = os.Stat(filepath.Join(d, name))
 	return err == nil
-}
-
-// Prune deletes the recordings started before cutoff (a directory without a
-// meta.json goes by its own time) and reports how many.
-func (s *Store) Prune(tenant core.TenantID, cutoff time.Time) (int, error) {
-	if err := core.RequireTenant(tenant); err != nil {
-		return 0, err //nolint:wrapcheck // *core.Error
-	}
-	root := s.runs(tenant)
-	ents, err := os.ReadDir(root)
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, core.Wrap(core.CodeInternal, err)
-	}
-	n := 0
-	for _, e := range ents {
-		run, ok := strings.CutSuffix(e.Name(), dirSuffix)
-		if !e.IsDir() || !ok || run == "" {
-			continue
-		}
-		var m Meta
-		at := time.Time{}
-		if found, err := s.ReadJSON(tenant, core.RunID(run), MetaFile, &m); err == nil && found {
-			at = m.CreatedAt
-		}
-		if at.IsZero() {
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			at = info.ModTime()
-		}
-		if !at.Before(cutoff) {
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
-			return n, core.Wrap(core.CodeInternal, err)
-		}
-		n++
-	}
-	return n, nil
 }
 
 // ReadDoc reads a JSON object of the recording in the engine's generic form

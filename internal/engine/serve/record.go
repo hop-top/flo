@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"slices"
 	"sync"
-	"time"
 
 	"hop.top/flo/internal/check/eva"
 	"hop.top/flo/internal/core"
@@ -307,13 +306,6 @@ func (l *secretLog) values() []string {
 }
 
 func (e *Engine) secretValues() []string { return e.secretLog.values() }
-
-// pruneRecordings keeps recordings as long as outputs (core.OutputRetention),
-// the retention of run data.
-func (e *Engine) pruneRecordings(_ context.Context, tenant core.TenantID, cutoff time.Time) error {
-	_, err := e.Recordings.Prune(tenant, cutoff)
-	return err //nolint:wrapcheck // *core.Error
-}
 
 func orEmpty(m map[string]any) map[string]any {
 	if m == nil {

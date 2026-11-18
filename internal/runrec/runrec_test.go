@@ -129,3 +129,33 @@ func TestPruneDeletesOldRecordingsOnly(t *testing.T) {
 		t.Errorf("the run log was touched: %v", err)
 	}
 }
+
+func TestPruneByKeepsEachFlowAsLongAsItSays(t *testing.T) {
+	s, _ := newStore(t)
+	now := time.Now()
+	day := 24 * time.Hour
+	for _, m := range []runrec.Meta{
+		{Run: "a_old", Flow: "a", CreatedAt: now.Add(-40 * day)},
+		{Run: "a_new", Flow: "a", CreatedAt: now.Add(-10 * day)},
+		{Run: "b_old", Flow: "b", CreatedAt: now.Add(-40 * day)},
+		{Run: "nometa_flow", CreatedAt: now.Add(-40 * day)},
+	} {
+		if err := s.Save(core.DefaultTenant, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.PruneBy(core.DefaultTenant, now, func(flow string) time.Duration {
+		if flow == "a" {
+			return 30 * day
+		}
+		return 90 * day
+	})
+	if err != nil || n != 1 {
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	for run, want := range map[core.RunID]bool{"a_old": false, "a_new": true, "b_old": true, "nometa_flow": true} {
+		if got := s.Exists(core.DefaultTenant, run, runrec.MetaFile); got != want {
+			t.Errorf("%s kept = %v, want %v", run, got, want)
+		}
+	}
+}
