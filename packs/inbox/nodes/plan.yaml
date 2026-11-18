@@ -1,0 +1,66 @@
+node: inbox/plan@1
+kind: command
+lowers_to: engine               # reshapes its output with `map`
+description: >-
+  Split the decisions into automatic, pending and invalid. Marks the run's
+  messages as seen and locks pending ones. Creates no task.
+# inbox-plan (wrappers/) runs `inbox plan RUN --unattended --no-task --json`
+# and adds the live items of plan.json to its summary: the summary alone has
+# item numbers, not what each item would do. Exit 3 means some item is
+# invalid; the invalid ones are listed in the output.
+argv: [inbox-plan, --out, "{{ run.step_dir }}/out.json", "{{ in.run }}"]
+inputs:
+  run: { type: string, required: true }
+exit_codes: { ok: [0, 3] }
+outputs:
+  from: file:out.json
+  format: json
+  # An approval item: its id is the message id, stable across runs (the item
+  # number is only unique within one). A decision held back by a guard (a rule
+  # that always asks, a reply with extra recipients) has no trust class, so
+  # trust can never approve it.
+  map: >-
+    {{ {'run': out.run, 'run_dir': out.run_dir, 'counts': out.counts,
+        'invalid': out.items.filter(i, i.status == 'invalid'),
+        'auto': out.items.filter(i, i.status == 'auto' && i.executed == null).map(i,
+          {'id': i.message_id, 'n': i.n, 'action': i.keys.join(', '), 'why': i.why,
+           'class': i.keys, 'from': i.from, 'subject': i.subject, 'actions': i.actions}),
+        'pending': out.items.filter(i, i.status == 'pending' && i.verdict == null).map(i,
+          {'id': i.message_id, 'n': i.n, 'action': i.keys.join(', '), 'why': i.why,
+           'class': i.guard == null ? i.keys : [], 'from': i.from, 'subject': i.subject,
+           'actions': i.actions, 'guard': i.guard})} }}
+  schema:
+    type: object
+    required: [run, run_dir, auto, invalid, pending]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      counts: { type: object }
+      invalid: { type: array, items: { type: object } }
+      auto:
+        type: array
+        items:
+          type: object
+          required: [id, n, action, why, class]
+          properties:
+            id: { type: string }
+            n: { type: integer }
+            action: { type: string }
+            why: { type: string }
+            class: { type: array, items: { type: string } }
+      pending:
+        type: array
+        items:
+          type: object
+          required: [id, n, action, why, class]
+          properties:
+            id: { type: string }
+            n: { type: integer }
+            action: { type: string }
+            why: { type: string }
+            class: { type: array, items: { type: string } }
+side_effect: write-local        # run files, seen set, locks; reads mail servers
+idempotent: true                # re-planning keeps decided items and rebuilds locks
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

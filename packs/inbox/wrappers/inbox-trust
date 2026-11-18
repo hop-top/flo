@@ -1,0 +1,46 @@
+#!/bin/sh
+# inbox-trust list [PLAN_JSON]
+# inbox-trust set CLASS LEVEL REASON
+#
+# list: the trust levels as a JSON list on stdout:
+#   [{class, level: ask|auto, streak, threshold, resets}]
+# from `inbox status` (the script's own counters; it prints the reason of the
+# last reset, not when it happened, so last_reset is left out), and, when
+# PLAN_JSON names a
+# plan.json, with the keys of its automatic items as auto: the script
+# classified those by its thresholds, including keys that status does not list.
+#
+# set: level ask sends the key back to training (`inbox reset`). The script has
+# no command that promotes a key, so level auto is refused.
+command -v jq >/dev/null 2>&1 || { echo "inbox-trust: jq is required" >&2; exit 69; }
+
+case ${1:-} in
+  list)
+    plan=${2:-}
+    status=$(inbox status) || exit $?
+    levels=$(printf '%s\n' "$status" | sed -n '/^TRUST (/,/^ACCOUNTS:/p' | jq -R -s '
+      split("\n")
+      | map(capture("^  (?<class>.+?) +(?<streak>[0-9]+)/(?<threshold>[0-9]+) +(?<mode>training|auto) +resets=(?<resets>[0-9]+)(?<rest>.*)$")? // empty)
+      | map({ class, level: (if .mode == "auto" then "auto" else "ask" end),
+              streak: (.streak | tonumber), threshold: (.threshold | tonumber), resets: (.resets | tonumber) })')
+    if [ -n "$plan" ] && [ -f "$plan" ]; then
+      autos=$(jq -c '[.items[] | select(.status == "auto") | (.keys // [])[]] | unique' "$plan") || exit $?
+    else
+      autos='[]'
+    fi
+    printf '%s' "$levels" | jq --argjson autos "$autos" '
+      . as $l
+      | ($l | map(.class)) as $known
+      | ($l | map(if (.class | IN($autos[])) then .level = "auto" else . end))
+        + ($autos | map(select(IN($known[]) | not) | {class: ., level: "auto", streak: 0, threshold: 0, resets: 0}))'
+    ;;
+  set)
+    [ $# -eq 4 ] || { echo "usage: inbox-trust set CLASS LEVEL REASON" >&2; exit 64; }
+    case $3 in
+      ask) exec inbox reset "$2" --reason "$4" ;;
+      auto) echo "inbox-trust: the inbox script has no command to promote $2; promote it where the script offers it" >&2; exit 1 ;;
+      *) echo "inbox-trust: level $3 is not ask or auto" >&2; exit 64 ;;
+    esac
+    ;;
+  *) echo "usage: inbox-trust list [PLAN_JSON] | set CLASS LEVEL REASON" >&2; exit 64 ;;
+esac

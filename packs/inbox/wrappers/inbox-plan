@@ -1,0 +1,40 @@
+#!/bin/sh
+# inbox-plan --out FILE RUN
+#
+# `inbox plan RUN --unattended --no-task --json`, with the live items of the
+# run's plan.json added to its summary as `items`. The summary names item
+# numbers only; the approval needs what each item would do.
+#
+# Writes {schema_version, run, run_dir, counts, task, files, items} to FILE.
+# Items are the pending, automatic and invalid ones of plan.json, never the
+# superseded copies of earlier runs. Exits with the script's status: 0 ok, 3
+# some item invalid (the file is still written); anything else is a failure.
+command -v jq >/dev/null 2>&1 || { echo "inbox-plan: jq is required" >&2; exit 69; }
+
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "inbox-plan: unknown flag $1" >&2; exit 64 ;;
+    *) break ;;
+  esac
+done
+[ -n "$out" ] && [ $# -eq 1 ] || { echo "usage: inbox-plan --out FILE RUN" >&2; exit 64; }
+run=$1
+
+summary=$(inbox plan "$run" --unattended --no-task --json)
+rc=$?
+case $rc in 0|3) ;; *) printf '%s\n' "$summary"; exit "$rc" ;; esac
+
+rundir=$(printf '%s' "$summary" | jq -er '.run_dir') || { echo "inbox-plan: no run_dir in the summary" >&2; exit 70; }
+jq --argjson s "$summary" '
+  { schema_version: $s.schema_version, run: $s.run, run_dir: $s.run_dir,
+    counts: $s.counts, task: $s.task, files: $s.files,
+    items: [ .items[] | select(.status == "auto" or .status == "pending" or .status == "invalid")
+             | { n, account, message_id, from, subject, status,
+                 verdict: (.verdict // null), keys: (.keys // []), actions: (.actions // []),
+                 why: (.why // ""), guard: (.guard // null), recipients: (.recipients // null),
+                 errors: (.errors // []), executed: (.executed // null) } ] }
+' "$rundir/plan.json" > "$out" || { echo "inbox-plan: cannot read $rundir/plan.json" >&2; exit 70; }
+exit "$rc"

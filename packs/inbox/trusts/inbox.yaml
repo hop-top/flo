@@ -1,0 +1,20 @@
+trust: inbox
+kind: command
+description: Trust state owned by the inbox script; flo reads it and reports decisions, and never writes it.
+# These run on the engine's PATH and environment (not under aps): put `inbox`
+# and the wrappers there, with the same INBOX_HOME and INBOX_RUNS the nodes
+# see. The script's modes `training` and `auto` are `ask` and `auto`.
+read:                           # [{class, level: ask|auto, streak, threshold, resets}]
+  # The levels `inbox status` prints, with the keys of the run's automatic
+  # items as `auto` (the script decided those at plan time, by its own
+  # thresholds, which status does not list for a key with none recorded).
+  argv: [inbox-trust, list, "{{ in.context.run_dir }}"]
+decide:                         # once per approval, after every item has a decision
+  # The script takes approvals as flags (--only, --reject); the wrapper turns
+  # the decisions on stdin into them and reports which it recorded.
+  argv: [inbox-approve, "{{ in.context.run }}"]
+  stdin: { json: "{{ in.decisions }}" }
+set:                            # backs `flo trust set`
+  # The script can reset a key to training; it has no command to promote one
+  # (only its review server does), so level auto is refused.
+  argv: [inbox-trust, set, "{{ in.class }}", "{{ in.level }}", "{{ in.reason }}"]

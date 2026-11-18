@@ -1,0 +1,37 @@
+node: inbox/apply@1
+kind: command
+lowers_to: engine               # irreversible nodes never lower to exec
+description: Apply the plan's automatic and approved actions to the mailbox.
+argv: [inbox, apply, "{{ in.run }}", --no-task, --json]
+inputs:
+  run: { type: string, required: true }
+# Exit 3 means some item failed: the summary lists them, and the step fails
+# from it (fail_when), keeping the output in its record.
+exit_codes: { ok: [0, 3] }
+outputs:
+  from: stdout
+  format: json
+  fail_when: "{{ size(out.failed) > 0 }}"
+  schema:
+    type: object
+    required: [run, executed_ok, failed, pending_left]
+    properties:
+      run: { type: string }
+      executed_ok: { type: array }
+      failed:
+        type: array
+        items: { type: object, properties: { n: { type: integer }, error: { type: string } } }
+      pending_left: { type: integer }
+      backend: { type: [string, 'null'] }
+      calls: { type: integer }
+      seconds: { type: [number, 'null'] }
+      notes: { type: object }
+side_effect: irreversible       # label, archive, reply, send, unsubscribe, move
+approval: required
+# The script records each action as it is done and never repeats a send, but
+# no key names a repeat to it: the engine retries nothing after an unknown
+# outcome and parks the run for a person.
+idempotent: false
+privacy: local
+capabilities: [mail.write, mail.send]
+timeout: 300s

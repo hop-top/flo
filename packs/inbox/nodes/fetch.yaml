@@ -1,0 +1,40 @@
+node: inbox/fetch@1
+kind: command
+lowers_to: engine
+description: Snapshot the inbox of each account into a new run, without acting on mail.
+# `inbox fetch` never runs sender lanes (that is inbox/lanes@1). Exit 3 means
+# some account was not fetched: the run exists and the summary says which.
+argv:
+  - inbox
+  - fetch
+  - --json
+  - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
+  - "{{ in.limit > 0 ? ['--limit', string(in.limit)] : [] }}"
+inputs:
+  accounts: { type: array, items: { type: string }, default: [], description: Account names; none means every configured account. }
+  limit:    { type: integer, default: 0, minimum: 0, description: Rows per account; 0 keeps the script's own setting. }
+exit_codes: { ok: [0, 3] }
+outputs:
+  from: stdout
+  format: json
+  # Partial is data; only a fetch that got nothing from any account fails.
+  fail_when: "{{ size(out.accounts) > 0 && size(out.failed_accounts) == size(out.accounts) }}"
+  schema:
+    type: object
+    required: [run, run_dir, rows, new, carried, accounts, failed_accounts]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      rows: { type: integer }
+      new: { type: integer }
+      carried: { type: integer }
+      locked: { type: integer }
+      accounts: { type: object }
+      failed_accounts: { type: array, items: { type: string } }
+side_effect: write-local        # a new run folder and the local mail store; reads mail servers
+# Every call makes a new run, but nothing is marked seen until `plan`: a repeat
+# after a crash is safe, so the engine may re-run it.
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 120s

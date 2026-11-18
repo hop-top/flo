@@ -1,0 +1,31 @@
+node: inbox/lanes@1
+kind: command
+lowers_to: engine               # irreversible nodes never lower to exec
+description: Sync and run the sender lanes (unsubscribe and trash, label and archive) on direct-source accounts.
+# Acts on mail on its own trust, outside the plan: a flow that uses it asks
+# for a person first. inbox-triage does not use it.
+argv:
+  - inbox
+  - lanes
+  - --json
+  - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
+inputs:
+  accounts: { type: array, items: { type: string }, default: [] }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: object
+    required: [accounts, errored]
+    properties:
+      accounts: { type: array, items: { type: object } }
+      errored: { type: integer }
+      note: { type: string }
+side_effect: irreversible
+approval: required
+idempotent: false
+privacy: cloud                  # sender classification goes to a hosted model
+capabilities: [mail.write, mail.send]
+timeout: 600s
+cost: { class: metered, estimate: { usd: 0.05 } }

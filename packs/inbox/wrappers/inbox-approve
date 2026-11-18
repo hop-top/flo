@@ -1,0 +1,41 @@
+#!/bin/sh
+# inbox-approve RUN < decisions.json
+#
+# Records a person's decisions with the inbox script (`inbox approve`), which
+# owns the trust counters. stdin is the trust provider's decision list:
+#   [{id, verdict: approve|reject, reason?, item: {n, ...}}]
+# `item.n` is the script's item number. Prints {applied: [id...], skipped:
+# [id...]} on stdout. A decision is skipped when the script took no verdict
+# for it: an unknown item, one still pending, or a verdict other than approve
+# or reject (the script takes a correction as a prior edit of its decisions
+# file, which a flow cannot do). An item the script already settled (it
+# classified it automatic, or a verdict was recorded earlier) counts as
+# applied: there is nothing left to record.
+command -v jq >/dev/null 2>&1 || { echo "inbox-approve: jq is required" >&2; exit 69; }
+[ $# -eq 1 ] || { echo "usage: inbox-approve RUN < decisions.json" >&2; exit 64; }
+run=$1
+
+decisions=$(cat)
+printf '%s' "$decisions" | jq -e 'type == "array"' >/dev/null || { echo "inbox-approve: stdin is not a JSON list of decisions" >&2; exit 64; }
+only=$(printf '%s' "$decisions" | jq -r '[.[] | select(.verdict == "approve") | .item.n | select(. != null)] | join(",")')
+reject=$(printf '%s' "$decisions" | jq -r '[.[] | select(.verdict == "reject") | .item.n | select(. != null)] | join(",")')
+
+if [ -z "$only" ] && [ -z "$reject" ]; then
+  printf '%s' "$decisions" | jq -c '{applied: [], skipped: [.[].id]}'
+  exit 0
+fi
+
+set -- approve "$run"
+[ -n "$only" ] && set -- "$@" --only "$only"
+[ -n "$reject" ] && set -- "$@" --reject "$reject"
+summary=$(inbox "$@" --json) || { rc=$?; printf '%s\n' "$summary"; exit "$rc"; }
+
+rundir=$(printf '%s' "$summary" | jq -r '.run_dir // empty')
+plan=
+[ -n "$rundir" ] && [ -f "$rundir/plan.json" ] && plan="$rundir/plan.json"
+printf '%s' "$decisions" | jq -c --argjson s "$summary" --slurpfile p "${plan:-/dev/null}" '
+  ($p[0].items // []) as $items
+  | def took($n): any(($s.approved // [])[]; . == $n) or any(($s.rejected // [])[]; . == $n);
+    def settled($n): any(($s.ignored // [])[]; . == $n) and any($items[]; .n == $n and (.status != "pending" or .verdict != null));
+    def recorded: .item.n as $n | $n != null and (.verdict | IN("approve", "reject")) and (took($n) or settled($n));
+    { applied: [ .[] | select(recorded) | .id ], skipped: [ .[] | select(recorded | not) | .id ] }'
