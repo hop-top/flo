@@ -267,3 +267,28 @@ steps:
 		t.Errorf("natural base was rewritten: %q", rs[1].Due.Raw)
 	}
 }
+
+func TestExpand_StateReadsAcceptedLikeValidate(t *testing.T) {
+	r := mustParse(t, `
+flow: watch
+version: 1
+state:
+  seen: []
+steps:
+  - id: scan
+    kind: exec
+    exec: {argv: [scan, "{{state.seen}}"]}
+  - id: loop
+    depends_on: [scan]
+    repeat: 2
+    steps:
+      - id: check
+        description: "already seen {{state.seen}}"
+`)
+	if err := ValidateFlow(r); err != nil {
+		t.Fatalf("ValidateFlow: %v", err)
+	}
+	if _, err := Expand(r, memLocator{}); err != nil {
+		t.Fatalf("Expand rejected a state read that ValidateFlow accepts: %v", err)
+	}
+}

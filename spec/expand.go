@@ -32,7 +32,7 @@ func Expand(r *Flow, loc Locator) ([]Step, error) {
 	for i := range steps {
 		steps[i].Ordinal = i + 1
 	}
-	sc := refScope{vars: r.Vars, subject: r.Requires.Subject}
+	sc := refScope{vars: r.Vars, subject: r.Requires.Subject, state: r.State}
 	if err := validateStepGraph(steps, sc); err != nil {
 		return nil, fmt.Errorf("flow %s (expanded): %w", r.Name, err)
 	}
