@@ -229,3 +229,35 @@ steps:
 		t.Errorf("calls = %v", calls)
 	}
 }
+
+// A flow that reads state goes through expansion like any other: blocks and
+// state reads together.
+func TestRepeatBlockWithStateRead(t *testing.T) {
+	h := newH(t)
+	h.reads("t/read@1")
+	id := h.do(`flow: loopstate
+version: 1.0.0
+state:
+  seen: { default: [a] }
+steps:
+  - id: loop
+    repeat: 2
+    steps:
+      - id: poll
+        uses: t/read@1
+        with: { seen: "{{ state.seen }}" }
+  - id: last
+    uses: t/read@1
+    with: { seen: "{{ state.seen }}" }
+`, nil)
+	h.wantRun(id, core.RunSucceeded, "")
+	calls := h.fx.Runner.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("calls = %v", calledSteps(&h.fx.Runner.Script))
+	}
+	for _, c := range calls {
+		if s, _ := c.In["seen"].([]any); len(s) != 1 || s[0] != "a" {
+			t.Errorf("%s seen = %v", c.StepID, c.In["seen"])
+		}
+	}
+}

@@ -104,15 +104,9 @@ func (e *Executor) loadPlan(ctx context.Context, run core.Run) (*plan, error) {
 	return p, nil
 }
 
-// expandSteps returns the flat step list. A flow without include or repeat
-// blocks is already flat (and validated by the parser); spec.Expand is only
-// called when there is something to expand, because it does not yet put the
-// flow's declared state keys in scope and refuses every `state.<key>` read.
+// expandSteps returns the flat step list: include and repeat blocks expanded,
+// ids prefixed, references rewritten.
 func expandSteps(f *spec.Flow, bundle string) ([]spec.Step, error) {
-	blocks := slices.ContainsFunc(f.Steps, func(s spec.Step) bool { return s.IsBlock() })
-	if !blocks {
-		return f.Steps, nil
-	}
 	var dirs []string
 	if bundle != "" {
 		dirs = []string{bundle}
