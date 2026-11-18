@@ -71,6 +71,9 @@ func (e *Engine) startup(ctx context.Context) error {
 		if err := e.Approvals.EnsurePoll(ctx, t); err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
+		if err := e.Pruner.Ensure(ctx, t); err != nil {
+			return err //nolint:wrapcheck // *core.Error
+		}
 	}
 	return nil
 }

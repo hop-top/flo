@@ -14,6 +14,7 @@ import (
 	"hop.top/flo/internal/access/admission"
 	"hop.top/flo/internal/access/grants"
 	"hop.top/flo/internal/approvals"
+	"hop.top/flo/internal/brief"
 	"hop.top/flo/internal/check/eva"
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/run"
@@ -43,6 +44,7 @@ type Engine struct {
 	Executor  *run.Executor
 	Scheduler *triggers.Scheduler
 	Approvals *approvals.Service
+	Pruner    *brief.Pruner
 	Grants    *grants.Service
 	Flows     *Flows
 }
@@ -164,6 +166,8 @@ func (e *Engine) wire() error {
 	e.Executor.Register(e.Worker)
 	e.Scheduler.Register(e.Worker)
 	e.Approvals.Register(e.Worker)
+	e.Pruner = &brief.Pruner{Outputs: st.Outputs, Jobs: e.Queue, Clock: cfg.Clock}
+	e.Pruner.Register(e.Worker)
 	e.Flows = NewFlows(e.Services, e.Nodes)
 	gate.flows = e.Flows
 	return nil

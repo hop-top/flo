@@ -291,3 +291,27 @@ func TestStateFileTellsALiveEngineFromAStaleOne(t *testing.T) {
 		t.Error("a pid that is not a process is not alive")
 	}
 }
+
+// The engine keeps the brief to its retention: serving queues the daily
+// outputs.prune job, once, however often the engine starts.
+func TestServeQueuesTheDailyPrune(t *testing.T) {
+	e := open(t)
+	ctx, cancel := context.WithCancel(bg)
+	done := make(chan error, 1)
+	go func() { done <- e.Serve(ctx) }()
+	pending := func() int {
+		js, _ := e.Services.Jobs.List(bg, core.JobFilter{Type: "outputs.prune", Statuses: []core.JobStatus{core.JobPending}})
+		return len(js)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for pending() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if n := pending(); n != 1 {
+		t.Errorf("pending outputs.prune jobs = %d, want 1", n)
+	}
+}
