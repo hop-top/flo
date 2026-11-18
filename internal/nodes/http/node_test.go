@@ -161,7 +161,7 @@ func TestStatusClasses(t *testing.T) {
 		"401 permanent":      {http.StatusUnauthorized, false, core.EffectDone, core.CodeRunFailed, "", false},
 		"500 transient":      {http.StatusInternalServerError, true, core.EffectUnknown, core.CodeRunFailed, "", false},
 		"503 safe transient": {http.StatusServiceUnavailable, true, core.EffectNone, core.CodeRunFailed, "3", true},
-		"302 unlisted":       {http.StatusNotModified, false, core.EffectDone, core.CodeRunFailed, "", false},
+		"304 unlisted":       {http.StatusNotModified, false, core.EffectDone, core.CodeRunFailed, "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
