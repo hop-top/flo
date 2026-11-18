@@ -14,14 +14,26 @@ func TestUSDOverrunStopsRunButLetsInFlightFinish(t *testing.T) {
 	h := newH(t)
 	h.reads("t/read@1")
 	releaseC := make(chan struct{})
+	cStarted := make(chan struct{})
 	h.fx.Runner.Handle(func(inv core.Invocation) bool { return inv.StepID == "a" },
 		func(core.Invocation) (core.Result, error) {
+			// a and c launch together, but each goroutine admits against the
+			// meter on its own schedule. a overruns only once c is running,
+			// else c may be refused as a step that starts after the limit.
+			select {
+			case <-cStarted:
+			case <-h.release:
+			}
 			r := coretest.OK("a")
 			r.Cost = core.Cost{USD: 0.6}
 			return r, nil
 		})
 	h.fx.Runner.Handle(func(inv core.Invocation) bool { return inv.StepID == "c" },
-		func(core.Invocation) (core.Result, error) { <-releaseC; return coretest.OK("c"), nil })
+		func(core.Invocation) (core.Result, error) {
+			close(cStarted)
+			<-releaseC
+			return coretest.OK("c"), nil
+		})
 	id := h.start(h.flow(`flow: spend
 version: 1.0.0
 budget: { usd: 0.5 }
