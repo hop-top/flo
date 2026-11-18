@@ -548,7 +548,7 @@ request:
     mode: "{{ in.mode }}"
     limit: "{{ in.limit }}"
     filter: "{{ in.filter }}"
-  auth: { secret: ctxt_token, scheme: bearer }
+  auth: { secret: ctxt_token, scheme: bearer, optional: true }
 response: { success: [200] }
 inputs:
   query: { type: string, required: true, description: Search text; the server refuses an empty one. }
@@ -751,8 +751,9 @@ written against the tools as they are, not as a first draft assumed:
   whole content, so the node projects `id`, `type`, `source`, `created_at`,
   one `summary` and the tag labels. The server is where `ctxt find` goes
   (`server.url` or the first `server.urls` entry of the ctxt config, else
-  `http://127.0.0.1:8080`); the flo side is `packs.ctxt.url`. A protected
-  or public instance needs the token as the secret `ctxt_token`.
+  `http://127.0.0.1:8080`); the flo side is `packs.ctxt.url`. The token is the
+  optional secret `ctxt_token`: sent when set, as a protected or public
+  instance needs, else the request goes out without credentials.
 - **heo** has no participant filter and no `--since`: `conversation list`
   takes `--updated-since` and lists identity ids, not addresses. The node
   runs the wrapper `heo-conversations`, which resolves the addresses through

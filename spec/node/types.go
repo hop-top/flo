@@ -457,6 +457,9 @@ type Request struct {
 type Auth struct {
 	Secret string `yaml:"secret" json:"secret"`
 	Scheme string `yaml:"scheme" json:"scheme"` // bearer | basic | header:<Name>
+	// Optional: a secret absent from the store sends no auth; present, it is
+	// used. Absent by default: a missing secret is secret_not_found.
+	Optional bool `yaml:"optional,omitempty" json:"optional,omitempty"`
 }
 
 // Response is node.md §5.2.

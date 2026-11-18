@@ -94,7 +94,11 @@ func (x *Executor) Plan(inv core.Invocation) (map[string]any, *core.Error) {
 		out["content_type"] = req.ContentType
 	}
 	if req.Auth != nil {
-		out["auth"] = map[string]any{"secret": req.Auth.Secret, "scheme": req.Auth.Scheme}
+		a := map[string]any{"secret": req.Auth.Secret, "scheme": req.Auth.Scheme}
+		if req.Auth.Optional {
+			a["optional"] = true
+		}
+		out["auth"] = a
 	}
 	return out, nil
 }
@@ -191,12 +195,16 @@ func (x *Executor) Execute(ctx context.Context, inv core.Invocation) (core.Resul
 	var authz authHeader
 	if req.Auth != nil {
 		val, err := x.Secrets.Get(ctx, inv.Tenant, inv.RunAs, req.Auth.Secret)
-		if err != nil {
+		switch {
+		case err != nil && req.Auth.Optional && core.IsCode(err, core.CodeSecretNotFound):
+			// optional auth, secret absent: send the request without it
+		case err != nil:
 			return fail(core.Result{}, core.Wrap(core.CodeSecretNotFound, err), core.EffectNone), nil
-		}
-		var aerr *core.Error
-		if authz, sc, aerr = buildAuth(req.Auth, val); aerr != nil {
-			return fail(core.Result{}, aerr, core.EffectNone), nil
+		default:
+			var aerr *core.Error
+			if authz, sc, aerr = buildAuth(req.Auth, val); aerr != nil {
+				return fail(core.Result{}, aerr, core.EffectNone), nil
+			}
 		}
 	}
 

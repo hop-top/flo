@@ -94,6 +94,7 @@ func TestRuleCodes(t *testing.T) {
 		{"N10 exec with custom exit codes", nodeHead + "lowers_to: exec\nexit_codes: { ok: [0], retry: [75] }\n", RuleN10, CodeInvalidNode},
 		{"N12 secret in url", "node: acme/x@1\nkind: http\nrequest: { method: GET, url: 'https://h.test/x?api_key=abc' }\ninputs: {}\noutputs: { schema: { type: object } }\ncapabilities: []\nside_effect: read\nprivacy: cloud\n", RuleN12, CodeInvalidNode},
 		{"N12 credentials in url", "node: acme/x@1\nkind: http\nrequest: { method: GET, url: 'https://u:p@h.test/x' }\ninputs: {}\noutputs: { schema: { type: object } }\ncapabilities: []\nside_effect: read\nprivacy: cloud\n", RuleN12, CodeInvalidNode},
+		{"N12 optional auth still names a secret", "node: acme/x@1\nkind: http\nrequest: { method: GET, url: 'https://h.test/x', auth: { secret: '{{ in.q }}', scheme: bearer, optional: true } }\ninputs: { q: { type: string } }\noutputs: { schema: { type: object } }\ncapabilities: []\nside_effect: read\nprivacy: cloud\n", RuleN12, CodeInvalidNode},
 		{"N12 auth secret is a name", "node: acme/x@1\nkind: http\nrequest: { method: GET, url: 'https://h.test/x', auth: { secret: '{{ in.q }}', scheme: bearer } }\ninputs: { q: { type: string } }\noutputs: { schema: { type: object } }\ncapabilities: []\nside_effect: read\nprivacy: cloud\n", RuleN12, CodeInvalidNode},
 		{"N12 secret in argv", strings.Replace(nodeHead, "argv: [x]", "argv: [x, '--token=abc']", 1), RuleN12, CodeInvalidNode},
 		{"N13 out violates schema", nodeHead + "examples: [ { in: { q: a }, out: { a: nope } } ]\n", RuleN13, CodeInvalidNode},
@@ -126,6 +127,7 @@ func TestLegalSpecs(t *testing.T) {
 		"trust approval with a class":         nodeHead + "approval: trust\ntrust: { class: \"{{ in.q }}\" }\nlowers_to: engine\n",
 		"record false on a pure node":         strings.Replace(nodeHead, "side_effect: read", "side_effect: none\nrecord: false", 1),
 		"http auth by reference":              "node: acme/x@1\nkind: http\nrequest: { method: GET, url: 'https://h.test/x', headers: { Accept: application/json }, auth: { secret: acme-token, scheme: 'header:X-Key' } }\ninputs: {}\noutputs: { schema: { type: object } }\ncapabilities: []\nside_effect: read\nprivacy: cloud\n",
+		"http optional auth by reference":     "node: acme/x@1\nkind: http\nrequest: { method: GET, url: 'https://h.test/x', headers: { Accept: application/json }, auth: { secret: acme-token, scheme: 'header:X-Key', optional: true } }\ninputs: {}\noutputs: { schema: { type: object } }\ncapabilities: []\nside_effect: read\nprivacy: cloud\n",
 		"x-keys at the root":                  nodeHead + "x-owner: me\n",
 	}
 	for name, doc := range cases {

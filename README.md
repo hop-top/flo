@@ -91,7 +91,8 @@ flo run cancel <run> --yes
   brief. `ctxt/find@1` posts to `{config.ctxt.url}/api/v1/find`: the server
   `ctxt find` uses (`server.url` or the first `server.urls` entry of the ctxt
   config, else `http://127.0.0.1:8080`); a protected or public instance also
-  needs its token as the secret `ctxt_token` of the flow's profile. The
+  needs its token as the secret `ctxt_token` of the flow's profile (optional:
+  unset, no `Authorization` header is sent). The
   `heo` pack runs `wrappers/heo-conversations` (needs `heo`, its daemon and
   `jq`; stand-in for a participant filter heo lacks); `tlc/task.list@1` runs
   `tlc task list --all-projects`. Their capabilities are `knowledge.read`,

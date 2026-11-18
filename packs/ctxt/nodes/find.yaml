@@ -13,7 +13,7 @@ request:
     mode: "{{ in.mode }}"
     limit: "{{ in.limit }}"
     filter: "{{ in.filter }}"
-  auth: { secret: ctxt_token, scheme: bearer }
+  auth: { secret: ctxt_token, scheme: bearer, optional: true }
 response: { success: [200] }
 inputs:
   query: { type: string, required: true, description: Search text; the server refuses an empty one. }

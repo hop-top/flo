@@ -289,6 +289,14 @@ secret the engine resolves from its secret store for the run's profile.
 The secret is never rendered into the step record, the run log or a
 cassette (§16). `url` and `headers` MUST NOT embed secrets.
 
+`auth.optional: true` (default false) makes the secret optional: when the
+store has no such secret the engine sends the request without credentials;
+when it has one, it is used as usual. Absence is the only thing that is
+optional: a store error still fails the step. Without `optional`, a missing
+secret fails the step with `secret_not_found` before any request is made.
+Use it for an endpoint that serves anonymous callers and more to
+authenticated ones.
+
 ---
 
 ## 6. Built-in nodes

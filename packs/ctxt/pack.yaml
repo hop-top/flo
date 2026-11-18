@@ -8,8 +8,9 @@ requires: { flo: ">=0.1" }
 # packs.ctxt.url. An instance with server.access protected or public (or any
 # server.auth) needs a token: store it as the secret ctxt_token of the profile
 # the flow runs as (FLO_SECRET_<TENANT>_<PROFILE>_CTXT_TOKEN), the value of
-# server.token. A private instance (127.0.0.1, no auth) ignores the header, but
-# the secret must still exist: any value will do.
+# server.token. The token is optional: set, it is sent as a bearer; unset, the
+# request carries no Authorization header, which a private instance
+# (127.0.0.1, no auth) accepts. Secrets are never read from the config file.
 config:
   ctxt:
     url:

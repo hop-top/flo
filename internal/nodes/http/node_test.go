@@ -3,6 +3,7 @@ package httpnode_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -220,6 +221,72 @@ func TestSecretMissing(t *testing.T) {
 	if err != nil || res.Err.Code != core.CodeSecretNotFound || res.Effect != core.EffectNone {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
+}
+
+const optionalAuthSpec = "node: x/a@1\nkind: http\nrequest: { method: GET, url: '%s', auth: { secret: k, scheme: bearer, optional: %t } }\ninputs: {}\noutputs: { schema: {} }\nside_effect: read\nprivacy: local\ncapabilities: []\n"
+
+// optional auth: a missing secret sends no header, a present one is used; a
+// required auth with a missing secret stays secret_not_found.
+func TestOptionalAuth(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		optional bool
+		have     bool
+		wantAuth string
+		wantCode core.Code
+	}{
+		{"optional absent: no header", true, false, "", ""},
+		{"optional present: bearer", true, true, "Bearer " + fakeSecret(), ""},
+		{"required absent: secret_not_found", false, false, "", core.CodeSecretNotFound},
+		{"required present: bearer", false, true, "Bearer " + fakeSecret(), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits int
+			var gotAuth string
+			var hasAuth bool
+			srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				hits++
+				_, hasAuth = r.Header["Authorization"]
+				gotAuth = r.Header.Get("Authorization")
+			}))
+			defer srv.Close()
+			s := spec(t, fmt.Sprintf(optionalAuthSpec, srv.URL, tc.optional))
+			secrets := &coretest.Secrets{}
+			if tc.have {
+				secrets.Put("noor", "k", []byte(fakeSecret()))
+			}
+			res, err := newExec(secrets).Execute(context.Background(), invoke(s, nil, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantCode != "" {
+				if res.Err == nil || res.Err.Code != tc.wantCode || hits != 0 {
+					t.Fatalf("res=%+v hits=%d", res, hits)
+				}
+				return
+			}
+			if res.Outcome != core.OutcomeOK || hits != 1 || gotAuth != tc.wantAuth || hasAuth != (tc.wantAuth != "") {
+				t.Fatalf("res=%+v hits=%d auth=%q present=%v", res, hits, gotAuth, hasAuth)
+			}
+			assertNoSecret(t, res)
+		})
+	}
+}
+
+// an optional secret that cannot be read for a reason other than absence still
+// fails: only absence is optional.
+func TestOptionalAuthStoreError(t *testing.T) {
+	s := spec(t, fmt.Sprintf(optionalAuthSpec, "http://127.0.0.1:1", true))
+	res, err := newExec(brokenSecrets{}).Execute(context.Background(), invoke(s, nil, nil))
+	if err != nil || res.Err == nil || res.Err.Code != core.CodeInternal {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+}
+
+type brokenSecrets struct{}
+
+func (brokenSecrets) Get(context.Context, core.TenantID, string, string) ([]byte, error) {
+	return nil, core.Errorf(core.CodeInternal, "secret store: down")
 }
 
 func TestAuthSchemes(t *testing.T) {
