@@ -198,7 +198,10 @@ func (u *unit) build() (map[string]any, core.Invocation, error) {
 	case core.StepKindNode:
 		inv.Node, inv.NodeSource = sp.node.Spec, sp.node.Source
 		if sp.node.Source.Pack != "" {
-			inv.Config, _ = u.t.e.cfg.Config[sp.node.Source.Pack].(map[string]any)
+			// config.<ns>.<key> (node.md §1.1): the pack's namespace, not its bare map
+			if ns, ok := u.t.e.cfg.Config[sp.node.Source.Pack].(map[string]any); ok {
+				inv.Config = map[string]any{sp.node.Source.Pack: ns}
+			}
 		}
 		in = map[string]any{}
 		if sp.with != nil {
