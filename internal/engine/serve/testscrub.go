@@ -1,12 +1,14 @@
 package serve
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
 	"hop.top/flo/internal/core"
+	"hop.top/flo/internal/flowtest"
 	"hop.top/flo/internal/nodes/dispatch"
 	"hop.top/flo/internal/runrec"
 	"hop.top/flo/spec"
@@ -119,4 +121,40 @@ func LiveRefusal(nodes []LiveNode) error {
 	return core.Errorf(core.CodeUsage, "--record refused without --allow-live: these nodes run for real, against real systems: %s", strings.Join(parts, "; ")).
 		WithDetail("live_nodes", nodes).
 		WithSuggestion("point the node's profile env at temp dirs (e.g. INBOX_HOME=$(mktemp -d)) so a recording touches nothing real, then pass --allow-live")
+}
+
+// scrubResult returns res with its steps, cases and problems (outputs, plans,
+// failures, messages) redacted: redact paths dropped, secret values replaced.
+// The gate fields (Passed, Hash, Digest, ...) are not touched.
+func scrubResult(r *runrec.Redactor, res flowtest.Result) (flowtest.Result, error) {
+	var err error
+	if res.Steps, err = scrubCopy(r, res.Steps); err != nil {
+		return res, err
+	}
+	if res.Cases, err = scrubCopy(r, res.Cases); err != nil {
+		return res, err
+	}
+	res.Problems, err = scrubCopy(r, res.Problems)
+	return res, err
+}
+
+// scrubCopy redacts v through its JSON form into a fresh value, so a dropped
+// key cannot survive in a reused one.
+func scrubCopy[T any](r *runrec.Redactor, v T) (T, error) {
+	var out T
+	b, err := json.Marshal(v)
+	if err != nil {
+		return v, core.Wrap(core.CodeInternal, err)
+	}
+	var generic any
+	if err := json.Unmarshal(b, &generic); err != nil {
+		return v, core.Wrap(core.CodeInternal, err)
+	}
+	if b, err = json.Marshal(r.Doc(generic)); err != nil {
+		return v, core.Wrap(core.CodeInternal, err)
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return v, core.Wrap(core.CodeInternal, err)
+	}
+	return out, nil
 }

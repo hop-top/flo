@@ -202,14 +202,13 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 	if v.Bundle != "" {
 		tapeDir = filepath.Join(v.Bundle, recordDir, cassetteDir)
 	}
-	var scrub *testScrub
+	paths, err := e.redactPaths(v, p.flow)
+	if err != nil {
+		return flowtest.Result{}, err
+	}
+	scrub := newTestScrub(paths)
 	var topts flowtest.Options
 	if req.Mode == flowtest.ModeRecord {
-		paths, err := e.redactPaths(v, p.flow)
-		if err != nil {
-			return flowtest.Result{}, err
-		}
-		scrub = newTestScrub(paths)
 		topts.Scrub = scrub.payload
 	}
 	tape, err := flowtest.NewTapeWith(req.Mode, tapeDir, topts)
@@ -221,9 +220,7 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 		return flowtest.Result{}, err
 	}
 	defer func() { _ = sb.Close(context.WithoutCancel(ctx)) }()
-	if scrub != nil {
-		scrub.sb, sb.learn = sb, scrub.learn
-	}
+	scrub.sb, sb.learn = sb, scrub.learn
 
 	run, recs, err := sb.runOnce(ctx, tenant, req.Caller, v, vars, trigger, choice.seed)
 	if err != nil {
@@ -278,6 +275,10 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 		if res.Digest, err = flowtest.Digest(v.Bundle); err != nil {
 			return res, err //nolint:wrapcheck // *core.Error
 		}
+	}
+	// The stored result is as shareable as a recording: scrubbed the same way.
+	if res, err = scrubResult(scrub.redactor(), res); err != nil {
+		return res, err
 	}
 	if err := e.TestResults.Save(tenant, res); err != nil {
 		return res, err //nolint:wrapcheck // *core.Error

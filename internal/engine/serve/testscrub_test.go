@@ -255,3 +255,43 @@ func TestRecordOfBuiltinsNeedsNoAllowLive(t *testing.T) {
 		}
 	}
 }
+
+// The stored result of a test (tests/<flow>/<hash>.json) is scrubbed as a
+// recording is, in record and in replay mode.
+func TestStoredTestResultKeepsNoSecrets(t *testing.T) {
+	e, _ := scrubRig(t)
+	for _, mode := range []flowtest.Mode{flowtest.ModeRecord, flowtest.ModeReplay} {
+		res, err := e.TestFlow(bg, core.DefaultTenant, serve.TestRequest{
+			Flow: "lookup", Caller: "jad", Mode: mode, AllowLive: true,
+			Trigger: map[string]any{"token": secretToken, "note": "kept-trigger"},
+		})
+		if err != nil || !res.Passed {
+			t.Fatalf("%s: %+v %v", mode, res, err)
+		}
+		p := filepath.Join(e.Store.Registry().Dir(core.DefaultTenant), "tests", res.Flow, res.Hash+".json")
+		b, err := os.ReadFile(p) //nolint:gosec // a temp data root
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(b)
+		for what, s := range map[string]string{
+			"a trigger field under a redact path": secretToken,
+			"a redacted output field":             secretOut,
+			"a FLO_SECRET_* value":                envSecret,
+			"a resolved secret":                   storeSecret,
+			"a redacted input a plan renders":     argvSecret,
+		} {
+			if strings.Contains(text, s) {
+				t.Errorf("%s: the stored result keeps %s (%s)", mode, what, s)
+			}
+		}
+		for _, kept := range []string{"alpha", "kept-http"} {
+			if !strings.Contains(text, kept) {
+				t.Errorf("%s: the stored result lost %q, which is not redacted:\n%s", mode, kept, text)
+			}
+		}
+		if stored, ok, err := e.TestResults.Load(core.DefaultTenant, res.Flow, res.Hash); err != nil || !ok || !stored.Passed || stored.Hash != res.Hash || stored.Digest != res.Digest {
+			t.Errorf("%s: gate fields changed: %+v %v %v", mode, stored, ok, err)
+		}
+	}
+}
