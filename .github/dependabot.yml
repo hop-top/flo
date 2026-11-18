@@ -1,0 +1,47 @@
+# Org Dependabot policy (hop-top/.github templates/dependabot.yml).
+#
+# Version updates: one PR at a time across every ecosystem (multi-ecosystem
+# group, open-pull-requests-limit 1); an open PR is updated in place. Cooldown
+# 14d after release on every entry, matching the dependency age gate.
+# Security updates: immediate (cooldown never applies); one grouped PR per
+# ecosystem. Needs repo setting "Dependabot security updates".
+# Two Go modules: root (CLI) and spec/ (hop.top/flo/spec).
+version: 2
+
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "build(deps):"
+
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - "/"
+      - "/spec"
+    multi-ecosystem-group: dependencies
+    patterns:
+      - "*"
+    cooldown:
+      default-days: 14
+    groups:
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+    multi-ecosystem-group: dependencies
+    patterns:
+      - "*"
+    cooldown:
+      default-days: 14
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
