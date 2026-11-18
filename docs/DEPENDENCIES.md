@@ -41,3 +41,11 @@ module. Exact pin. Owned dependency (hop.top): exempt from the age gate.
 - License MIT, compatible. `go` directive 1.25.0.
 - Added module to the spec module: `golang.org/x/text` raised to v0.36.0
   (indirect, required by vstar's `go.mod`).
+- Root module, calendar pack (`internal/packs/calendar`): same pin, no new
+  module. Used: `vstar` (`Calendar`, `Component`, `ParseTime`,
+  `ParseTimeWithTZID`), `codec/rfc5545` (`Parse`), `duration` (`Parse`,
+  `AddTo`), `rrule` (`ParseRRule`, `Set.Between`). Occurrences expand from a
+  DTSTART in its IANA zone, so a series keeps its wall-clock time across DST;
+  a TZID the system does not know falls back to the calendar's VTIMEZONE (a
+  fixed offset). `rrule.SetFromComponent` is not used: it accepts UTC
+  DTSTART/EXDATE/RDATE only.

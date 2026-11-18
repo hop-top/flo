@@ -315,3 +315,16 @@ func TestServeQueuesTheDailyPrune(t *testing.T) {
 		t.Errorf("pending outputs.prune jobs = %d, want 1", n)
 	}
 }
+
+func TestCalendarPackIsServed(t *testing.T) {
+	e := open(t)
+	if _, ok := e.Nodes.Plugins.Trigger("calendar/events@1"); !ok {
+		t.Fatal("the calendar trigger plugin is not registered")
+	}
+	if ok, _ := e.Grants.Covers(bg, core.DefaultTenant, serve.DefaultEngineProfile, "calendar.read"); !ok {
+		t.Error("the engine profile lacks calendar.read, which the calendar node declares")
+	}
+	if e.Calendar == nil {
+		t.Error("no calendar syncer")
+	}
+}

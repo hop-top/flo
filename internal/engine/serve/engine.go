@@ -23,6 +23,7 @@ import (
 	"hop.top/flo/internal/nodes/command"
 	"hop.top/flo/internal/nodes/dispatch"
 	httpnode "hop.top/flo/internal/nodes/http"
+	"hop.top/flo/internal/packs/calendar"
 	"hop.top/flo/internal/placement"
 	"hop.top/flo/internal/runlog"
 	"hop.top/flo/internal/store/sqlite"
@@ -43,6 +44,7 @@ type Engine struct {
 	Nodes     *Nodes
 	Executor  *run.Executor
 	Scheduler *triggers.Scheduler
+	Calendar  *calendar.Syncer
 	Approvals *approvals.Service
 	Pruner    *brief.Pruner
 	Grants    *grants.Service
@@ -126,6 +128,9 @@ func (e *Engine) wire() error {
 		return err //nolint:wrapcheck // *core.Error
 	}
 	e.Nodes = newNodes(packs, builtins)
+	if err := e.Nodes.Plugins.RegisterTrigger(&calendar.Plugin{Clock: cfg.Clock, Secrets: httpnode.StoreSecrets{Store: secrets}}); err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
 
 	trustDirs := append([]string{filepath.Join(cfg.Root, "trusts")}, cfg.TrustDirs...)
 	trust, err := approvals.NewCommandTrust(commands, packs.Locator(trustDirs...))
@@ -157,6 +162,10 @@ func (e *Engine) wire() error {
 		Clock: cfg.Clock, IDs: ids, Tenants: st.Tenants, Flows: st.Flows, Triggers: st.Triggers, Jobs: e.Queue,
 		Starter: starter, RunLog: e.RunLog, StartedBy: cfg.Engine,
 	})
+	e.Calendar = calendar.NewSyncer(calendar.Deps{
+		Clock: cfg.Clock, Tenants: st.Tenants, Triggers: st.Triggers, Jobs: e.Queue, Plugins: e.Nodes.Plugins,
+		Scheduler: e.Scheduler, Config: calendar.ConfigOf(cfg.ExprConfig),
+	})
 
 	gate := &validatedGate{}
 	e.Services = &core.Services{
@@ -164,7 +173,7 @@ func (e *Engine) wire() error {
 		Tenants: st.Tenants, Runs: st.Runs, State: st.State, Flows: st.Flows, Approvals: st.Approvals,
 		GrantRows: st.Grants, Receipts: st.Receipts, Outputs: st.Outputs, Triggers: st.Triggers,
 		Jobs: e.Queue, Worker: e.Worker, Resumer: resumer, Groups: st.Groups, RunLog: e.RunLog,
-		Starter: starter, TrigSync: e.Scheduler,
+		Starter: starter, TrigSync: e.Calendar.Hook(e.Scheduler),
 		Dispatcher: dispatcher, Runner: placement.New(dispatcher), Nodes: e.Nodes.Registry, Builtins: builtins,
 		Commands: commands, Checker: eva.New(httpc), Secrets: httpnode.StoreSecrets{Store: secrets},
 		Grants: e.Grants, ApprovalSvc: e.Approvals, Admission: adm, Gate: gate, Tasks: tasks, Trust: trust,
@@ -172,6 +181,7 @@ func (e *Engine) wire() error {
 	e.Executor = run.New(e.Services, run.Config{MaxParallel: cfg.MaxParallel, Config: cfg.ExprConfig})
 	e.Executor.Register(e.Worker)
 	e.Scheduler.Register(e.Worker)
+	e.Calendar.Register(e.Worker)
 	e.Approvals.Register(e.Worker)
 	e.Pruner = &brief.Pruner{Outputs: st.Outputs, Jobs: e.Queue, Clock: cfg.Clock}
 	e.Pruner.Register(e.Worker)
@@ -189,7 +199,7 @@ func (e *Engine) seed(ctx context.Context) error {
 			return err //nolint:wrapcheck // *core.Error
 		}
 	}
-	if _, err := e.Grants.SyncEngine(ctx, cfg.Tenant, cfg.Engine, e.Nodes.Packs.Capabilities()); err != nil {
+	if _, err := e.Grants.SyncEngine(ctx, cfg.Tenant, cfg.Engine, e.Nodes.Capabilities()); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
 	return nil

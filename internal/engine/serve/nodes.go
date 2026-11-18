@@ -2,6 +2,7 @@ package serve
 
 import (
 	"os"
+	"sort"
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/nodes/builtin"
@@ -67,4 +68,24 @@ func (n *Nodes) Locator(bundle string) (*node.Locator, error) {
 		return nil, core.Wrap(core.CodeNodeConflict, err)
 	}
 	return loc, nil
+}
+
+// Capabilities returns what the nodes of installed packs and registered
+// plugins declare: the engine's profile holds exactly these.
+func (n *Nodes) Capabilities() []string {
+	set := map[string]bool{}
+	for _, c := range n.Packs.Capabilities() {
+		set[c] = true
+	}
+	for _, s := range n.Plugins.Specs() {
+		for _, c := range s.Capabilities {
+			set[c] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for c := range set {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
 }

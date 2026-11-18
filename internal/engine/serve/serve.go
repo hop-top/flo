@@ -21,7 +21,7 @@ const DefaultShutdownGrace = 30 * time.Second
 // the shutdown grace.
 //
 // The start-up pass queues what a crash left unqueued: a run advance job lost
-// between storing the run and queueing it, a schedule's next fire, the next
+// between storing the run and queueing it, a schedule's next fire, a calendar trigger's sync, the next
 // approval poll; and it releases claims of workers that stopped heartbeating.
 func (e *Engine) Serve(ctx context.Context) error {
 	host, _ := os.Hostname()
@@ -61,6 +61,9 @@ func (e *Engine) startup(ctx context.Context) error {
 		return err //nolint:wrapcheck // *core.Error
 	}
 	if err := e.Scheduler.Reconcile(ctx); err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
+	if err := e.Calendar.Reconcile(ctx); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
 	ts, err := e.Services.Tenants.List(ctx)

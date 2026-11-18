@@ -1,0 +1,14 @@
+flow: calendar-event
+version: 0.1.0
+description: A brief for each calendar event with more than one attendee, 30 minutes before it starts.
+on:
+  - calendar: { source: calendar/events@1, offset: -30m, when: "trigger.event.attendees.size() > 1" }
+run_as: automation
+tasks: none
+steps:
+  - id: brief
+    uses: flo/output@1
+    with:
+      kind: brief
+      title: "{{ trigger.event.title }}"
+      body: "starts {{ trigger.event.start }}"
