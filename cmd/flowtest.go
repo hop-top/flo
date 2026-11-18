@@ -33,6 +33,16 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 			"the flow on that state and wins. --record writes the seed used to record/state.json, which a " +
 			"replay uses unless --state is given. --dry-run prints the plan (seed, cassettes, planned writes) " +
 			"and creates nothing.\n\n" +
+			"--from-run <run> makes the test from a run recorded with `flo run create --record`: its " +
+			"cassettes, trigger payload and starting state are copied into record/ of the flow's bundle " +
+			"(--write-expect also writes tests/from-<run>.yaml, an expect: entry per step with the status " +
+			"it ended with), then the bundle is replayed. It writes the bundle, so it asks for confirmation " +
+			"(--yes, or a terminal) and --dry-run lists what would be written; the bundle's digest changes, " +
+			"so the version is tested again before it is activated. It refuses a recording that is " +
+			"unfinished or partial, of a run that did not succeed, of another version than the one to " +
+			"write (--version names the recorded one), and of a local-only flow unless --allow-local-data " +
+			"(a bundle may be committed or shared). Inputs a node's redact paths dropped are never copied: " +
+			"supply them again with --trigger-file, --var/--var-file or --state <seed file>.\n\n" +
 			"The latest result of a version is what `flo flow set --state active` looks at: activation needs a " +
 			"passing test of that exact version, bundle files included. Apply the version first; the test " +
 			"takes the newest stored version, or --version. Exits 1 when the test fails.",
@@ -46,8 +56,9 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 	trigFile := c.Flags().String("trigger-file", "", "a JSON object read as the trigger payload (trigger.<key> in expressions); default the recorded one")
 	state := c.Flags().String("state", "", "flow state to start from: default (declared defaults), current (read-only copy of the engine's state) or a JSON/YAML seed file; default: record/state.json on replay, else the declared defaults")
 	timeout := c.Flags().Duration("timeout", serve.DefaultTestTimeout, "give up after this long")
-	yes := c.Flags().Bool("yes", false, "with --record, confirm without asking")
+	yes := c.Flags().Bool("yes", false, "with --record or --from-run, confirm without asking")
 	allowLive := c.Flags().Bool("allow-live", false, "with --record, allow declared command/http/plugin nodes (side_effect read or write-local) to run against real systems")
+	fromRun := addFromRunFlags(c)
 	c.MarkFlagsMutuallyExclusive("record", "replay")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		mode := flowtest.ModeReplay
@@ -61,6 +72,14 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 		payload, err := readTriggerFile(*trigFile)
 		if err != nil {
 			return err
+		}
+		if *fromRun.run != "" {
+			return runFromRun(cmd, root, eng, fromRun, fromRunArgs{
+				flow: args[0], version: *ver, state: *state, trigger: payload, vars: provided, timeout: *timeout, yes: *yes,
+			})
+		}
+		if *fromRun.writeExpect || *fromRun.allowLocalData {
+			return core.New(core.CodeUsage, "--write-expect and --allow-local-data go with --from-run")
 		}
 		e, err := flowOps(cmd, eng)
 		if err != nil {
@@ -114,6 +133,8 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 	_ = kitcli.SetExamples(c, []kitcli.Example{
 		{Title: "test on the recordings", Command: "flo flow test dependency-watch"},
 		{Title: "record the reads, then test", Command: "flo flow test dependency-watch --record --yes"},
+		{Title: "turn a recorded run into a test", Command: "flo flow test dependency-watch --from-run run_01 --write-expect --yes"},
+		{Title: "see what that would write", Command: "flo flow test dependency-watch --from-run run_01 --dry-run"},
 		{Title: "feed a trigger payload", Command: "flo flow test meeting-brief --record --trigger-file event.json --yes"},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{

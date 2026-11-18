@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"strings"
 	"time"
 
 	"hop.top/flo/internal/core"
@@ -124,20 +123,8 @@ func (e *Engine) ReplayRun(ctx context.Context, tenant core.TenantID, req Replay
 			WithSuggestion("flo grant set " + req.Caller + " profile.use:" + runAs)
 	}
 
-	for _, doc := range []struct {
-		label string
-		set   bool
-	}{{"trigger", req.Trigger != nil}, {"vars", req.Vars != nil}, {"state", req.State != nil}} {
-		if doc.set {
-			continue
-		}
-		for _, d := range meta.Dropped {
-			if strings.HasPrefix(d, doc.label+".") {
-				return ReplayResult{}, core.Errorf(core.CodeUsage, "recorded input redacted: %s", d).
-					WithDetail("dropped", meta.Dropped).
-					WithSuggestion("supply it again with --trigger-file, --var/--var-file or --state-file")
-			}
-		}
+	if err := requireDropped(meta, req.Trigger != nil, req.Vars != nil, req.State != nil); err != nil {
+		return ReplayResult{}, err
 	}
 	trigger, _, err := rs.ReadDoc(tenant, run.ID, runrec.TriggerFile)
 	if err != nil {
