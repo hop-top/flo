@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build -buildvcs=false ./...
+      # cmd.TestCLIConforms runs kitconformance.AssertCLI
+      # (EnforceValidate forced on).
+      - run: go test ./...
+
+  # Two Go modules: the CLI at the root and spec/ (hop.top/flo/spec).
+  # Keep the golangci-lint version in lockstep with mise.toml.
+  lint:
+    name: lint (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [".", "spec"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            spec/go.sum
+      - uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.15.0
+          working-directory: ${{ matrix.module }}
+        env:
+          GOFLAGS: -buildvcs=false
