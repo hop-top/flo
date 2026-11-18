@@ -1,0 +1,136 @@
+[
+  {
+    "number": 1,
+    "state": "open",
+    "dependency": {
+      "package": {
+        "ecosystem": "npm",
+        "name": "undici"
+      },
+      "manifest_path": "web/pnpm-lock.yaml",
+      "version_requirement": "8.10.2",
+      "scope": "runtime",
+      "relationship": "transitive"
+    },
+    "security_advisory": {
+      "ghsa_id": "GHSA-4w7w-5xrc-9h26",
+      "cve_id": "CVE-2026-109829",
+      "summary": "undici vulnerable to cache poisoning and cross-user disclosure via cross-origin redirects",
+      "severity": "high",
+      "published_at": "2026-10-27T19:02:31Z",
+      "updated_at": "2026-10-27T19:02:32Z",
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "undici"
+          },
+          "severity": "high",
+          "vulnerable_version_range": ">= 7.0.0, < 7.30.1",
+          "first_patched_version": {
+            "identifier": "7.30.1"
+          }
+        },
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "undici"
+          },
+          "severity": "high",
+          "vulnerable_version_range": ">= 8.0.0, < 8.12.2",
+          "first_patched_version": {
+            "identifier": "8.12.2"
+          }
+        }
+      ],
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+        "score": 7.4
+      }
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "npm",
+        "name": "undici"
+      },
+      "severity": "high",
+      "vulnerable_version_range": ">= 8.0.0, < 8.12.2",
+      "first_patched_version": {
+        "identifier": "8.12.2"
+      }
+    },
+    "html_url": "https://github.com/example-org/example-repo/security/dependabot/1",
+    "created_at": "2026-11-14T11:49:46Z",
+    "updated_at": "2026-11-14T11:49:46Z",
+    "fixed_at": null,
+    "dismissed_at": null
+  },
+  {
+    "number": 2,
+    "state": "open",
+    "dependency": {
+      "package": {
+        "ecosystem": "npm",
+        "name": "postcss-selector-parser"
+      },
+      "manifest_path": "web/pnpm-lock.yaml",
+      "version_requirement": "6.1.4",
+      "scope": "runtime",
+      "relationship": "transitive"
+    },
+    "security_advisory": {
+      "ghsa_id": "GHSA-rj75-hqrm-r3gf",
+      "cve_id": "CVE-2026-104844",
+      "summary": "PostCSS: Quadratic complexity in flat selector parsing allows CPU exhaustion",
+      "severity": "medium",
+      "published_at": "2026-10-05T22:53:54Z",
+      "updated_at": "2026-10-26T14:07:57Z",
+      "withdrawn_at": null,
+      "vulnerabilities": [
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "postcss-selector-parser"
+          },
+          "severity": "medium",
+          "vulnerable_version_range": ">= 7.0.0, < 7.1.6",
+          "first_patched_version": {
+            "identifier": "7.1.6"
+          }
+        },
+        {
+          "package": {
+            "ecosystem": "npm",
+            "name": "postcss-selector-parser"
+          },
+          "severity": "medium",
+          "vulnerable_version_range": "< 6.1.5",
+          "first_patched_version": {
+            "identifier": "6.1.5"
+          }
+        }
+      ],
+      "cvss": {
+        "vector_string": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "score": 5.9
+      }
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "npm",
+        "name": "postcss-selector-parser"
+      },
+      "severity": "medium",
+      "vulnerable_version_range": "< 6.1.5",
+      "first_patched_version": {
+        "identifier": "6.1.5"
+      }
+    },
+    "html_url": "https://github.com/example-org/example-repo/security/dependabot/2",
+    "created_at": "2026-11-14T11:49:46Z",
+    "updated_at": "2026-11-14T11:49:46Z",
+    "fixed_at": null,
+    "dismissed_at": null
+  }
+]

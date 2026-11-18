@@ -292,7 +292,7 @@ Core rate limit.
   Repo with alerts on and none open: `[]` (hop-top/tlc).
 - Needs scope `security_events` or `repo` plus alerts enabled.
 
-Shape (fixture `dependabot_alerts_aps.json`, trimmed): `number, state,
+Shape (fixture `dependabot_alerts.json`, trimmed): `number, state,
 dependency{package{ecosystem,name}, manifest_path, version_requirement,
 scope, relationship}, security_advisory{ghsa_id,cve_id,summary,severity,
 published_at,updated_at,withdrawn_at,vulnerabilities[],cvss,...},
