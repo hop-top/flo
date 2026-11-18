@@ -2,12 +2,10 @@ package coretest
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"strings"
 	"sync"
 
+	"hop.top/flo/internal/access/admission"
 	"hop.top/flo/internal/core"
 )
 
@@ -131,8 +129,8 @@ func (g *Grants) Provision(ctx context.Context, tenant core.TenantID, profile, c
 
 // Admission is the fake core.Admission: it allows unless Policy says
 // otherwise, records receipts, and keeps a deferred decision deferred until
-// Resolve. The digest is a SHA-256 over the request's JSON, not the
-// governance backend's canonical form.
+// Resolve. The digest is the real one (admission.Digest), the canonical form
+// shared with bos.
 type Admission struct {
 	Receipts core.ReceiptStore
 	IDs      core.IDs
@@ -145,12 +143,11 @@ type Admission struct {
 }
 
 func digest(req core.AdmissionRequest) string {
-	b, _ := json.Marshal(map[string]any{
-		"v": 1, "operation": req.Operation, "scope": req.Tenant, "actor": req.Agent,
-		"acting_for": req.Principal, "input": req.Input,
-	})
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	d, err := admission.Digest(req)
+	if err != nil { // an input that is not JSON: a bug of the test
+		panic(err)
+	}
+	return d
 }
 
 // Admit implements core.Admission.

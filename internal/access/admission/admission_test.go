@@ -183,3 +183,21 @@ func TestRejectsBadTenant(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// The fake admission of coretest stamps the same digest as the real one, so a
+// test that pins a digest against the fake pins the bos-compatible form.
+func TestFakeAdmissionDigestIsTheRealOne(t *testing.T) {
+	fx := coretest.New()
+	req := request()
+	got, err := fx.Admission.Admit(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := admission.Digest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Receipt.Digest != want || !strings.HasPrefix(want, digest.Prefix) {
+		t.Errorf("fake digest %q, real %q", got.Receipt.Digest, want)
+	}
+}
