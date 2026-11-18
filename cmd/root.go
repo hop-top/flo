@@ -11,8 +11,12 @@ import (
 
 // NewRoot builds the flo root command. Kept separate from Execute so
 // the conformance test can assert on the tree without running it.
-func NewRoot() *kitcli.Root {
-	return kitcli.New(
+func NewRoot() *kitcli.Root { return NewRootWith(defaultServices) }
+
+// NewRootWith builds the tree over the given services, which is how tests of
+// a command run it against fakes.
+func NewRootWith(svc ServicesFunc) *kitcli.Root {
+	root := kitcli.New(
 		kitcli.Config{
 			Name:    "flo",
 			Version: version.Version(),
@@ -23,6 +27,13 @@ func NewRoot() *kitcli.Root {
 			ExtraEnvKeys: []string{"FLO_*"},
 		}),
 	)
+	addRun(root, svc)
+	addApproval(root, svc)
+	addGrant(root, svc)
+	addTrigger(root, svc)
+	addEngine(root, svc)
+	addFlow(root, svc)
+	return root
 }
 
 // Execute runs the flo CLI.
