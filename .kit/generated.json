@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "generated_by": "kit-init",
+  "files": [
+    {
+      "path": ".githooks/pre-pr",
+      "sha256": "9490355587aa0c022e1c8b27bffab6b7e9aefaea02283f9d5a5ac20e6ad0ad98",
+      "generatedAt": "2026-11-18T09:31:30.44155Z"
+    },
+    {
+      "path": ".githooks/pre-pr.ps1",
+      "sha256": "55d9ae9f6c1b60beef72be9886620cd266fb607eb69972ebe3bf02e5c5e51330",
+      "generatedAt": "2026-11-18T09:31:30.44155Z"
+    },
+    {
+      "path": ".github/workflows/release-go-caller.yml",
+      "sha256": "58e043e9fd745e5a30a5529ba001469f926810e07f111d3dc3b684c4157b1022",
+      "generatedAt": "2026-11-18T09:31:30Z"
+    },
+    {
+      "path": ".github/workflows/test-go-caller.yml",
+      "sha256": "47455d97160f0b27fe390b96e6f9ca5c96539905cd08ccee97f5fe139115811e",
+      "generatedAt": "2026-11-18T09:31:30Z"
+    }
+  ]
+}
