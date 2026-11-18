@@ -381,7 +381,7 @@ func ExecLowerable(s *Spec) string {
 		return "outputs.fail_when needs the engine"
 	case s.Approval == ApprovalTrust || s.Trust != nil:
 		return "a trust class needs the engine"
-	case s.ExitCodes != nil && (len(s.ExitCodes.Retry) > 0 || !(len(s.ExitCodes.OK) == 0 || (len(s.ExitCodes.OK) == 1 && s.ExitCodes.OK[0] == 0))):
+	case customExitCodes(s.ExitCodes):
 		return "exit_codes beyond the default need the engine"
 	case s.SideEffect.AtLeast(SideEffectIrreversible):
 		return "an irreversible node never lowers to exec"
@@ -429,4 +429,14 @@ func sortedKeys(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// customExitCodes reports exit_codes beyond the default success of [0]: a
+// plain exec step cannot express them.
+func customExitCodes(e *ExitCodes) bool {
+	if e == nil {
+		return false
+	}
+	defaultOK := len(e.OK) == 0 || (len(e.OK) == 1 && e.OK[0] == 0)
+	return len(e.Retry) > 0 || !defaultOK
 }

@@ -263,3 +263,10 @@ func skipString(s string, i int) int {
 	}
 	return len(s)
 }
+
+// ExprRefs lists the references of one bare CEL expression (no {{ }}), in
+// the sense of TemplateRefs.
+func ExprRefs(expr string) ([]Ref, error) { return exprRefs(expr) }
+
+// Roots lists the distinct namespaces of refs, sorted.
+func Roots(refs []Ref) []string { return roots(refs) }

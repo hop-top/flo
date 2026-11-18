@@ -73,7 +73,7 @@ func TestPackXKeysAtRoot(t *testing.T) {
 }
 
 func TestTrustProviderRules(t *testing.T) {
-	cases := map[string]string{
+	cases := map[string]string{ //nolint:gosec // provider documents, not credentials
 		"missing read":        "trust: t\nkind: command\n",
 		"irreversible":        "trust: t\nkind: command\nside_effect: irreversible\nread: { argv: [a] }\n",
 		"http op needs req":   "trust: t\nkind: http\nread: { argv: [a] }\n",

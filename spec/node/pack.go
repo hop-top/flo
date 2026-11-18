@@ -359,7 +359,7 @@ func (lp *LoadedPack) configErrors(file, nodeType string, own map[string]InputDe
 		case key != "":
 			_, okPack := lp.Pack.Config[ns][key]
 			_, okOwn := own[key]
-			if !okPack && !(inOwn && okOwn) {
+			if !okPack && (!inOwn || !okOwn) {
 				errs = append(errs, &Error{Code: CodeInvalidNode, Field: file,
 					Msg: fmt.Sprintf("%s reads config key %q, which the pack does not declare", r, ns+"."+key)})
 			}

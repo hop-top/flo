@@ -284,3 +284,8 @@ func checkFormat(format, s string) string {
 	}
 	return ""
 }
+
+// CheckInput validates v against one input definition of a node spec (type,
+// enum, bounds, items, properties, format), as `with` values and examples
+// are. It returns one message per violation.
+func CheckInput(def InputDef, v any) []string { return CheckValue(schemaOf(def), v) }
