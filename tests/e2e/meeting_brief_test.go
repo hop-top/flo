@@ -343,7 +343,7 @@ func TestMeetingBriefCommittedRecording(t *testing.T) {
 					t.Fatal(err)
 				}
 				b = regexp.MustCompile(`127\.0\.0\.1:[0-9]+`).ReplaceAll(b, []byte("127.0.0.1:8080"))
-				if err := os.WriteFile(p, b, 0o600); err != nil {
+				if err := os.WriteFile(p, b, 0o600); err != nil { //nolint:gosec // same file
 					t.Fatal(err)
 				}
 			}
