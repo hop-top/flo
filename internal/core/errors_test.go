@@ -69,7 +69,7 @@ func TestCodeTableShape(t *testing.T) {
 
 func toSnake(s string) string {
 	for _, r := range s {
-		if !(r == '_' || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
+		if r != '_' && (r < 'a' || r > 'z') && (r < '0' || r > '9') {
 			return ""
 		}
 	}

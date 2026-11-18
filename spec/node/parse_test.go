@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,12 +22,11 @@ func TestParseExamples(t *testing.T) {
 	}
 	for _, f := range files {
 		t.Run(filepath.Base(f), func(t *testing.T) {
-			fh, err := os.Open(f)
+			data, err := os.ReadFile(f) //nolint:gosec // fixture path from a fixed glob
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = fh.Close() }()
-			s, err := Parse(fh, f)
+			s, err := Parse(bytes.NewReader(data), f)
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
@@ -41,12 +41,11 @@ func TestParseExamples(t *testing.T) {
 }
 
 func TestParseExampleFields(t *testing.T) {
-	fh, err := os.Open("testdata/examples/gh_dependency-list_1.yaml")
+	data, err := os.ReadFile("testdata/examples/gh_dependency-list_1.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = fh.Close() }()
-	s, err := Parse(fh, "dep.yaml")
+	s, err := Parse(bytes.NewReader(data), "dep.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

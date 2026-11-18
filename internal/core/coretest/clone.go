@@ -9,7 +9,8 @@ import "reflect"
 // cares about that normalizes with core.NormalizeJSON.
 func clone[T any](v T) T {
 	out := deepCopy(reflect.ValueOf(&v).Elem())
-	return out.Interface().(T) //nolint:forcetypeassert,errcheck // same type by construction
+	r, _ := out.Interface().(T) // nil interface value stays the zero T
+	return r
 }
 
 func deepCopy(v reflect.Value) reflect.Value {
