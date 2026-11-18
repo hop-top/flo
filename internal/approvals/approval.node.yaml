@@ -1,0 +1,56 @@
+node: flo/approval@1
+kind: builtin
+description: Park until a person decides each item.
+inputs:
+  items:
+    type: array
+    required: true
+    description: what needs a decision
+    items:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, description: stable across runs when the underlying thing is }
+        action: { type: string }
+        why: { type: string }
+        class: { type: [string, array], description: "trust action type, or a list of them" }
+        capability: { type: string }
+        args: { type: object }
+  surface:
+    type: string
+    enum: [tlc, none]
+    default: tlc
+    description: where the human sees it
+  trust:
+    type: string
+    description: a trust provider name
+  context:
+    type: object
+    description: passed to the trust provider
+  verdicts:
+    type: array
+    items: { type: string, enum: [approve, reject, correct] }
+    description: decisions a person may give; default all three
+  title:
+    type: string
+    description: task title
+  timeout:
+    type: string
+    format: duration
+    description: undecided items are rejected after this long
+  on_timeout:
+    type: string
+    enum: [reject]
+outputs:
+  schema:
+    type: object
+    required: [approved, rejected, corrected, auto, reason]
+    properties:
+      approved: { type: array, items: { type: object } }
+      rejected: { type: array, items: { type: object } }
+      corrected: { type: array, items: { type: object } }
+      auto: { type: array, items: { type: object } }
+      reason: { type: object }
+capabilities: []
+side_effect: write-shared
+privacy: local
