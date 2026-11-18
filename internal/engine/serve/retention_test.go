@@ -25,7 +25,7 @@ func (r *rig) applyRenamed(t *testing.T, name, extra string) core.FlowVersion {
 		t.Fatal(err)
 	}
 	doc := strings.Replace(string(b), "flow: dependency-watch\n", "flow: "+name+"\n"+extra, 1)
-	if err := os.WriteFile(p, []byte(doc), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(doc), 0o600); err != nil { //nolint:gosec // a temp copy
 		t.Fatal(err)
 	}
 	return r.applyBundle(t, bundle, "vcs.read")

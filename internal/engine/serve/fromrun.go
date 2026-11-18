@@ -391,7 +391,7 @@ func writeBundleFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return core.Wrap(core.CodeInternal, err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil { //nolint:gosec // a path inside the bundle, built from the run's own file names
 		return core.Wrap(core.CodeInternal, err)
 	}
 	return nil
