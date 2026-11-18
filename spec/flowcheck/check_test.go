@@ -163,9 +163,9 @@ func TestExampleFlowsClean(t *testing.T) {
 	}
 }
 
-func issueWith(r Report, rule, code string) bool {
+func issueWith(r Report, rule, code string, frag ...string) bool {
 	for _, i := range r {
-		if i.Rule == rule && i.Code == code {
+		if i.Rule == rule && i.Code == code && (len(frag) == 0 || strings.Contains(i.Msg, frag[0])) {
 			return true
 		}
 	}
@@ -178,43 +178,44 @@ func TestRules(t *testing.T) {
 	cases := []struct {
 		name, rule, code, doc string
 		warn                  bool
+		frag                  string
 	}{
 		{"V19 cloud node, local-only flow", "V19", CodePrivacyViolation,
-			head + "steps:\n  - { id: d, uses: gh/dependency-list@1, with: { repos: [a/b] } }\n", false},
+			head + "steps:\n  - { id: d, uses: gh/dependency-list@1, with: { repos: [a/b] } }\n", false, ""},
 		{"V19 hosted model under local-only", "V19", CodePrivacyViolation,
-			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'anthropic://claude' } }\n", false},
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'anthropic://claude' } }\n", false, ""},
 		{"V20 irreversible, no approval", "V20", CodeUnguardedIrreversible,
-			head + "privacy: local-only\nsteps:\n  - { id: f, uses: inbox/fetch@1 }\n  - { id: a, uses: inbox/apply@1, depends_on: [f], with: { run: x } }\n", false},
+			head + "privacy: local-only\nsteps:\n  - { id: f, uses: inbox/fetch@1 }\n  - { id: a, uses: inbox/apply@1, depends_on: [f], with: { run: x } }\n", false, ""},
 		{"V20 an exec step does not guard", "V20", CodeUnguardedIrreversible,
-			head + "steps:\n  - { id: ok, kind: exec, exec: { argv: [true] } }\n  - { id: a, uses: inbox/apply@1, depends_on: [ok], with: { run: x } }\n", false},
+			head + "steps:\n  - { id: ok, kind: exec, exec: { argv: [true] } }\n  - { id: a, uses: inbox/apply@1, depends_on: [ok], with: { run: x } }\n", false, "ancestor flo/approval"},
 		{"V12 unknown node", "V12", CodeNodeNotFound,
-			head + "steps:\n  - { id: a, uses: nope/none@1 }\n", false},
+			head + "steps:\n  - { id: a, uses: nope/none@1 }\n", false, "not found"},
 		{"V12 unpinned sub-flow", "V12", CodeInvalidFlow,
-			head + "steps:\n  - { id: a, uses: child }\n", false},
+			head + "steps:\n  - { id: a, uses: child }\n", false, "exact version"},
 		{"V11 with key outside inputs", "V11", CodeInvalidFlow,
-			head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { bogus: 1 } }\n", false},
+			head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { bogus: 1 } }\n", false, "not an input"},
 		{"V11 required input missing", "V11", CodeInvalidFlow,
-			head + "steps:\n  - { id: a, uses: tlc/task.create@1, with: { description: x } }\n", false},
+			head + "steps:\n  - { id: a, uses: tlc/task.create@1, with: { description: x } }\n", false, "required input"},
 		{"V11 literal of the wrong type", "V11", CodeInvalidFlow,
-			head + "steps:\n  - { id: a, uses: tlc/task.create@1, with: { title: [1, 2] } }\n", false},
+			head + "steps:\n  - { id: a, uses: tlc/task.create@1, with: { title: [1, 2] } }\n", false, "want string"},
 		{"V22 retry on non-idempotent", "V22", CodeInvalidFlow,
-			head + "steps:\n  - { id: a, uses: inbox/fetch@1, retry: { max_attempts: 3 } }\n", false},
+			head + "steps:\n  - { id: a, uses: inbox/fetch@1, retry: { max_attempts: 3 } }\n", false, ""},
 		{"V27 source is not a trigger node", "V27", CodeInvalidFlow,
-			head + "on: [ { calendar: { source: ctxt/find@1 } } ]\nprivacy: local-only\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n", false},
+			head + "on: [ { calendar: { source: ctxt/find@1 } } ]\nprivacy: local-only\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n", false, "not a trigger node"},
 		{"V27 unknown source", "V27", CodeNodeNotFound,
-			head + "on: [ { event: { source: nope/events@1 } } ]\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n", false},
+			head + "on: [ { event: { source: nope/events@1 } } ]\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n", false, "not found"},
 		{"V27 when reads outside trigger", "V27", CodeInvalidFlow,
-			head + "on: [ { calendar: { source: calendar/events@1, when: '{{ vars.x }}' } } ]\nvars: { x: {} }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n", false},
+			head + "on: [ { calendar: { source: calendar/events@1, when: '{{ vars.x }}' } } ]\nvars: { x: {} }\nsteps: [ { id: a, kind: exec, exec: { argv: [x] } } ]\n", false, `reads "vars"`},
 		{"D5 agent step", "D5", CodeEngineFeature,
-			head + "steps:\n  - { id: a, title: think }\n", false},
+			head + "steps:\n  - { id: a, title: think }\n", false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			o := opts(t)
 			o.AllowAgent = c.rule != "D5"
 			r := Check(parse(t, c.doc), o)
-			if !issueWith(r, c.rule, c.code) {
-				t.Fatalf("want %s/%s, got %v", c.rule, c.code, r)
+			if !issueWith(r, c.rule, c.code, c.frag) {
+				t.Fatalf("want %s/%s %q, got %v", c.rule, c.code, c.frag, r)
 			}
 			if c.rule == "V22" && r.HasErrors() {
 				t.Errorf("V22 is a warning: %v", r)

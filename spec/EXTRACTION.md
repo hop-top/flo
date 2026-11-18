@@ -147,24 +147,56 @@ Same module, so `spec` stays free of `cel.dev/cel-go` (a test asserts it with
 - A literal `{{` in a field now starts a placeholder under `cel.Validate`
   (an unclosed one is `unterminated_placeholder`).
 
+### Node, run and flowcheck packages
+
+All in the spec module; none imports kit or the engine. `node` and
+`flowcheck` link cel-go (`node` parses expressions to find the namespaces they
+read); the root package still does not.
+
+- `spec/node`: strict decode (N01, N02) and `Check` for N03..N15 plus the
+  structural rules (kind and namespace, input defs, durations, placement);
+  `Load` is `Parse` + `Check`. Packs (`ParsePack`, `CheckPack`, `LoadPack`,
+  `Constraint`): manifest grammar, paths inside the pack, `requires.flo`,
+  config declared and every `config.<ns>.<key>` a template reads declared.
+  Trust providers (`ParseTrust`, `CheckTrust`): command or http, `read`
+  required, at most write-shared, placeholders over `in`, `config`, `run`.
+  `Locator` (bundle `nodes/` > installed packs > built-ins; pinned `ns/name@N`
+  searches every layer, unpinned takes the highest N of the first layer with
+  the name; the same type twice in one layer, packs included, is
+  `node_conflict`). `Lower`/`Spec.Lowering` implement node.md §14: an exec node
+  becomes a plain `exec` step through a caller-supplied `RenderFunc`.
+- `spec/run`: typed `Decode` (existing), `Check` for V05, V07, V16, V17, V25
+  (privacy), V26 (`vstar/rrule`, `time.LoadLocation`), `ResolveVars` /
+  `CoerceVar` for typed `--var` (`invalid_var`).
+- `spec/flowcheck`: `Check(flow, Options)` = `run.Check` plus V11, V12, V19,
+  V20, V22 (warning), V24, V25 (`run_as`), V27 and the phase-1 refusals
+  (`engine_feature`: agent steps, sub-flow steps).
+
 ## Gaps against the flow spec docs
 
 - The root package has no CEL parser/evaluator: non-trivial placeholders
   are neither parsed nor rendered there; render leaves them verbatim. V15
   and typed `{{ }}` rendering live in `spec/cel`.
-- `x-*` extension keys (§2.2) not accepted; unknown keys stay errors.
-- Not implemented: V06 beyond `state.<key>` refs, V07, V11, V12, V14 for
-  `trigger.event`, V16 for `budget`, V17, V18 to V28 (V06 for CEL refs, V13
-  for CEL results edges and V14 `item`/`index`/`result` scoping are in
-  `spec/cel`).
-  Run-level values (`on`, `budget`, ...) are not validated.
-- Var `type` is validated by name only; no coercion of `--var` strings (§3).
-- Plan-level refusals (`engine_node`, `engine_feature`, §9) not implemented:
-  the module parses `uses`/`for_each`; the plan implementer must refuse.
-- Error codes (`reserved_key`, ...) appear as message prefixes, not as a
-  typed code field.
-- Bundle layout and pack/bundle search layers (§2.4): `DirLocator` is the
-  recipe 0.1 directory + builtin search path only.
+- `x-*` extension keys (§2.2) not accepted in flows; unknown keys stay
+  errors. Node specs, packs and trust providers accept `x-*` at the document
+  root only.
+- Not implemented: V14 for `trigger.event`, V18, V21, V23, V28 (V06 for CEL
+  refs, V13 for CEL results edges and V14 `item`/`index`/`result` scoping
+  are in `spec/cel`; V05 defaults, V07, V16, V17, V25, V26 in `spec/run`;
+  V11, V12, V19, V20, V22, V24, V27 in `spec/flowcheck`).
+  `run.Decode` stops at the first bad run-level key; `run.Check` reports it
+  once, with the rule that owns the key.
+- V20 trust guard: `spec.Step` has no `trust` key, so the check reads the
+  provider name from `with.trust` of a node that declares `approval: trust`
+  and a trust class. An ancestor `flo/approval@1` is the other guard.
+- `{{ in.x }}` does not compile in `spec/cel` (`in` is a CEL reserved word):
+  node templates need `in` rewritten before they are compiled; `node` does
+  that for its own reference scan (`node.TemplateRefs`), the engine renderer
+  must do it too.
+- Error codes: `run.Issue`, `node.Error` and `cel.Error` carry typed codes;
+  the root package's own errors still carry them as message prefixes.
+- Bundle layout and pack/bundle search layers (§2.4): `node.Locator` covers
+  nodes and trust providers; prompts and flows keep `DirLocator`.
 - Recipe file compat: the `flow:` key replaces `recipe:`; `recipe:` is
   rejected by name. `gate:` is an unknown key.
 

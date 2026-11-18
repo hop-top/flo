@@ -30,3 +30,14 @@ Module `hop.top/flo/spec`, package `hop.top/flo/spec/cel` only (the root
 - Binary cost about +9.0 MB stripped (2.2 MB to 12.3 MB for a probe program).
 - Used: `cel`, `ext.Lists()` (`flatten`, `sort`, ...), `ext.Strings()`
   (`join`, `split`, ...).
+
+## hop.top/vstar v1.0.0-alpha.1
+
+Module `hop.top/flo/spec` (package `hop.top/flo/spec/run`) and the root
+module. Exact pin. Owned dependency (hop.top): exempt from the age gate.
+
+- Used: `rrule.ValidateRRule`, which parses an RFC 5545 recurrence (V26,
+  `schedule.rrule`). Nothing else of vstar is imported by the spec module.
+- License MIT, compatible. `go` directive 1.25.0.
+- Added module to the spec module: `golang.org/x/text` raised to v0.36.0
+  (indirect, required by vstar's `go.mod`).
