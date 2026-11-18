@@ -141,31 +141,27 @@ steps:
 
 What this exercises:
 
-- `for_each` over the packages that have a known source repository, with
-  `flatten()` over the per-element results (flow.md §5.6);
-  `on_item_error: skip` so one unreachable package does not lose the day.
-- Dependencies are **deduplicated across repositories before** any
-  per-package call (the node does it and reports `used_by`), so advisories
-  and releases are each asked once per package, not once per repository.
-- Advisories are asked for **the installed version** of every package, in
-  batches, independent of the releases step; the two run concurrently.
-- State is read as a snapshot and written through `outputs.state`, one
-  writer per key, committed only if the run succeeds (flow.md §7.4). A
-  failed run re-sees the same candidates. Releases and advisories are
-  keyed `package@version`-style so a re-reported version is dropped.
-- First run: `cursor` is `null`, so `gh/releases-since@1` uses `lookback`.
-- `upgrade` reads `results.review.approved`. On days with nothing serious
-  `review` is skipped, `results.review` is absent and `upgrade` is skipped
-  as `upstream_skipped` (flow.md §5.7).
-- `tlc/task.create@1` is `write-shared`, so it needs no approval by class;
-  the approval above is a product choice. No step is `irreversible`, so V20
-  has nothing to guard.
-- `privacy: cloud-allowed` is the honest label: package names and release
-  notes go to a hosted API and a hosted model. Nothing private is in them.
-- The hosted API is rate limited per resource. The dependency-graph export
-  has its own small hourly bucket, declared on the node (`rate_limit`,
-  node.md §1.1) so the engine can delay or refuse before the provider
-  does.
+- A calendar trigger with an offset and a `when` over the event payload;
+  the engine keeps one pending fire per upcoming event and re-plans it
+  when the event moves (flow.md §6).
+- `for_each` over the attendees: one ctxt search per person, four at a
+  time, a failed search skipped (`on_item_error: skip`) so one unreachable
+  lookup costs a person, not the brief. `flo/dedupe@1` merges the lists by
+  object id.
+- `people`, `threads` and `open` are independent reads with no
+  `depends_on`: they run concurrently. `brief` starts when they are
+  terminal, because it reads their results.
+- `privacy: local-only` is satisfied because every node here is `local`
+  and the model scheme is `ollama://` (flow.md §7.6, V19). A hosted model
+  would need `cloud-allowed` and would send the same data off the
+  machine.
+- Whole-placeholder fields keep their types: `participants` is a list,
+  `context` is a map. Lists are capped at ten for a small model, with the
+  counts alongside.
+
+The bundle (`flows/meeting-brief/`) holds the flow, the prompt
+`prompts/meeting-brief@1.yaml` (the four sections: Event, People & notes,
+Threads, Open tasks), `tests/` and the recording in `record/`.
 
 ### Node specs
 
@@ -431,22 +427,36 @@ tasks, and write a one-page brief.
 ```yaml
 flow: meeting-brief
 version: 0.1.0
-description: A brief 30 minutes before each meeting.
+description: A brief 30 minutes before each meeting with more than one attendee.
 on:
   - calendar:
       source: calendar/events@1
       offset: -30m
-      when: "{{ size(trigger.event.attendees) > 1 }}"
+      when: "trigger.event.attendees.size() > 1"
 run_as: automation
-privacy: local-only             # attendees, threads and tasks stay on this machine
-budget: { usd: 0.10 }
+privacy: local-only             # attendees, notes, threads and tasks stay on this machine
 tasks: none
 steps:
+  # What the knowledge store holds on each attendee: one search per person, by
+  # name (the store matches the names it extracted, not addresses), else the
+  # local part of the address. A search that fails leaves that person out.
   - id: people
     uses: ctxt/find@1
+    for_each: "{{ trigger.event.attendees }}"
+    concurrency: 4
+    on_item_error: skip
     with:
-      query: "{{ trigger.event.attendees.map(a, a.email).join(' ') }}"
-      limit: 20
+      query: "{{ item.name != '' ? item.name : item.email.split('@')[0] }}"
+      limit: 5
+      filter:
+        person: "{{ item.name != '' ? item.name : item.email.split('@')[0] }}"
+
+  # Two attendees often turn up in the same note: one entry per object id.
+  - id: notes
+    uses: flo/dedupe@1
+    with:
+      items: "{{ results.people.map(p, p.objects).flatten() }}"
+      key: "{{ item.id }}"
 
   - id: threads
     uses: heo/conversation.list@1
@@ -460,6 +470,8 @@ steps:
       search: "{{ trigger.event.title }}"
       status: [TODO, IN_PROGRESS]
 
+  # Lists are capped for a small model: ten of each, newest first as the
+  # sources return them; counts say how many there were.
   - id: brief
     uses: flo/ai.generate@1
     with:
@@ -467,15 +479,19 @@ steps:
       prompt: meeting-brief@1
       context:
         event: "{{ trigger.event }}"
-        people: "{{ results.people }}"
-        threads: "{{ results.threads }}"
-        tasks: "{{ results.open }}"
+        notes: "{{ size(results.notes.items) > 10 ? results.notes.items.slice(0, 10) : results.notes.items }}"
+        threads: "{{ size(results.threads.conversations) > 10 ? results.threads.conversations.slice(0, 10) : results.threads.conversations }}"
+        tasks: "{{ size(results.open) > 10 ? results.open.slice(0, 10) : results.open }}"
+        counts:
+          notes: "{{ size(results.notes.items) }}"
+          threads: "{{ size(results.threads.conversations) }}"
+          tasks: "{{ size(results.open) }}"
 
   - id: out
     uses: flo/output@1
     with:
       kind: brief
-      title: "{{ trigger.event.title }}"
+      title: "Brief: {{ trigger.event.title }}"
       body: "{{ results.brief.text }}"
 ```
 

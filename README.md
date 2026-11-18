@@ -128,6 +128,22 @@ flo run cancel <run> --yes
   `jq`; stand-in for a participant filter heo lacks); `tlc/task.list@1` runs
   `tlc task list --all-projects`. Their capabilities are `knowledge.read`,
   `mail.read` and `tasks.read`.
+- `flows/meeting-brief` is the meeting brief: a calendar trigger 30 minutes
+  before each event with more than one attendee, a search of ctxt per attendee
+  (by name, else the local part of the address), the open heo conversations
+  with them, the open tlc tasks that match the title, and `flo/ai.generate@1`
+  over the prompt `meeting-brief@1` into `flo brief show`. It is `local-only`
+  with the model `ollama://gemma4:e4b`; today the `template` backend renders
+  the prompt (`ai.generator: template` or `FLO_AI_GENERATOR=template`). To run
+  it: set `packs.ctxt.url` and `packs.calendar.url` (config file,
+  `FLO_PACKS_*` or `-c`), the secret `ctxt_token` when ctxt needs one, grant
+  `knowledge.read`, `mail.read`, `tasks.read` and `calendar.read` to the
+  flow's profile, put `heo`, `tlc` and `jq` on that profile's `PATH`, keep
+  the heo daemon up, then `flo flow apply`, `flo flow test --record` (with a
+  `--trigger-file` of an event), `flo flow set --state active`. Re-record
+  `record/` with `FLO_E2E_RECORD=1 go test ./tests/e2e -run
+  TestMeetingBriefCommittedRecording` after a change to the flow or its
+  nodes.
 - `flo status` reports the engine: running, stopped, or stale after a crash.
 - Tests: `go test ./tests/e2e` builds the binary and runs it against fake
   `aps`, `gh`, `heo`, `tlc` and `inbox` executables on `PATH`; nothing reaches a
