@@ -49,6 +49,9 @@ type h struct {
 	ctx context.Context
 	// release unblocks scripted handlers that hang on purpose, at cleanup.
 	release chan struct{}
+
+	mu   sync.Mutex
+	last core.RunID
 }
 
 func newH(t *testing.T) *h {
@@ -257,3 +260,13 @@ func calledSteps(s *coretest.Script) []string {
 }
 
 func indexOf(xs []string, x string) int { return slices.Index(xs, x) }
+
+// lastRun is the run a test registered with setLast, for fakes that need to
+// know it from inside a callback.
+func (h *h) lastRun() core.RunID { h.mu.Lock(); defer h.mu.Unlock(); return h.last }
+
+func (h *h) setLast(id core.RunID) { h.mu.Lock(); h.last = id; h.mu.Unlock() }
+
+func newWithConfig(svc *core.Services, cfg map[string]any) *run.Executor {
+	return run.New(svc, run.Config{CancelPoll: -1, Config: cfg})
+}
