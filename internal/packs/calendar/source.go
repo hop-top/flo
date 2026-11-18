@@ -118,7 +118,7 @@ func (s *ICSSource) read(ctx context.Context) ([]byte, error) {
 		if err != nil {
 			return nil, core.Errorf(core.CodeRunFailed, "calendar fetch: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode/100 != 2 {
 			return nil, core.Errorf(core.CodeRunFailed, "calendar fetch: %s", resp.Status)
 		}

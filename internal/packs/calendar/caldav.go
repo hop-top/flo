@@ -84,7 +84,7 @@ func (s *CalDAVSource) Events(ctx context.Context, w Window) ([]Event, error) {
 	if err != nil {
 		return nil, core.Errorf(core.CodeRunFailed, "caldav report: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return nil, core.Errorf(core.CodeRunFailed, "caldav report: %v", err)
