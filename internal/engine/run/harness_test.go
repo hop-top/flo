@@ -20,6 +20,26 @@ import (
 
 const owner = "owner"
 
+// ctxRunner makes the scripted Runner honor its context: a Script handler
+// only sees the invocation, so one that blocks cannot observe a timeout or a
+// cancel. The handler goroutine is left to finish on its own.
+type ctxRunner struct{ inner *coretest.Runner }
+
+func (r ctxRunner) Run(ctx context.Context, inv core.Invocation) (core.Result, error) {
+	type out struct {
+		res core.Result
+		err error
+	}
+	ch := make(chan out, 1)
+	go func() { res, err := r.inner.Run(ctx, inv); ch <- out{res, err} }()
+	select {
+	case o := <-ch:
+		return o.res, o.err
+	case <-ctx.Done():
+		return core.Result{}, ctx.Err() //nolint:wrapcheck // test fake
+	}
+}
+
 // h is a test engine: the executor over the coretest fakes, on a manual
 // clock. Steps run through fx.Runner, scripted per test.
 type h struct {
@@ -27,16 +47,21 @@ type h struct {
 	fx  *coretest.Fixture
 	ex  *run.Executor
 	ctx context.Context
+	// release unblocks scripted handlers that hang on purpose, at cleanup.
+	release chan struct{}
 }
 
 func newH(t *testing.T) *h {
 	t.Helper()
 	fx := coretest.New()
-	ex := run.New(fx.Services(), run.Config{CancelPoll: -1})
+	svc := fx.Services()
+	svc.Runner = ctxRunner{fx.Runner}
+	ex := run.New(svc, run.Config{CancelPoll: -1})
 	ex.Register(fx.Worker)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	t.Cleanup(cancel)
-	h := &h{t: t, fx: fx, ex: ex, ctx: ctx}
+	h := &h{t: t, fx: fx, ex: ex, ctx: ctx, release: make(chan struct{})}
+	t.Cleanup(func() { close(h.release) })
 	// The owner holds every capability.
 	if _, err := fx.Grants.Set(ctx, core.DefaultTenant, owner, core.CapabilityAny); err != nil {
 		t.Fatal(err)
