@@ -115,6 +115,15 @@ func classifyCondition(expr string) (c condition, legacy bool, err error) {
 	return c, true, nil
 }
 
+// IsLegacyCondition reports whether expr is the recipe 0.1 single
+// comparison (loose equality, evaluated by EvalConditionEnv) rather than a
+// CEL expression. A CEL implementation tries this first so existing
+// conditions keep their meaning.
+func IsLegacyCondition(expr string) bool {
+	_, legacy, err := classifyCondition(expr)
+	return err == nil && legacy
+}
+
 // negateExpr returns an expression true exactly when expr is false: the
 // operator flip for a legacy comparison, !( … ) for CEL.
 func negateExpr(expr string) string {
