@@ -164,3 +164,39 @@ func TestBareInStaysAnError(t *testing.T) {
 		}
 	}
 }
+
+func TestOutNamespace(t *testing.T) {
+	env, _ := NewEnv()
+	act := Activation{"out": map[string]any{"items": []any{map[string]any{"state": "pending"}}, "n": int64(2)}, "in": map[string]any{"k": "v"}}
+	x, err := env.Compile("{'pending': out.items.filter(i, i.state == 'pending'), 'k': in.k}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(x.Refs().Namespaces, "out") || !slices.Contains(x.Refs().Namespaces, "in") {
+		t.Errorf("refs = %+v", x.Refs())
+	}
+	if got, err := x.Eval(act); err != nil || got.(map[string]any)["k"] != "v" {
+		t.Errorf("eval = %v, %v", got, err)
+	}
+	tp, err := env.CompileTemplate("{{ size(out.items) > 0 && out.n == 2 }}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := tp.Render(act); got != true {
+		t.Errorf("render = %v", got)
+	}
+	// a list-valued out (format: lines) works too.
+	y, _ := env.Compile("out.size() + 1")
+	if got, err := y.Eval(Activation{"out": []any{"a", "b"}}); err != nil || got != int64(3) {
+		t.Errorf("list out = %v, %v", got, err)
+	}
+}
+
+// Flows do not bind out: the root validator refuses the namespace.
+func TestOutRefusedInFlows(t *testing.T) {
+	doc := "flow: t\nversion: 1.0.0\nsteps:\n  - { id: a, kind: exec, exec: { argv: [x, '{{ out.x }}'] } }\n"
+	_, err := ParseFlow(strings.NewReader(doc), "t.yaml")
+	if err == nil || !strings.Contains(err.Error(), "out") {
+		t.Errorf("err = %v", err)
+	}
+}

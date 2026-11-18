@@ -189,7 +189,7 @@ read); the root package still does not.
 - V20 trust guard: `spec.Step` has no `trust` key, so the check reads the
   provider name from `with.trust` of a node that declares `approval: trust`
   and a trust class. An ancestor `flo/approval@1` is the other guard.
-- `in` (a CEL keyword) is aliased inside `spec/cel`: `normalizeRefs` rewrites
+- `out` (node `map`/`fail_when`) is declared dyn; `in` (a CEL keyword) is aliased inside `spec/cel`: `normalizeRefs` rewrites
   a namespace `in` (followed by `.` or `[`, not after an operand) to an
   internal alias, `Eval` binds `act["in"]` to it, refs and messages say `in`.
   `node/refs.go` keeps its own alias for its parse-only scan.

@@ -50,7 +50,8 @@ func EnvForFlow(f *spec.Flow) (*Env, error) {
 func newEnv(vars map[string]spec.VarDef, ids []string) (*Env, error) {
 	dyn := celgo.MapType(celgo.StringType, celgo.DynType)
 	opts := []celgo.EnvOption{ext.Lists(), ext.Strings(),
-		celgo.Variable("item", celgo.DynType), celgo.Variable("index", celgo.IntType)}
+		celgo.Variable("item", celgo.DynType), celgo.Variable("index", celgo.IntType),
+		celgo.Variable("out", celgo.DynType)}
 	for _, ns := range mapNamespaces {
 		if ns == "in" {
 			ns = inAlias
@@ -89,7 +90,7 @@ func newTriggerEnv() (*Env, error) {
 }
 
 func isNamespace(n string) bool {
-	if n == "item" || n == "index" {
+	if n == "item" || n == "index" || n == "out" {
 		return true
 	}
 	for _, ns := range mapNamespaces {
