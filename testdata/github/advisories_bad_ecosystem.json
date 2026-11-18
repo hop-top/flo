@@ -1,0 +1,4 @@
+{
+  "message": "Invalid request.\n\nInvalid input: `Go` is not a possible value. Must be one of the following: rubygems, npm, pip, maven, nuget, composer, go, rust, erlang, actions, pub, other, swift.",
+  "status": "422"
+}

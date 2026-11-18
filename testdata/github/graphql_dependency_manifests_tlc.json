@@ -1,0 +1,71 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1
+    },
+    "repository": {
+      "dependencyGraphManifests": {
+        "totalCount": 12,
+        "nodes": [
+          {
+            "filename": "go.mod",
+            "dependenciesCount": 166,
+            "dependencies": {
+              "totalCount": 100,
+              "pageInfo": {
+                "hasNextPage": true,
+                "endCursor": "MTAw"
+              },
+              "nodes": [
+                {
+                  "packageName": "cel.dev/cel-go",
+                  "packageManager": "GO",
+                  "packageUrl": "pkg:golang/cel.dev/cel-go@v0.33.0",
+                  "requirements": "= v0.33.0",
+                  "relationship": "transitive",
+                  "hasDependencies": true,
+                  "repository": {
+                    "nameWithOwner": "cel-expr/cel-go"
+                  }
+                },
+                {
+                  "packageName": "cel.dev/expr",
+                  "packageManager": "GO",
+                  "packageUrl": "pkg:golang/cel.dev/expr@v0.26.0",
+                  "requirements": "= v0.26.0",
+                  "relationship": "transitive",
+                  "hasDependencies": true,
+                  "repository": {
+                    "nameWithOwner": "cel-expr/cel-spec"
+                  }
+                },
+                {
+                  "packageName": "charm.land/bubbles/v2",
+                  "packageManager": "GO",
+                  "packageUrl": "pkg:golang/charm.land/bubbles/v2@v2.2.1",
+                  "requirements": "= v2.2.1",
+                  "relationship": "direct",
+                  "hasDependencies": true,
+                  "repository": {
+                    "nameWithOwner": "charmbracelet/bubbles"
+                  }
+                },
+                {
+                  "packageName": "charm.land/bubbletea/v2",
+                  "packageManager": "GO",
+                  "packageUrl": "pkg:golang/charm.land/bubbletea/v2@v2.1.1",
+                  "requirements": "= v2.1.1",
+                  "relationship": "direct",
+                  "hasDependencies": false,
+                  "repository": {
+                    "nameWithOwner": "charmbracelet/bubbletea"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

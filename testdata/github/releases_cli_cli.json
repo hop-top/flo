@@ -1,0 +1,44 @@
+[
+  {
+    "url": "https://api.github.com/repos/cli/cli/releases/449359903",
+    "id": 449359903,
+    "tag_name": "v2.105.0",
+    "name": "GitHub CLI 2.105.0",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-11-17T23:35:18Z",
+    "published_at": "2026-11-18T00:18:35Z",
+    "target_commitish": "e1219499a578b69e3437adaa31cd60614e23c802",
+    "immutable": true,
+    "body": "## What's Changed\r\n\r\n## Subscribe to GitHub Event Streams with `gh event` (preview)\r\n\r\nThe new `gh event` command set lets agents, integrations, and scripts wait for pull request changes instead of po",
+    "assets": 22
+  },
+  {
+    "url": "https://api.github.com/repos/cli/cli/releases/443387629",
+    "id": 443387629,
+    "tag_name": "v2.104.0",
+    "name": "GitHub CLI 2.104.0",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-11-12T18:24:58Z",
+    "published_at": "2026-11-12T19:03:51Z",
+    "target_commitish": "3d5a9e355a837f2f5ee78d7484c118cc1342ad1a",
+    "immutable": true,
+    "body": "## Protect private forks when deleting repositories\r\n\r\n`gh repo delete` now warns when deleting a private or internal repository will also delete its forks. The additional confirmation is required eve",
+    "assets": 22
+  },
+  {
+    "url": "https://api.github.com/repos/cli/cli/releases/424663522",
+    "id": 424663522,
+    "tag_name": "v2.103.3",
+    "name": "GitHub CLI 2.103.3",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-10-26T18:02:47Z",
+    "published_at": "2026-10-26T19:20:08Z",
+    "target_commitish": "63837fb778d6a39f02be0ce76ff89f2bc8d74bdc",
+    "immutable": true,
+    "body": "## What's Changed\r\n### 🐛 Fixes\r\n\r\n* fix(gh auth status): explain expired expiring tokens with `--no-refresh` by @babakks in [#14815](https://github.com/cli/cli/pull/14815)\r\n\r\n\r\n**Full Changelog**: htt",
+    "assets": 22
+  }
+]
