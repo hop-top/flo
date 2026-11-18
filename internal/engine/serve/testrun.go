@@ -18,6 +18,7 @@ import (
 	"hop.top/flo/internal/flowtest"
 	httpnode "hop.top/flo/internal/nodes/http"
 	"hop.top/flo/internal/placement"
+	"hop.top/flo/internal/runrec"
 	"hop.top/flo/spec"
 	"hop.top/flo/spec/cel"
 	specrun "hop.top/flo/spec/run"
@@ -48,6 +49,10 @@ type TestRequest struct {
 	State string
 	// Timeout bounds the test; zero is DefaultTestTimeout.
 	Timeout time.Duration
+	// AllowLive lets a recording run declared nodes (command, http, plugin
+	// with side_effect read or write-local) against real systems; without
+	// it such a recording is refused.
+	AllowLive bool
 }
 
 // Layout of a bundle's record/: what `flo flow test --record` writes.
@@ -70,6 +75,7 @@ type testPrep struct {
 	cases   []flowtest.Case
 	set     *specrun.Settings
 	choice  seedChoice
+	live    []LiveNode // nodes a recording would run for real (record mode)
 }
 
 func (e *Engine) prepareTest(ctx context.Context, tenant core.TenantID, req TestRequest) (testPrep, error) {
@@ -140,7 +146,13 @@ func (e *Engine) prepareTest(ctx context.Context, tenant core.TenantID, req Test
 	if err != nil {
 		return testPrep{}, err
 	}
-	return testPrep{req: req, v: v, flow: f, vars: vars, trigger: trigger, cases: cases, set: set, choice: choice}, nil
+	p := testPrep{req: req, v: v, flow: f, vars: vars, trigger: trigger, cases: cases, set: set, choice: choice}
+	if req.Mode == flowtest.ModeRecord {
+		if p.live, err = e.liveNodes(v, f); err != nil {
+			return testPrep{}, err
+		}
+	}
+	return p, nil
 }
 
 // TestFlow runs one flow version in a sandbox engine (a throwaway data root
@@ -163,6 +175,11 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 		return flowtest.Result{}, err
 	}
 	req, v, vars, trigger, cases, set, choice := p.req, p.v, p.vars, p.trigger, p.cases, p.set, p.choice
+	if !req.AllowLive {
+		if err := LiveRefusal(p.live); err != nil {
+			return flowtest.Result{}, err
+		}
+	}
 	digest, err := flowtest.Digest(v.Bundle)
 	if err != nil {
 		return flowtest.Result{}, err //nolint:wrapcheck // *core.Error
@@ -185,7 +202,17 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 	if v.Bundle != "" {
 		tapeDir = filepath.Join(v.Bundle, recordDir, cassetteDir)
 	}
-	tape, err := flowtest.NewTape(req.Mode, tapeDir)
+	var scrub *testScrub
+	var topts flowtest.Options
+	if req.Mode == flowtest.ModeRecord {
+		paths, err := e.redactPaths(v, p.flow)
+		if err != nil {
+			return flowtest.Result{}, err
+		}
+		scrub = newTestScrub(paths)
+		topts.Scrub = scrub.payload
+	}
+	tape, err := flowtest.NewTapeWith(req.Mode, tapeDir, topts)
 	if err != nil {
 		return flowtest.Result{}, core.Wrap(core.CodeInternal, err)
 	}
@@ -194,6 +221,9 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 		return flowtest.Result{}, err
 	}
 	defer func() { _ = sb.Close(context.WithoutCancel(ctx)) }()
+	if scrub != nil {
+		scrub.sb, sb.learn = sb, scrub.learn
+	}
 
 	run, recs, err := sb.runOnce(ctx, tenant, req.Caller, v, vars, trigger, choice.seed)
 	if err != nil {
@@ -241,7 +271,7 @@ func (e *Engine) TestFlow(ctx context.Context, tenant core.TenantID, req TestReq
 	}
 	res.Passed = len(res.Problems) == 0
 	if req.Mode == flowtest.ModeRecord {
-		if res.Recorded, err = writeRecord(v.Bundle, trigger, steps, fullState(set.State, choice.seed)); err != nil {
+		if res.Recorded, err = writeRecord(v.Bundle, trigger, steps, fullState(set.State, choice.seed), scrub.redactor()); err != nil {
 			return res, err
 		}
 		// The recording is part of the bundle the result is bound to.
@@ -260,6 +290,8 @@ type sandbox struct {
 	*Engine
 	// state is the sandbox store's own; a run reads its seed instead.
 	state core.StateStore
+	// learn, when set, is told the inputs of every node dispatched.
+	learn func(map[string]any)
 }
 
 // openSandbox opens an engine over a new data root that sees what the real
@@ -287,7 +319,7 @@ func (e *Engine) openSandbox(ctx context.Context, root string, tape *flowtest.Ta
 	}
 	sb := &sandbox{Engine: inner, state: inner.Services.State}
 	svc := inner.Services
-	svc.Dispatcher = testDispatcher{svc.Dispatcher, cfg.Clock}
+	svc.Dispatcher = testDispatcher{svc.Dispatcher, cfg.Clock, sb}
 	svc.Runner = placement.New(svc.Dispatcher)
 	svc.ApprovalSvc = approvedGuards{svc.ApprovalSvc}
 
@@ -343,10 +375,14 @@ func (sb *sandbox) runOnce(ctx context.Context, tenant core.TenantID, caller str
 type testDispatcher struct {
 	core.Dispatcher
 	clock core.Clock
+	sb    *sandbox
 }
 
 func (d testDispatcher) Dispatch(ctx context.Context, inv core.Invocation) (core.Result, error) {
 	inv.DryRun = true
+	if d.sb != nil && d.sb.learn != nil {
+		d.sb.learn(inv.In)
+	}
 	res, err := d.Dispatcher.Dispatch(sideeffect.WithDryRun(ctx, true), inv)
 	if err != nil || res.Outcome != core.OutcomeOK {
 		return res, err //nolint:wrapcheck // the dispatcher's own result
@@ -394,8 +430,9 @@ func readRecordedTrigger(bundle string) (map[string]any, error) {
 
 // writeRecord keeps the trigger payload and the plans of the writes a
 // recording did not execute, beside the cassettes. It returns what it wrote,
-// relative to the bundle.
-func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step, state map[string]any) ([]string, error) {
+// relative to the bundle. Everything is scrubbed with r as a run recording is:
+// redacted keys dropped (a state key by name), secret values replaced.
+func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step, state map[string]any, r *runrec.Redactor) ([]string, error) {
 	dir := filepath.Join(bundle, recordDir)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, core.Wrap(core.CodeInternal, err)
@@ -412,8 +449,19 @@ func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step, s
 			plans = append(plans, plan{Step: s.ID, Index: s.Index, Node: s.Node, Plan: s.Plan})
 		}
 	}
+	pdoc, err := jsonDoc(plans)
+	if err != nil {
+		return nil, err
+	}
+	names := r.Names()
+	kept := make(map[string]any, len(state))
+	for k, v := range state {
+		if !slices.Contains(names, k) {
+			kept[k] = v
+		}
+	}
 	var wrote []string
-	for name, v := range map[string]any{triggerRecord: trigger, plansRecord: plans, stateRecord: state} {
+	for name, v := range map[string]any{triggerRecord: r.Doc(trigger), plansRecord: r.Doc(pdoc), stateRecord: r.Doc(kept)} {
 		if name == triggerRecord && trigger == nil {
 			continue
 		}
@@ -429,4 +477,17 @@ func writeRecord(bundle string, trigger map[string]any, steps []flowtest.Step, s
 	wrote = append(wrote, filepath.ToSlash(filepath.Join(recordDir, cassetteDir))+"/")
 	slices.Sort(wrote)
 	return wrote, nil
+}
+
+// jsonDoc copies v as a generic JSON document (maps, lists, scalars).
+func jsonDoc(v any) (any, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, core.Wrap(core.CodeInternal, err)
+	}
+	doc, err := core.DecodeJSONValue(b)
+	if err != nil {
+		return nil, core.Wrap(core.CodeInternal, err)
+	}
+	return doc, nil
 }

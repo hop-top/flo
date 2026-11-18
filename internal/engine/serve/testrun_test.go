@@ -151,7 +151,7 @@ func (r *rig) applyBundle(t *testing.T, bundle string, caps ...string) core.Flow
 
 func (r *rig) test(t *testing.T, flow string, mode flowtest.Mode) flowtest.Result {
 	t.Helper()
-	res, err := r.e.TestFlow(bg, core.DefaultTenant, serve.TestRequest{Flow: flow, Mode: mode, Caller: "jad"})
+	res, err := r.e.TestFlow(bg, core.DefaultTenant, serve.TestRequest{Flow: flow, Mode: mode, Caller: "jad", AllowLive: true})
 	if err != nil {
 		t.Fatalf("TestFlow(%s): %v", mode, err)
 	}

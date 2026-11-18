@@ -44,7 +44,7 @@ func TestRunCreateRecordThenReplay(t *testing.T) {
 	r := newFlowRig(t)
 	for _, args := range [][]string{
 		{"flow", "apply", "-f", r.bundle, "--yes"},
-		{"flow", "test", "dependency-watch", "--record", "--yes"},
+		{"flow", "test", "dependency-watch", "--record", "--yes", "--allow-live"},
 		{"flow", "set", "dependency-watch", "--state", "active", "--yes"},
 	} {
 		if _, _, err := r.run(args...); err != nil {

@@ -166,15 +166,25 @@ func TestFlowTestAndActivation(t *testing.T) {
 	}
 
 	// recording asks first: it makes live calls and writes into the bundle
-	_, _, err = r.run("flow", "test", "dependency-watch", "--record")
+	// ... and refuses first when declared nodes would reach real systems
+	_, _, err = r.run("flow", "test", "dependency-watch", "--record", "--yes")
+	wantCode(t, err, core.CodeUsage)
+	if !strings.Contains(err.Error(), "--allow-live") || r.live.calls != 0 {
+		t.Fatalf("a recording of live nodes without --allow-live: %v, live calls %d", err, r.live.calls)
+	}
+	_, _, err = r.run("flow", "test", "dependency-watch", "--record", "--allow-live")
 	wantCode(t, err, core.CodeConfirmationRequired)
 	if r.live.calls != 0 {
 		t.Fatal("an unconfirmed recording made live calls")
 	}
-	if _, _, err = r.run("flow", "test", "dependency-watch", "--record", "--dry-run"); err != nil || r.live.calls != 0 {
+	dry, _, err := r.run("flow", "test", "dependency-watch", "--record", "--dry-run", "--format", "json")
+	if err != nil || r.live.calls != 0 {
 		t.Fatalf("--dry-run: %v, live calls %d", err, r.live.calls)
 	}
-	out, _, err = r.run("flow", "test", "dependency-watch", "--record", "--yes", "--format", "json")
+	if !strings.Contains(dry, "live_nodes") || !strings.Contains(dry, "advisories") {
+		t.Errorf("--dry-run does not list the live nodes:\n%s", dry)
+	}
+	out, _, err = r.run("flow", "test", "dependency-watch", "--record", "--yes", "--allow-live", "--format", "json")
 	if err != nil {
 		t.Fatalf("record: %v\n%s", err, out)
 	}

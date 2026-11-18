@@ -24,8 +24,8 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 			"plan is recorded instead. An approval is auto-approved.\n\n" +
 			"By default (--replay) processes and requests are answered from the cassettes in record/ of the " +
 			"flow's bundle, so the test is deterministic and offline; a call with no cassette fails the test. " +
-			"--record makes the calls for real (reads and pure nodes only), writes the cassettes, the trigger " +
-			"payload and the plans of the skipped writes to record/, and records the result. Re-recording " +
+			"--record makes the calls for real (reads and pure nodes only) and refuses when a declared command, http or plugin node with side_effect read or write-local would reach real systems, unless --allow-live (point the node's profile env at temp dirs first; --dry-run lists those nodes). It writes the cassettes, the trigger " +
+			"payload and the plans of the skipped writes to record/, scrubbed as a run recording is (node redact paths, secrets, credential headers, env values), and records the result. Re-recording " +
 			"overwrites the cassettes of the same calls.\n\n" +
 			"--state picks the flow state the run starts from: default (declared defaults), current (a " +
 			"read-only copy of the engine's committed state; nothing is written back) or a JSON/YAML seed file " +
@@ -47,6 +47,7 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 	state := c.Flags().String("state", "", "flow state to start from: default (declared defaults), current (read-only copy of the engine's state) or a JSON/YAML seed file; default: record/state.json on replay, else the declared defaults")
 	timeout := c.Flags().Duration("timeout", serve.DefaultTestTimeout, "give up after this long")
 	yes := c.Flags().Bool("yes", false, "with --record, confirm without asking")
+	allowLive := c.Flags().Bool("allow-live", false, "with --record, allow declared command/http/plugin nodes (side_effect read or write-local) to run against real systems")
 	c.MarkFlagsMutuallyExclusive("record", "replay")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		mode := flowtest.ModeReplay
@@ -74,7 +75,7 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 			return err
 		}
 		treq := serve.TestRequest{
-			Flow: args[0], Ref: *ver, Mode: mode, Caller: caller, Trigger: payload, Vars: provided, State: *state, Timeout: *timeout,
+			Flow: args[0], Ref: *ver, Mode: mode, Caller: caller, Trigger: payload, Vars: provided, State: *state, Timeout: *timeout, AllowLive: *allowLive,
 		}
 		if kitcli.IsDryRun(cmd) {
 			plan, err := e.PlanTest(cmd.Context(), tenant, treq)
@@ -84,6 +85,15 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 			return kitcli.RenderPlan(cmd, testPlan(plan, caller))
 		}
 		if mode == flowtest.ModeRecord {
+			if !*allowLive { // refuse before asking: nothing has run yet
+				plan, err := e.PlanTest(cmd.Context(), tenant, treq)
+				if err != nil {
+					return err //nolint:wrapcheck // *core.Error
+				}
+				if err := serve.LiveRefusal(plan.Live); err != nil {
+					return err //nolint:wrapcheck // *core.Error
+				}
+			}
 			if err := confirmWrite(*yes, fmt.Sprintf("record a test of flow %s (reads run for real; record/ of its bundle is written)?", args[0])); err != nil {
 				return err
 			}
@@ -119,6 +129,9 @@ func testPlan(p serve.TestPlan, caller string) kitcli.Plan {
 	for _, w := range p.Writes {
 		effects = append(effects, kitcli.Effect{Kind: "plan", Target: "step:" + w.Step, Reversible: true, Detail: w.Node + " (" + w.SideEffect + ") is planned, not run"})
 	}
+	for _, n := range p.Live {
+		effects = append(effects, kitcli.Effect{Kind: "live", Target: "step:" + n.Step, Reversible: false, Detail: n.Node + " (" + n.Kind + ", " + n.SideEffect + ") runs for real: refused without --allow-live"})
+	}
 	if p.CassetteAction == "record" {
 		effects = append(effects, kitcli.Effect{Kind: "write", Target: "record/ of the flow's bundle", Reversible: true, Detail: "cassettes, trigger payload, state seed and the plans of skipped writes"})
 	}
@@ -126,7 +139,7 @@ func testPlan(p serve.TestPlan, caller string) kitcli.Plan {
 		Args: map[string]any{
 			"flow": p.Flow, "version": p.Version, "hash": p.Hash, "mode": p.Mode, "by": caller,
 			"state_source": p.StateSource, "seed": p.Seed, "cassette_action": p.CassetteAction, "cassette_dir": p.CassetteDir,
-			"cassettes": p.Cassettes, "planned_writes": p.Writes, "cases": p.Cases,
+			"cassettes": p.Cassettes, "planned_writes": p.Writes, "live_nodes": p.Live, "cases": p.Cases,
 		},
 		Effects: effects,
 	}

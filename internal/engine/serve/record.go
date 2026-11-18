@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"os"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -97,12 +95,7 @@ func (e *Engine) openRecording(ctx context.Context, run core.Run) (*recSession, 
 	if err != nil {
 		return nil, err
 	}
-	var secrets []string
-	for _, kv := range os.Environ() {
-		if k, val, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(k, SecretPrefix) {
-			secrets = append(secrets, val)
-		}
-	}
+	secrets := envSecretValues()
 	rs := e.Recordings
 	if err := rs.Open(run.Tenant, run.ID); err != nil {
 		return nil, err //nolint:wrapcheck // *core.Error

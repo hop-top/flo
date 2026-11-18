@@ -64,7 +64,11 @@ func TestFlowTestGatesActivation(t *testing.T) {
 	}
 
 	// Recording is a write: it asks first, and --dry-run shows the plan.
-	if r := e.run("flow", "test", "dependency-watch", "--record"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "confirmation_required") || exists(gh) {
+	// ... but first refuses the declared reads that would reach real systems.
+	if r := e.run("flow", "test", "dependency-watch", "--record", "--yes"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "--allow-live") || exists(gh) || exists(filepath.Join(bundle, "record")) {
+		t.Fatalf("record without --allow-live: exit %d\n%s", r.Exit, r.Stderr)
+	}
+	if r := e.run("flow", "test", "dependency-watch", "--record", "--allow-live"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "confirmation_required") || exists(gh) {
 		t.Fatalf("record without --yes: exit %d\n%s", r.Exit, r.Stderr)
 	}
 	if r := e.run("flow", "test", "dependency-watch", "--record", "--dry-run"); r.Exit != 0 || exists(gh) || exists(filepath.Join(bundle, "record")) {
@@ -74,7 +78,7 @@ func TestFlowTestGatesActivation(t *testing.T) {
 		t.Error("--record and --replay together")
 	}
 
-	res, r = e.flowTest("dependency-watch", "--record", "--yes")
+	res, r = e.flowTest("dependency-watch", "--record", "--allow-live", "--yes")
 	if r.Exit != 0 || !res.Passed || res.Mode != flowtest.ModeRecord || len(res.Steps) != 5 {
 		t.Fatalf("record: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
@@ -163,7 +167,7 @@ func TestFlowTestPlansWritesAndNeverRunsThem(t *testing.T) {
 	bundle := copyBundle(t, "inbox-triage")
 	e.ok("flow", "apply", "-f", bundle, "--yes")
 
-	res, r := e.flowTest("inbox-triage", "--record", "--yes")
+	res, r := e.flowTest("inbox-triage", "--record", "--allow-live", "--yes")
 	if r.Exit != 0 || !res.Passed {
 		t.Fatalf("record: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
@@ -222,7 +226,7 @@ func TestTriggerFileFeedsTestsAndRuns(t *testing.T) {
 	if res, r := e.flowTest("on-event"); r.Exit == 0 || res.Passed {
 		t.Fatalf("a test without the payload: exit %d, %+v", r.Exit, res)
 	}
-	res, r := e.flowTest("on-event", "--record", "--trigger-file", payload, "--yes")
+	res, r := e.flowTest("on-event", "--record", "--allow-live", "--trigger-file", payload, "--yes")
 	if r.Exit != 0 || !res.Passed || !slices.Contains(res.Recorded, "record/trigger.json") {
 		t.Fatalf("record with a payload: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
@@ -284,7 +288,7 @@ func TestFlowTestStateSeeds(t *testing.T) {
 		t.Fatalf("an undeclared key: exit %d\n%s", r.Exit, r.Stderr)
 	}
 
-	res, r := e.flowTest("dependency-watch", "--record", "--state", seed, "--yes")
+	res, r := e.flowTest("dependency-watch", "--record", "--allow-live", "--state", seed, "--yes")
 	if r.Exit != 0 || !res.Passed || res.StateSource != "file:"+seed || newadvItems(res) != 1 {
 		t.Fatalf("record on a seed: exit %d, %s, items %d\n%s", r.Exit, res.StateSource, newadvItems(res), r.Stderr)
 	}

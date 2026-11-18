@@ -431,7 +431,7 @@ func (e *env) resetScratch() {
 // fake tools logged meanwhile.
 func (e *env) recordTest(flow string, args ...string) {
 	e.t.Helper()
-	e.ok(append([]string{"flow", "test", flow, "--record", "--yes"}, args...)...)
+	e.ok(append([]string{"flow", "test", flow, "--record", "--allow-live", "--yes"}, args...)...)
 	e.resetScratch()
 }
 
@@ -442,7 +442,7 @@ func (e *env) applyTested(name string) string {
 	e.t.Helper()
 	bundle := copyBundle(e.t, name)
 	e.ok("flow", "apply", "-f", bundle, "--yes")
-	e.ok("flow", "test", name, "--record", "--yes")
+	e.ok("flow", "test", name, "--record", "--allow-live", "--yes")
 	e.resetScratch()
 	return bundle
 }

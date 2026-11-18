@@ -87,7 +87,7 @@ func TestCalendarFlowFiresOncePerEvent(t *testing.T) {
 	for _, args := range [][]string{
 		{"grant", "set", "automation", "calendar.read", "--yes"},
 		{"flow", "apply", "-f", bundle, "--yes"},
-		{"flow", "test", "calendar-event", "--record", "--trigger-file", event, "--yes"},
+		{"flow", "test", "calendar-event", "--record", "--allow-live", "--trigger-file", event, "--yes"},
 		{"flow", "set", "calendar-event", "--state", "active", "--yes"},
 	} {
 		if out, err := flo(args...); err != nil {

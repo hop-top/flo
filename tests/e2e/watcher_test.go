@@ -80,7 +80,7 @@ func TestWatcher(t *testing.T) {
 	if r := e.run("flow", "set", "dependency-watch", "--version", first, "--state", "active", "--yes"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "flow_not_tested") {
 		t.Fatalf("activating an untested version: exit %d, stderr %s", r.Exit, r.Stderr)
 	}
-	e.ok("flow", "test", "dependency-watch", "--version", first, "--record", "--yes")
+	e.ok("flow", "test", "dependency-watch", "--version", first, "--record", "--allow-live", "--yes")
 	e.resetScratch()
 	if r := e.run("flow", "set", "dependency-watch", "--version", second, "--state", "active", "--yes"); r.Exit != core.ExitUsage || !strings.Contains(r.Stderr, "flow_not_tested") {
 		t.Fatalf("activating the other, untested version: exit %d, stderr %s", r.Exit, r.Stderr)

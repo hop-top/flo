@@ -136,6 +136,10 @@ type TestPlan struct {
 	CassetteDir    string         `json:"cassette_dir,omitempty"`
 	Cassettes      []string       `json:"cassettes"`
 	Writes         []PlannedWrite `json:"planned_writes"`
+	// Live are the nodes a recording runs against real systems (declared
+	// command, http and plugin nodes with side_effect read or write-local);
+	// --record refuses them unless --allow-live.
+	Live []LiveNode `json:"live_nodes"`
 	// Cases are the tests/ documents that run on a state of their own.
 	Cases []string `json:"cases,omitempty"`
 }
@@ -149,9 +153,10 @@ func (e *Engine) PlanTest(ctx context.Context, tenant core.TenantID, req TestReq
 	}
 	plan := TestPlan{
 		Flow: p.v.Name, Version: p.v.Version, Hash: p.v.Hash, Mode: string(p.req.Mode), StateSource: p.choice.source,
-		Seed: fullState(p.set.State, p.choice.seed), Cassettes: []string{}, Writes: []PlannedWrite{},
+		Seed: fullState(p.set.State, p.choice.seed), Cassettes: []string{}, Writes: []PlannedWrite{}, Live: []LiveNode{},
 	}
 	if p.req.Mode == flowtest.ModeRecord {
+		plan.Live = p.live
 		plan.CassetteAction = "record"
 	} else {
 		plan.CassetteAction = "replay"

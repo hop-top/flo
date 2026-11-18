@@ -31,7 +31,7 @@ func items(t *testing.T, res flowtest.Result, step string) int {
 
 func (r *rig) testWith(t *testing.T, req serve.TestRequest) (flowtest.Result, error) {
 	t.Helper()
-	req.Flow, req.Caller = "dependency-watch", "jad"
+	req.Flow, req.Caller, req.AllowLive = "dependency-watch", "jad", true
 	return r.e.TestFlow(bg, core.DefaultTenant, req)
 }
 

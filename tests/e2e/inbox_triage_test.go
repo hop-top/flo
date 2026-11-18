@@ -790,7 +790,7 @@ func TestRecordInboxTriage(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.ok("flow", "apply", "-f", bundle, "--yes")
-	if res, r := e.flowTest("inbox-triage", "--record", "--yes"); r.Exit != 0 || !res.Passed {
+	if res, r := e.flowTest("inbox-triage", "--record", "--allow-live", "--yes"); r.Exit != 0 || !res.Passed {
 		t.Fatalf("record: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
 	dst := filepath.Join(repoRoot, "flows", "inbox-triage", "record")
