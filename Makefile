@@ -1,8 +1,17 @@
-.PHONY: build test lint links check clean setup symlink release \
+.PHONY: build test lint links check ci-remote clean setup symlink release \
        promote promote-alpha promote-beta promote-rc \
        promote-release
 
 check: lint test links
+
+# ci-remote runs the CI gate on a remote build host over ssh
+# (CI_REMOTE=user@host required; see scripts/ci-remote.sh for options).
+ci-remote:
+	@scripts/ci-remote.sh
+
+# Per-developer targets and defaults (e.g. a named build host) live
+# outside the repo.
+-include $(HOME)/.config/flo-dev/local.mk
 
 build:
 	mkdir -p bin
