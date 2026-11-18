@@ -207,13 +207,13 @@ func TestHandlePollPayload(t *testing.T) {
 func TestPollOverTheTlcAdapter(t *testing.T) {
 	fx := coretest.New()
 	cmds := &coretest.Commands{}
-	cmds.Reply([]string{"tlc", "task", "create"}, core.CommandResult{Stdout: []byte("Created task T-0100: x\n")})
-	cmds.Reply([]string{"tlc", "task", "show", "T-0100"}, core.CommandResult{Stdout: []byte(
+	cmds.Reply([]string{"tlc", "task", "create"}, core.CommandResult{Stdout: []byte("Created task T-7100: x\n")})
+	cmds.Reply([]string{"tlc", "task", "show", "T-7100"}, core.CommandResult{Stdout: []byte(
 		`{"task":{"status":"DONE","title":"x"},"logs":[{"id":4,"timestamp":"2026-11-18T12:05:00Z","by":"lead","action":"DONE","note":"Status changed from TODO to DONE: ship it"}]}`)})
 	cmds.Reply([]string{"tlc", "task", "complete"}, core.CommandResult{})
 	r := newRigWithTasks(t, fx, tlccli.New(cmds, tlccli.Config{}))
 	a := r.open(t, func(q *core.ApprovalRequest) {}, "m1")
-	if a.TaskRef != "T-0100" {
+	if a.TaskRef != "T-7100" {
 		t.Fatalf("task ref = %q", a.TaskRef)
 	}
 	res, err := r.svc.Poll(context.Background(), tenant)

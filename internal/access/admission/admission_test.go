@@ -61,7 +61,7 @@ func TestAllowRecordsReceipt(t *testing.T) {
 		rc.StepRun != "stp_1" || rc.SideEffect != node.SideEffectIrreversible || rc.At.IsZero() {
 		t.Errorf("receipt = %+v", rc)
 	}
-	// the digest is the bos form over D8's mapping
+	// the digest is the bos form over the operation, scope, actor and principal mapping
 	want, err := digest.Request{
 		Operation: "inbox.apply", Scope: "default", Actor: "noor", ActingFor: "jad",
 		Input: []byte(`{"id":"m1","n":2}`),

@@ -126,7 +126,7 @@ func TestNodeDefaultsAndItemFields(t *testing.T) {
 	if got.Action != "send" || got.Why != "w" || got.Capability != "mail.send" || got.Extra["thread"] != "t9" || !slices.Equal(got.Class, []string{"send"}) {
 		t.Errorf("item = %+v", got)
 	}
-	// an item that names a capability carries the request digest of that operation (D8)
+	// an item that names a capability carries the request digest of that operation
 	want, _ := digest.Request{Operation: "mail.send", Scope: "default", Actor: "noor", ActingFor: "jad", Input: []byte(`{"to":"a@b"}`)}.Digest()
 	if got.Digest != want {
 		t.Errorf("digest = %s, want %s", got.Digest, want)

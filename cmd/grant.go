@@ -14,7 +14,7 @@ import (
 	"hop.top/flo/internal/core"
 )
 
-// Environment variables and config keys of caller identity (decision D9).
+// Environment variables and config keys of caller identity.
 const (
 	// EnvProfile names the profile the caller acts as; it overrides the
 	// config key.

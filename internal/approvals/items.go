@@ -87,7 +87,7 @@ func parseClass(v any) ([]string, error) {
 }
 
 // itemDigest sets the request digest of an item that names a capability
-// (decision D8: operation is the item's capability, input its args, scope
+// (operation is the item's capability, input its args, scope
 // the tenant, actor the run_as, acting_for the principal). An item without
 // a capability has no exact operation and no digest.
 func itemDigest(tenant core.TenantID, actor, principal string, it *core.ApprovalItem) error {

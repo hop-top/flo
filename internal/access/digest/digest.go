@@ -83,7 +83,7 @@ func Input(v any) (json.RawMessage, error) {
 	return b, nil
 }
 
-// Operation names the operation of a request (decision D8): the capability
+// Operation names the operation of a request: the capability
 // when there is one (an approval item), else the node type with its major
 // dropped and "/" as ".", so `inbox/apply@1` is `inbox.apply`. A name that
 // has no "/" or "@" (a core kind, an operation already in that form) is

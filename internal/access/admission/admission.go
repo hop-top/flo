@@ -31,7 +31,7 @@ func New(grants core.Grants, receipts core.ReceiptStore, ids core.IDs, clock cor
 	return &Service{grants: grants, receipts: receipts, ids: ids, clock: clock}
 }
 
-// Digest returns the request digest of an admission request (decision D8):
+// Digest returns the request digest of an admission request:
 // operation is the node type as ns.name, scope the tenant, actor the run_as
 // profile, acting_for the principal, input the rendered input.
 func Digest(req core.AdmissionRequest) (string, error) {

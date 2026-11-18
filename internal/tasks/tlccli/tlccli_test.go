@@ -24,14 +24,14 @@ func argvOf(c core.CommandSpec) string { return strings.Join(c.Argv, " ") }
 
 func TestCreateArgvAndRef(t *testing.T) {
 	cmds := &coretest.Commands{}
-	cmds.Reply([]string{"tlc", "-C", "/p", "task", "create"}, ok("Created task T-0042: Approve triage\n"))
+	cmds.Reply([]string{"tlc", "-C", "/p", "task", "create"}, ok("Created task T-7042: Approve triage\n"))
 	a := tlccli.New(cmds, tlccli.Config{Dir: "/p", Profile: "ops"})
 	due := time.Date(2026, 11, 19, 23, 30, 0, 0, time.UTC)
 	ref, err := a.Create(context.Background(), tenant, core.TaskSpec{
 		Title: "Approve triage", Description: "3 items", Assignee: "jad", Due: &due,
-		Parent: "T-0040", Run: "run_1", Approval: "ap_1", Tags: []string{"inbox"},
+		Parent: "T-7040", Run: "run_1", Approval: "ap_1", Tags: []string{"inbox"},
 	})
-	if err != nil || ref != "T-0042" {
+	if err != nil || ref != "T-7042" {
 		t.Fatalf("ref = %q, %v", ref, err)
 	}
 	calls := cmds.Calls()
@@ -45,7 +45,7 @@ func TestCreateArgvAndRef(t *testing.T) {
 	want := []string{
 		"tlc", "-C", "/p", "task", "create", "Approve triage", "--no-prompt",
 		"--description", "3 items", "--assigned-to", "jad", "--due", "2026-11-19",
-		"--tag", "flo", "--tag", "inbox", "--tag", "run:run_1", "--tag", "approval:ap_1", "--tag", "parent:T-0040",
+		"--tag", "flo", "--tag", "inbox", "--tag", "run:run_1", "--tag", "approval:ap_1", "--tag", "parent:T-7040",
 	}
 	if !slices.Equal(c.Argv, want) {
 		t.Errorf("argv = %v\nwant   %v", c.Argv, want)
@@ -87,12 +87,12 @@ func TestGetMapsStatuses(t *testing.T) {
 		{"SKIPPED", core.TaskRejected}, {"BLOCKED", core.TaskOpen}, {"done", core.TaskApproved},
 	} {
 		cmds := &coretest.Commands{}
-		cmds.Reply([]string{"tlc", "task", "show", "T-0042"}, show(tc.status, logs))
-		info, err := tlccli.New(cmds, tlccli.Config{}).Get(context.Background(), tenant, "T-0042")
+		cmds.Reply([]string{"tlc", "task", "show", "T-7042"}, show(tc.status, logs))
+		info, err := tlccli.New(cmds, tlccli.Config{}).Get(context.Background(), tenant, "T-7042")
 		if err != nil {
 			t.Fatalf("%s: %v", tc.status, err)
 		}
-		if info.State != tc.want || info.Ref != "T-0042" || info.Title != "Approve triage" {
+		if info.State != tc.want || info.Ref != "T-7042" || info.Title != "Approve triage" {
 			t.Errorf("%s: info = %+v, want state %s", tc.status, info, tc.want)
 		}
 	}
@@ -102,8 +102,8 @@ func TestGetDoneCarriesByAtNote(t *testing.T) {
 	cmds := &coretest.Commands{}
 	logs := `{"id":3,"timestamp":"2026-11-18T10:00:00Z","by":"old","action":"DONE","note":"Status changed from TODO to DONE: first"},` +
 		`{"id":9,"timestamp":"2026-11-18T11:30:00Z","by":"jad","action":"DONE","note":"Status changed from IN_PROGRESS to DONE: looks fine"}`
-	cmds.Reply([]string{"tlc", "task", "show", "T-0042"}, show("DONE", logs))
-	info, err := tlccli.New(cmds, tlccli.Config{}).Get(context.Background(), tenant, "T-0042")
+	cmds.Reply([]string{"tlc", "task", "show", "T-7042"}, show("DONE", logs))
+	info, err := tlccli.New(cmds, tlccli.Config{}).Get(context.Background(), tenant, "T-7042")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestGetDoneCarriesByAtNote(t *testing.T) {
 		t.Errorf("info = %+v", info)
 	}
 	argv := argvOf(cmds.Calls()[0])
-	if argv != "tlc task show T-0042 --format json --no-prompt" {
+	if argv != "tlc task show T-7042 --format json --no-prompt" {
 		t.Errorf("argv = %s", argv)
 	}
 }
@@ -135,13 +135,13 @@ func TestGetNotFoundAndGarbage(t *testing.T) {
 func TestCloseApprovedCompletes(t *testing.T) {
 	cmds := &coretest.Commands{}
 	cmds.Reply([]string{"tlc", "task", "show"}, show("TODO", ""))
-	cmds.Reply([]string{"tlc", "task", "complete"}, ok("Completed T-0042\n"))
+	cmds.Reply([]string{"tlc", "task", "complete"}, ok("Completed T-7042\n"))
 	a := tlccli.New(cmds, tlccli.Config{})
-	if err := a.Close(context.Background(), tenant, "T-0042", core.TaskApproved, "decided in flo"); err != nil {
+	if err := a.Close(context.Background(), tenant, "T-7042", core.TaskApproved, "decided in flo"); err != nil {
 		t.Fatal(err)
 	}
 	calls := cmds.Calls()
-	if len(calls) != 2 || argvOf(calls[1]) != "tlc task complete T-0042 --no-verify --no-prompt --note decided in flo" {
+	if len(calls) != 2 || argvOf(calls[1]) != "tlc task complete T-7042 --no-verify --no-prompt --note decided in flo" {
 		t.Errorf("calls = %v", calls)
 	}
 }
@@ -149,12 +149,12 @@ func TestCloseApprovedCompletes(t *testing.T) {
 func TestCloseRejectedSkips(t *testing.T) {
 	cmds := &coretest.Commands{}
 	cmds.Reply([]string{"tlc", "task", "show"}, show("IN_PROGRESS", ""))
-	cmds.Reply([]string{"tlc", "task", "skip"}, ok("Skipped T-0042\n"))
-	if err := tlccli.New(cmds, tlccli.Config{}).Close(context.Background(), tenant, "T-0042", core.TaskRejected, ""); err != nil {
+	cmds.Reply([]string{"tlc", "task", "skip"}, ok("Skipped T-7042\n"))
+	if err := tlccli.New(cmds, tlccli.Config{}).Close(context.Background(), tenant, "T-7042", core.TaskRejected, ""); err != nil {
 		t.Fatal(err)
 	}
 	calls := cmds.Calls()
-	if len(calls) != 2 || argvOf(calls[1]) != "tlc task skip T-0042 --no-verify --no-prompt" {
+	if len(calls) != 2 || argvOf(calls[1]) != "tlc task skip T-7042 --no-verify --no-prompt" {
 		t.Errorf("calls = %v", calls)
 	}
 }
