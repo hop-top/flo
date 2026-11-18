@@ -113,12 +113,16 @@ func isFlowPath(ref string) bool {
 }
 
 func loadFlowFile(path, source string) (*Flow, error) {
+	return loadFlowFileWith(path, source, ParseOptions{})
+}
+
+func loadFlowFileWith(path, source string, opts ParseOptions) (*Flow, error) {
 	f, err := os.Open(path) //nolint:gosec // G304: flow path is caller-supplied by design
 	if err != nil {
 		return nil, fmt.Errorf("open flow: %w", err)
 	}
 	defer func() { _ = f.Close() }() // read-only handle
-	r, err := ParseFlow(f, path)
+	r, err := ParseFlowWith(f, path, opts)
 	if err != nil {
 		return nil, err
 	}

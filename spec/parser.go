@@ -18,15 +18,26 @@ import (
 // misspelled field never silently drops out of a task. Validation always
 // runs — there is no extension that skips it.
 func ParseFlow(r io.Reader, filename string) (*Flow, error) {
+	return ParseFlowWith(r, filename, ParseOptions{})
+}
+
+// ParseFlowWith is ParseFlow with options. The zero options behave
+// exactly as ParseFlow. Flow.Hash is always the hash of the bytes read,
+// before any alias rewrite.
+func ParseFlowWith(r io.Reader, filename string, opts ParseOptions) (*Flow, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read flow %s: %w", filename, err)
 	}
+	src := data
+	if opts.Aliases != nil {
+		src = opts.Aliases.Rewrite(data, filename)
+	}
 	var rec Flow
 	if strings.EqualFold(filepath.Ext(filename), extJSON) {
-		err = decodeFlowJSON(data, &rec)
+		err = decodeFlowJSON(src, &rec)
 	} else {
-		err = decodeFlowYAML(data, &rec)
+		err = decodeFlowYAML(src, &rec)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", filename, err)
