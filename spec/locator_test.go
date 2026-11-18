@@ -9,12 +9,12 @@ import (
 
 func writeRecipeFile(t *testing.T, dir, file, name, version string) string {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	path := filepath.Join(dir, file)
 	body := "flow: " + name + "\nversion: " + version + "\nsteps:\n  - id: a\n    title: from " + file + "\n"
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 	return path
@@ -32,7 +32,7 @@ func locatorFixture(t *testing.T) (loc *DirLocator, root, project, user string) 
 	writeRecipeFile(t, user, "code-review-2.yaml", "code-review", "1.2.0")
 	writeRecipeFile(t, user, "release.yml", "release", "0.9.0")
 	writeRecipeFile(t, project, "review.yaml", "code-review", "1.1.0")
-	if err := os.WriteFile(filepath.Join(project, "notes.txt"), []byte("flow: nope\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(project, "notes.txt"), []byte("flow: nope\n"), 0o600); err != nil {
 		t.Fatalf("write notes: %v", err)
 	}
 	return &DirLocator{Dirs: []string{project, user}}, root, project, user

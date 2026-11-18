@@ -20,7 +20,7 @@ var yamlFence = regexp.MustCompile("(?s)```yaml\n(.*?)```")
 // providers in the same file are other documents.
 func exampleFlows(t *testing.T) map[string]string {
 	t.Helper()
-	data, err := os.ReadFile(examplesPath)
+	data, err := os.ReadFile(examplesPath) //nolint:gosec // G304: fixed repo-relative doc path
 	if err != nil {
 		t.Fatalf("read %s: %v", examplesPath, err)
 	}

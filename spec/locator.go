@@ -113,11 +113,11 @@ func isFlowPath(ref string) bool {
 }
 
 func loadFlowFile(path, source string) (*Flow, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: flow path is caller-supplied by design
 	if err != nil {
 		return nil, fmt.Errorf("open flow: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only handle
 	r, err := ParseFlow(f, path)
 	if err != nil {
 		return nil, err
@@ -179,7 +179,7 @@ func scanFlowDir(dir string) []FlowInfo {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: path is an entry of the configured flow dir
 		if err != nil {
 			continue
 		}
