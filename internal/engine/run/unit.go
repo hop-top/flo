@@ -191,6 +191,7 @@ func (u *unit) build() (map[string]any, core.Invocation, error) {
 		},
 		StepRun: u.rec.ID, StepID: sp.step.ID, Index: u.index, Kind: sp.kind,
 		RunAs: u.runAs, Principal: run.StartedBy, Timeout: sp.set.Timeout,
+		Privacy: u.privacy(), Bundle: u.t.p.bundle,
 	}
 	var in map[string]any
 	switch sp.kind {
@@ -691,4 +692,12 @@ func retryAfter(e *core.Error) time.Duration {
 		ms = v
 	}
 	return time.Duration(ms * float64(time.Millisecond))
+}
+
+// privacy is the egress ceiling of the step: its own, else the flow's.
+func (u *unit) privacy() specrun.Privacy {
+	if p := u.sp.set.Privacy; p != "" {
+		return p
+	}
+	return u.t.p.settings.Privacy
 }

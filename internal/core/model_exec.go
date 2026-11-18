@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"hop.top/flo/spec/node"
+	specrun "hop.top/flo/spec/run"
 )
 
 // Outcome is how one dispatch ended.
@@ -103,6 +104,14 @@ type Invocation struct {
 	// run acts for.
 	RunAs     string
 	Principal string
+
+	// Privacy is the egress ceiling in force for the step: its own value,
+	// else the flow's. Empty (a caller that does not say) is read as the
+	// strictest, local-only, by nodes that check it.
+	Privacy specrun.Privacy
+	// Bundle is the flow bundle directory; empty for none. Nodes that read
+	// files shipped with the flow (prompts/) resolve them from it.
+	Bundle string
 
 	DryRun  bool
 	Timeout time.Duration
