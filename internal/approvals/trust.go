@@ -122,7 +122,7 @@ func (t *CommandTrust) call(ctx context.Context, p Provider, what string, a *Act
 	if err != nil {
 		return core.CommandResult{}, core.Wrap(core.CodeInternal, err)
 	}
-	act := cel.Activation{inNamespace: norm, "config": map[string]any{}, "run": map[string]any{}}
+	act := cel.Activation{"in": norm, "config": map[string]any{}, "run": map[string]any{}}
 	argv, err := t.renderArgv(a.Argv, act)
 	if err != nil {
 		return core.CommandResult{}, fmt.Errorf("trust provider %s %s: %w", p.Trust, what, err)
@@ -166,7 +166,7 @@ func (t *CommandTrust) call(ctx context.Context, p Provider, what string, a *Act
 func (t *CommandTrust) renderArgv(argv []string, act cel.Activation) ([]string, error) {
 	var out []string
 	for _, el := range argv {
-		v, err := t.env.RenderValue(aliasIn(el), act)
+		v, err := t.env.RenderValue(el, act)
 		if err != nil {
 			return nil, err //nolint:wrapcheck // *cel.Error
 		}
@@ -183,13 +183,13 @@ func (t *CommandTrust) renderArgv(argv []string, act cel.Activation) ([]string, 
 
 func (t *CommandTrust) renderStdin(s *Stdin, act cel.Activation) ([]byte, error) {
 	if s.JSON != nil {
-		v, err := t.env.RenderValue(aliasInValue(s.JSON), act)
+		v, err := t.env.RenderValue(s.JSON, act)
 		if err != nil {
 			return nil, err //nolint:wrapcheck // *cel.Error
 		}
 		return json.Marshal(v) //nolint:wrapcheck // plain values
 	}
-	v, err := t.env.RenderValue(aliasIn(s.Text), act)
+	v, err := t.env.RenderValue(s.Text, act)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // *cel.Error
 	}
