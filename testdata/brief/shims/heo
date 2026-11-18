@@ -1,0 +1,26 @@
+#!/bin/sh
+# Fake heo for the brief tests: serves testdata/brief/heo, a page per cursor
+# (<kind>_<cursor or first>.json). Logs every call to $FLO_E2E_DIR/heo.log.
+# While $FLO_E2E_DIR/heo-down exists it exits 70, as heo does with no daemon.
+echo "heo $*" >> "$FLO_E2E_DIR/heo.log"
+td="$FLO_E2E_TESTDATA/brief/heo"
+[ -e "$FLO_E2E_DIR/heo-down" ] && { echo "heo: no daemon is running for profile default (PREREQUISITE)" >&2; exit 70; }
+group=$1 verb=$2
+shift 2
+cursor=first conv=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --cursor) cursor=$2; shift 2 ;;
+    --conversation) conv=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$group $verb" in
+  "identity list") cat "$td/identities_$cursor.json" ;;
+  "conversation list") cat "$td/conversations_$cursor.json" ;;
+  "participant list")
+    f="$td/participants_$conv.json"
+    [ -f "$f" ] || { echo "heo: conversation $conv not found" >&2; exit 3; }
+    cat "$f" ;;
+  *) echo "fake heo: unsupported: $group $verb" >&2; exit 64 ;;
+esac

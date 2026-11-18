@@ -1,0 +1,26 @@
+flow: brief-sources
+version: 0.1.0
+description: The three sources of the meeting brief, read in parallel, for the pack tests.
+on:
+  - manual: {}
+run_as: automation
+privacy: local-only
+tasks: none
+steps:
+  - id: people
+    uses: ctxt/find@1
+    with:
+      query: Ada Lovelace
+      limit: 5
+      filter: { person: Ada Lovelace }
+
+  - id: threads
+    uses: heo/conversation.list@1
+    with:
+      participants: [ada@example.org, bob@example.org]
+      since: 30d
+
+  - id: open
+    uses: tlc/task.list@1
+    with:
+      search: review

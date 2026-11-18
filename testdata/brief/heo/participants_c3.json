@@ -1,0 +1,14 @@
+{
+  "conversation": "c3",
+  "participants": [
+    {
+      "identity": "id-bob",
+      "role": "contact",
+      "contact": "ct-id-bob"
+    },
+    {
+      "identity": "id-carol",
+      "role": "contact"
+    }
+  ]
+}

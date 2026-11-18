@@ -1,0 +1,70 @@
+{
+  "items": [
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "id-ada"
+      },
+      "contact": {
+        "tenant": "t1",
+        "id": "ct-id-ada"
+      },
+      "source_id": "ada@example.org",
+      "namespace": "mail",
+      "assurance": "verified",
+      "kind": "person",
+      "link_assurance": "linked",
+      "revision": "r1"
+    },
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "id-bob"
+      },
+      "contact": {
+        "tenant": "t1",
+        "id": "ct-id-bob"
+      },
+      "source_id": "b-4411",
+      "namespace": "mail",
+      "assurance": "verified",
+      "kind": "person",
+      "link_assurance": "linked",
+      "revision": "r1",
+      "attributes": [
+        {
+          "kind": "email",
+          "value": "Bob@Example.org",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "id-carol"
+      },
+      "contact": {
+        "tenant": "t1",
+        "id": "ct-id-carol"
+      },
+      "source_id": "carol@example.org",
+      "namespace": "mail",
+      "assurance": "verified",
+      "kind": "person",
+      "link_assurance": "linked",
+      "revision": "r1"
+    }
+  ],
+  "next": "i2",
+  "complete": false
+}

@@ -1,0 +1,88 @@
+{
+  "items": [
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "c1"
+      },
+      "mode": "per_thread",
+      "status": "open",
+      "reply_route": {
+        "channel": {
+          "tenant": "t1",
+          "id": "ch1"
+        },
+        "namespace": "mail",
+        "kind": "thread",
+        "id": "th-c1",
+        "parent_id": ""
+      },
+      "created_at": "2026-10-01T09:00:00Z",
+      "revision": "rev-c1",
+      "last_activity": "2026-11-17T16:00:00Z",
+      "participants": [
+        {
+          "identity": {
+            "inbox": {
+              "tenant": "t1",
+              "id": "ib1"
+            },
+            "id": "id-carol"
+          },
+          "role": "contact"
+        },
+        {
+          "identity": {
+            "inbox": {
+              "tenant": "t1",
+              "id": "ib1"
+            },
+            "id": "id-ada"
+          },
+          "role": "contact"
+        }
+      ]
+    },
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "c2"
+      },
+      "mode": "per_thread",
+      "status": "pending",
+      "reply_route": {
+        "channel": {
+          "tenant": "t1",
+          "id": "ch1"
+        },
+        "namespace": "mail",
+        "kind": "thread",
+        "id": "th-c2",
+        "parent_id": ""
+      },
+      "created_at": "2026-10-01T09:00:00Z",
+      "revision": "rev-c2",
+      "last_activity": "2026-11-17T15:00:00Z",
+      "participants": [
+        {
+          "identity": {
+            "inbox": {
+              "tenant": "t1",
+              "id": "ib1"
+            },
+            "id": "id-carol"
+          },
+          "role": "contact"
+        }
+      ]
+    }
+  ],
+  "next": "c2",
+  "complete": false
+}

@@ -60,7 +60,7 @@ func wrap(t *testing.T, e *env, stdin string, name string, args ...string) wrapR
 	cmd.Stdin = strings.NewReader(stdin)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
-	r := wrapRun{t: t, e: e, err: errb.String()}
+	r := wrapRun{t: t, e: e}
 	if err := cmd.Run(); err != nil {
 		ee, ok := err.(*exec.ExitError)
 		if !ok {
@@ -68,6 +68,7 @@ func wrap(t *testing.T, e *env, stdin string, name string, args ...string) wrapR
 		}
 		r.exit = ee.ExitCode()
 	}
+	r.err = errb.String()
 	if b, err := os.ReadFile(outFile); err == nil { //nolint:gosec // a temp file
 		if err := json.Unmarshal(b, &r.out); err != nil {
 			t.Fatalf("%s wrote invalid JSON: %v\n%s", name, err, b)

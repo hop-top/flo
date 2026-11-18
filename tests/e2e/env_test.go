@@ -88,12 +88,30 @@ case "$1" in
   *) echo "fake inbox: unsupported: $*" >&2; exit 64 ;;
 esac
 `,
-	// tlc [-C dir] task create|show|complete|skip: tasks are files.
+	// tlc [-C dir] task create|show|complete|skip|list: tasks are files; list
+	// serves testdata/brief/tlc_tasks.json, filtered by --status and the
+	// query after --, and, like tlc, takes only --all-projects here.
 	"tlc": `#!/bin/sh
 d="$FLO_E2E_DIR/tlc"; mkdir -p "$d"
 [ "$1" = -C ] && shift 2
 [ "$1" = task ] || { echo "fake tlc: unsupported: $*" >&2; exit 64; }
 case "$2" in
+  list) echo "tlc $*" >> "$FLO_E2E_DIR/tlc.log"
+    shift 2; all=0 st=TODO,IN_PROGRESS lim=100 q=
+    while [ $# -gt 0 ]; do
+      case $1 in
+        --all-projects) all=1; shift ;;
+        --status) st=$2; shift 2 ;;
+        --limit) lim=$2; shift 2 ;;
+        --format) shift 2 ;;
+        --) q=$2; shift 2 ;;
+        *) echo "fake tlc: unsupported: $*" >&2; exit 64 ;;
+      esac
+    done
+    [ "$all" = 1 ] || { echo "fake tlc: a read outside a project needs --all-projects" >&2; exit 64; }
+    jq --arg st "$st" --arg q "$q" --argjson lim "$lim" '
+      [.[] | select(.status as $s | ($st | split(",") | index($s)) != null)
+           | select($q == "" or (.title | ascii_downcase | contains($q | ascii_downcase)))] | .[:$lim]' "$FLO_E2E_TESTDATA/brief/tlc_tasks.json" ;;
   create) n=$(( $(cat "$d/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$d/n"
     id=$(printf 'T-%04d' $n); echo TODO > "$d/$id"; echo "Created task $id: $3" ;;
   show) [ -f "$d/$3" ] || { echo "task $3 not found" >&2; exit 1; }

@@ -1,0 +1,102 @@
+{
+  "items": [
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "c3"
+      },
+      "mode": "per_thread",
+      "status": "open",
+      "reply_route": {
+        "channel": {
+          "tenant": "t1",
+          "id": "ch1"
+        },
+        "namespace": "mail",
+        "kind": "thread",
+        "id": "th-c3",
+        "parent_id": ""
+      },
+      "created_at": "2026-10-01T09:00:00Z",
+      "revision": "rev-c3",
+      "last_activity": "2026-11-16T10:00:00Z"
+    },
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "c4"
+      },
+      "mode": "per_thread",
+      "status": "resolved",
+      "reply_route": {
+        "channel": {
+          "tenant": "t1",
+          "id": "ch1"
+        },
+        "namespace": "mail",
+        "kind": "thread",
+        "id": "th-c4",
+        "parent_id": ""
+      },
+      "created_at": "2026-10-01T09:00:00Z",
+      "revision": "rev-c4",
+      "last_activity": "2026-11-15T10:00:00Z",
+      "participants": [
+        {
+          "identity": {
+            "inbox": {
+              "tenant": "t1",
+              "id": "ib1"
+            },
+            "id": "id-ada2"
+          },
+          "role": "contact"
+        }
+      ]
+    },
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "c5"
+      },
+      "mode": "per_thread",
+      "status": "open",
+      "reply_route": {
+        "channel": {
+          "tenant": "t1",
+          "id": "ch1"
+        },
+        "namespace": "mail",
+        "kind": "thread",
+        "id": "th-c5",
+        "parent_id": ""
+      },
+      "created_at": "2026-10-01T09:00:00Z",
+      "revision": "rev-c5",
+      "last_activity": "2026-11-14T10:00:00Z",
+      "participants": [
+        {
+          "identity": {
+            "inbox": {
+              "tenant": "t1",
+              "id": "ib1"
+            },
+            "id": "id-dan"
+          },
+          "role": "contact"
+        }
+      ]
+    }
+  ],
+  "next": "",
+  "complete": true
+}

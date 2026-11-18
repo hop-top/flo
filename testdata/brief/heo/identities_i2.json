@@ -1,0 +1,51 @@
+{
+  "items": [
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "id-ada2"
+      },
+      "contact": {
+        "tenant": "t1",
+        "id": "ct-id-ada"
+      },
+      "source_id": "ada+work@example.org",
+      "namespace": "mail",
+      "assurance": "verified",
+      "kind": "person",
+      "link_assurance": "linked",
+      "revision": "r1",
+      "attributes": [
+        {
+          "kind": "email",
+          "value": "ada@example.org",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "ref": {
+        "inbox": {
+          "tenant": "t1",
+          "id": "ib1"
+        },
+        "id": "id-dan"
+      },
+      "contact": {
+        "tenant": "t1",
+        "id": "ct-id-dan"
+      },
+      "source_id": "ada@example.com",
+      "namespace": "mail",
+      "assurance": "verified",
+      "kind": "person",
+      "link_assurance": "linked",
+      "revision": "r1"
+    }
+  ],
+  "next": "",
+  "complete": true
+}
