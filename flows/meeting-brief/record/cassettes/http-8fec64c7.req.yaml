@@ -1,0 +1,11 @@
+xrr: "1"
+adapter: http
+fingerprint: 8fec64c7
+recorded_at: "2026-11-18T23:29:56Z"
+payload:
+    body: '{"filter":{"person":"Ada Lovelace"},"limit":5,"mode":"hybrid","query":"Ada Lovelace"}'
+    headers:
+        Accept: application/json
+        Content-Type: application/json
+    method: POST
+    url: http://127.0.0.1:8080/api/v1/find

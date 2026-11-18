@@ -1,0 +1,68 @@
+flow: meeting-brief
+version: 0.1.0
+description: A brief 30 minutes before each meeting with more than one attendee.
+on:
+  - calendar:
+      source: calendar/events@1
+      offset: -30m
+      when: "trigger.event.attendees.size() > 1"
+run_as: automation
+privacy: local-only             # attendees, notes, threads and tasks stay on this machine
+tasks: none
+steps:
+  # What the knowledge store holds on each attendee: one search per person, by
+  # name (the store matches the names it extracted, not addresses), else the
+  # local part of the address. A search that fails leaves that person out.
+  - id: people
+    uses: ctxt/find@1
+    for_each: "{{ trigger.event.attendees }}"
+    concurrency: 4
+    on_item_error: skip
+    with:
+      query: "{{ item.name != '' ? item.name : item.email.split('@')[0] }}"
+      limit: 5
+      filter:
+        person: "{{ item.name != '' ? item.name : item.email.split('@')[0] }}"
+
+  # Two attendees often turn up in the same note: one entry per object id.
+  - id: notes
+    uses: flo/dedupe@1
+    with:
+      items: "{{ results.people.map(p, p.objects).flatten() }}"
+      key: "{{ item.id }}"
+
+  - id: threads
+    uses: heo/conversation.list@1
+    with:
+      participants: "{{ trigger.event.attendees.map(a, a.email) }}"
+      since: 30d
+
+  - id: open
+    uses: tlc/task.list@1
+    with:
+      search: "{{ trigger.event.title }}"
+      status: [TODO, IN_PROGRESS]
+
+  # Lists are capped for a small model: ten of each, newest first as the
+  # sources return them; counts say how many there were.
+  - id: brief
+    uses: flo/ai.generate@1
+    with:
+      model: ollama://gemma4:e4b
+      prompt: meeting-brief@1
+      context:
+        event: "{{ trigger.event }}"
+        notes: "{{ size(results.notes.items) > 10 ? results.notes.items.slice(0, 10) : results.notes.items }}"
+        threads: "{{ size(results.threads.conversations) > 10 ? results.threads.conversations.slice(0, 10) : results.threads.conversations }}"
+        tasks: "{{ size(results.open) > 10 ? results.open.slice(0, 10) : results.open }}"
+        counts:
+          notes: "{{ size(results.notes.items) }}"
+          threads: "{{ size(results.threads.conversations) }}"
+          tasks: "{{ size(results.open) }}"
+
+  - id: out
+    uses: flo/output@1
+    with:
+      kind: brief
+      title: "Brief: {{ trigger.event.title }}"
+      body: "{{ results.brief.text }}"

@@ -1,0 +1,42 @@
+# The recorded event (two attendees) against the recorded sources, rendered by
+# the template backend: the brief is a golden text. ctxt answered the same
+# three objects for both attendees, so the notes are merged to three; the
+# second object has no summary and 700 characters of text, cut to 200.
+expect:
+  - step: people
+  - step: notes
+  - step: threads
+    output: { scanned: 5, truncated: false }
+  - step: open
+  - step: brief
+    output:
+      prompt: { name: meeting-brief, version: 1 }
+      text: |
+        # Brief: Review
+
+        ## Event
+        - When: 2026-11-18T13:00:00Z to 2026-11-18T14:00:00Z
+        - Where: Room 4
+        - Organizer: ada@example.org
+        - Attendees:
+          - Ada Lovelace <ada@example.org> (accepted)
+          - bob@example.org <bob@example.org>
+
+        ## People & notes
+        3 of 3 notes:
+        - [note] Ada runs the platform team. (obj-1; people, platform)
+        - [url] xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (obj-2)
+        - [note] short (obj-3)
+
+        ## Threads
+        3 of 3 conversations in the last 30 days:
+        - c1 [open] last activity 2026-11-17T16:00:00Z
+        - c3 [open] last activity 2026-11-16T10:00:00Z
+        - c4 [resolved] last activity 2026-11-15T10:00:00Z
+
+        ## Open tasks
+        3 of 3 tasks:
+        - T-0101 [IN_PROGRESS, P1] Quarterly review prep (due 2026-11-20T00:00:00Z)
+        - T-0102 [TODO, P2] Send review notes to Ada
+        - T-0103 [TODO, P3] -x leading dash review
+  - step: out

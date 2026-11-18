@@ -1,0 +1,24 @@
+xrr: "1"
+adapter: exec
+fingerprint: 164214a1
+recorded_at: "2026-11-18T23:29:57Z"
+payload:
+    argv:
+        - aps
+        - run
+        - automation
+        - --
+        - tlc
+        - task
+        - list
+        - --all-projects
+        - --status
+        - TODO,IN_PROGRESS
+        - --limit
+        - "25"
+        - --format
+        - json
+        - --
+        - Review
+    env:
+        FLO_IDEMPOTENCY_KEY: ""

@@ -1,0 +1,62 @@
+xrr: "1"
+adapter: exec
+fingerprint: 61f69cb2
+recorded_at: "2026-11-18T23:29:57Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "conversations": [
+                {
+                  "id": "c1",
+                  "inbox": "ib1",
+                  "status": "open",
+                  "mode": "per_thread",
+                  "created_at": "2026-10-01T09:00:00Z",
+                  "last_activity": "2026-11-17T16:00:00Z",
+                  "participants": [
+                    {
+                      "identity": "id-ada",
+                      "email": "ada@example.org",
+                      "role": "contact"
+                    }
+                  ]
+                },
+                {
+                  "id": "c3",
+                  "inbox": "ib1",
+                  "status": "open",
+                  "mode": "per_thread",
+                  "created_at": "2026-10-01T09:00:00Z",
+                  "last_activity": "2026-11-16T10:00:00Z",
+                  "participants": [
+                    {
+                      "identity": "id-bob",
+                      "email": "bob@example.org",
+                      "role": "contact"
+                    }
+                  ]
+                },
+                {
+                  "id": "c4",
+                  "inbox": "ib1",
+                  "status": "resolved",
+                  "mode": "per_thread",
+                  "created_at": "2026-10-01T09:00:00Z",
+                  "last_activity": "2026-11-15T10:00:00Z",
+                  "participants": [
+                    {
+                      "identity": "id-ada2",
+                      "email": "ada@example.org",
+                      "role": "contact"
+                    }
+                  ]
+                }
+              ],
+              "scanned": 5,
+              "matched_identities": 3,
+              "truncated": false
+            }
+          path: out.json
+    stdout: ""

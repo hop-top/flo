@@ -1,0 +1,24 @@
+xrr: "1"
+adapter: exec
+fingerprint: 61f69cb2
+recorded_at: "2026-11-18T23:29:57Z"
+payload:
+    argv:
+        - aps
+        - run
+        - automation
+        - --
+        - heo-conversations
+        - --out
+        - <step_dir>/out.json
+        - --since
+        - 30d
+        - --status
+        - ""
+        - --limit
+        - "25"
+        - --
+        - ada@example.org
+        - bob@example.org
+    env:
+        FLO_IDEMPOTENCY_KEY: ""
