@@ -143,7 +143,7 @@ func (x *Executor) Execute(ctx context.Context, inv core.Invocation) (core.Resul
 		e := core.Errorf(core.CodeRunFailed, "cannot start %s: %v", firstOr(req.Argv, "command"), err)
 		return fail(e, core.EffectNone, nil), nil
 	}
-	raw := rawOf(res)
+	raw := Raw(res)
 	out := core.Result{Raw: raw, Truncated: res.Truncated, Calls: 1}
 
 	switch {
@@ -193,7 +193,10 @@ func retryCodes(s *node.Spec) []int {
 	return s.ExitCodes.Retry
 }
 
-func rawOf(res core.CommandResult) map[string]any {
+// Raw is the raw exec result kept in a step record: exit_code, stdout, stderr,
+// duration_ms and truncated (flow.md §5.3), plus timed_out when the process
+// was killed at its timeout.
+func Raw(res core.CommandResult) map[string]any {
 	raw := map[string]any{
 		"exit_code":   int64(res.ExitCode),
 		"stdout":      string(res.Stdout),
