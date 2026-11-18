@@ -1,0 +1,21 @@
+# Runs the hop-top/.github lint-go reusable workflow over both modules.
+# Keep golangci-lint-version in lockstep with mise.toml.
+# Pinned to a commit until lint-go.yml is released under a tag; then
+# switch to @v0.
+
+name: lint-go-caller
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    uses: hop-top/.github/.github/workflows/lint-go.yml@217daefc284a3136e5b82d951d8a8d5290013222 # feat/go-lint-workflow
+    with:
+      modules: '[".", "spec"]'
+      golangci-lint-version: v2.15.0

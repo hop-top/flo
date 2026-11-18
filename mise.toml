@@ -1,0 +1,8 @@
+# Pins dev tools so local + CI agree on linter findings.
+# Install: mise install
+[tools]
+go = "1.27"
+# Exact pin: v2.5.0 cannot read go1.27 export data; v2.15.0 (2026-10-16) can.
+# Keep in lockstep with golangci-lint-version in
+# .github/workflows/lint-go-caller.yml.
+golangci-lint = "2.15.0"
