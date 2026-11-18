@@ -1,0 +1,172 @@
+[
+  {
+    "name": "base",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:654194ba7be850bb047c0790a73ef9c0b7a30bef70e675dd5bd0acf813def709"
+  },
+  {
+    "name": "reordered",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{ \"note\": \"x\", \"slots\": [ {\"qty\": 1.50, \"from\": \"2026-11-12T10:00:00Z\"} ], \"resource_id\": \"r1\" }",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:654194ba7be850bb047c0790a73ef9c0b7a30bef70e675dd5bd0acf813def709"
+  },
+  {
+    "name": "changed argument",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r2\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r2\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:450537512c0465848949174715bb1297525e34cd2e5782d02455e05ca9936342"
+  },
+  {
+    "name": "changed number",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.51}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.51}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:4edf4e16c9242f529edc7bcb003b6f6bd1d6afb6422df2c5af5465883f5bc629"
+  },
+  {
+    "name": "changed nested",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T11:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T11:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:9f7d62e9eba0189597f0148ba1ae1983fb9ff859811458b5c079ad446d455bd9"
+  },
+  {
+    "name": "extra key",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\",\"extra\":true}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"extra\":true,\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:71704899f184e811823600b1cd9709a88d10214b77e5601cd4d46758721d4db4"
+  },
+  {
+    "name": "empty text",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:ac47dc1c437dbffb3e2e00d498fade5f72a2ffcfee327292e4c460bb03705511"
+  },
+  {
+    "name": "other actor",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "other",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"other\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:0adf93259d88b4a1674c320c829be14545feb91504ffc5c98d15f13c16f69fd7"
+  },
+  {
+    "name": "other person",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "other",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"other\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:d9b8085e57afadc807f8def61bc807b2da955aaf9bf421a1ad7e642d947b21c0"
+  },
+  {
+    "name": "other scope",
+    "operation": "scheduling.HoldReservation",
+    "scope": "other",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"other\",\"v\":1}",
+    "digest": "sha256:41a3d941ffeec6b4d97895c2096a9f8c684f54fbcb41ddcce593881929951fda"
+  },
+  {
+    "name": "other operation",
+    "operation": "scheduling.ConfirmReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}],\"note\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"note\":\"x\",\"resource_id\":\"r1\",\"slots\":[{\"from\":\"2026-11-12T10:00:00Z\",\"qty\":1.50}]},\"operation\":\"scheduling.ConfirmReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:4d62ff009f8efead5ff8e181c76e931502a7c5414db4e0491ccdc31ac6653cc8"
+  },
+  {
+    "name": "empty input",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:8b7bbb664dd1fb85ead86dfbfc9764f283e259262de429af1970da61ccc66fa9"
+  },
+  {
+    "name": "html chars not escaped",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"a\":\"<b>&<</b>\",\"k\":\"x\"}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"a\":\"<b>&<</b>\",\"k\":\"x\"},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:436cef893b6fcf50d37cef3aad76181685e2242cf52ed6ea2adae863f148f033"
+  },
+  {
+    "name": "big and exact numbers",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"big\":12345678901234567890,\"exp\":1e3,\"frac\":0.1000,\"neg\":-0.0}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"big\":12345678901234567890,\"exp\":1e3,\"frac\":0.1000,\"neg\":-0.0},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:95423fb275b9f2695a9376222d943362a36fdf6dcef7bbacc6325f7f5cc4aef7"
+  },
+  {
+    "name": "unicode",
+    "operation": "scheduling.HoldReservation",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"é\":\"ü\",\"z\":[1,\"two\",null,true]}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"z\":[1,\"two\",null,true],\"é\":\"ü\"},\"operation\":\"scheduling.HoldReservation\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:eca5fcbae867de8556e185fa8630d7f6f0a4d7979428ac3fc71c121badef7da1"
+  },
+  {
+    "name": "command party.add",
+    "operation": "party.add",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"args\":[\"extra\"],\"flags\":{\"kind\":\"person\",\"name\":\"Ana\"}}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"args\":[\"extra\"],\"flags\":{\"kind\":\"person\",\"name\":\"Ana\"}},\"operation\":\"party.add\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:5e67c8c343cc20e3fd204681258ac36a0ceefbe02e3aee64550f20c415a21247"
+  },
+  {
+    "name": "command party.add no args",
+    "operation": "party.add",
+    "scope": "business_scopes_1",
+    "actor": "principals_agent",
+    "acting_for": "principals_person",
+    "input": "{\"args\":[],\"flags\":{\"kind\":\"person\",\"name\":\"Ana\"}}",
+    "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"args\":[],\"flags\":{\"kind\":\"person\",\"name\":\"Ana\"}},\"operation\":\"party.add\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:0f1abc9146c66b1bcb1c4af3bc973f86121832c7603c84788f1754b637902b21"
+  }
+]
