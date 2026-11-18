@@ -240,8 +240,8 @@ func dueMappingKnownFields(value *yaml.Node) error {
 var (
 	// flowNameRe bounds flow names: file-name and reference safe.
 	flowNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	// stepIDRe bounds authored step ids; "/" is reserved for expansion.
-	stepIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	// StepIDRe bounds authored step ids; "/" is reserved for expansion.
+	StepIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	// varNameRe bounds var names to identifiers so {{name}} is unambiguous.
 	varNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )

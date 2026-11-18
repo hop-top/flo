@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-// placeholderRe matches {{ref}} where ref is a bare var name or a
+// PlaceholderRe matches {{ref}} where ref is a bare var name or a
 // dotted path whose later segments may contain the "/" and "-" that
 // expanded step ids carry: {{pr}}, {{vars.pr}}, {{subject.title}},
 // {{run.iteration}}, {{steps.planning.due}}, {{results.sec/scan.stdout}}.
-var placeholderRe = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_/-]+)*)\s*\}\}`)
+var PlaceholderRe = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_/-]+)*)\s*\}\}`)
 
 // stepRefRe matches a results.<id>. or steps.<id>. reference wherever
 // it appears — inside a placeholder or bare in a condition — so expansion
@@ -32,8 +32,8 @@ type Scope struct {
 // are errors so a typo never ships as literal braces in a task.
 func Render(s string, scope Scope) (string, error) {
 	var firstErr error
-	out := placeholderRe.ReplaceAllStringFunc(s, func(match string) string {
-		ref := placeholderRe.FindStringSubmatch(match)[1]
+	out := PlaceholderRe.ReplaceAllStringFunc(s, func(match string) string {
+		ref := PlaceholderRe.FindStringSubmatch(match)[1]
 		if head, _, _ := strings.Cut(ref, "."); head == nsResults || engineNamespaces[head] {
 			return match // bound at dispatch or by the engine
 		}
@@ -44,7 +44,7 @@ func Render(s string, scope Scope) (string, error) {
 			}
 			return match
 		}
-		return templateValue(v)
+		return TemplateValue(v)
 	})
 	if firstErr != nil {
 		return "", firstErr
@@ -86,9 +86,9 @@ func scopeKey(m map[string]any, key, what string) (any, error) {
 	return v, nil
 }
 
-// templateValue renders a bound value the way a task field expects it:
+// TemplateValue renders a bound value the way a task field expects it:
 // lists join with commas, everything else prints plainly.
-func templateValue(v any) string {
+func TemplateValue(v any) string {
 	switch t := v.(type) {
 	case string:
 		return t
@@ -107,9 +107,9 @@ func templateValue(v any) string {
 // RenderStep renders every templatable field of step against scope and
 // returns the result as a copy; the input is never mutated.
 func RenderStep(step Step, scope Scope) (Step, error) {
-	out := copyStep(step)
+	out := CopyStep(step)
 	var firstErr error
-	walkStepStrings(&out, func(s *string) {
+	WalkStepStrings(&out, func(s *string) {
 		r, err := Render(*s, scope)
 		if err != nil {
 			if firstErr == nil {
@@ -125,10 +125,10 @@ func RenderStep(step Step, scope Scope) (Step, error) {
 	return out, nil
 }
 
-// copyStep deep-copies the parts of a step that rendering or expansion
+// CopyStep deep-copies the parts of a step that rendering or expansion
 // mutate. Nested Steps share their backing array; expansion never edits
 // them in place.
-func copyStep(s Step) Step {
+func CopyStep(s Step) Step {
 	out := s
 	out.DependsOn = slices.Clone(s.DependsOn)
 	if s.Exec != nil {
@@ -154,10 +154,10 @@ func copyStep(s Step) Step {
 	return out
 }
 
-// walkStepStrings visits every templatable string of a step in place.
+// WalkStepStrings visits every templatable string of a step in place.
 // It is the single list of "fields a template may appear in", shared by
 // rendering, validation and expansion-time rewriting.
-func walkStepStrings(s *Step, fn func(*string)) {
+func WalkStepStrings(s *Step, fn func(*string)) {
 	for _, p := range []*string{&s.Title, &s.Description, &s.Assignee, &s.Due.Raw, &s.When, &s.Until, &s.Agent} {
 		fn(p)
 	}
@@ -241,8 +241,8 @@ func walkMapStrings(m map[string]string, fn func(*string)) {
 func stepRefs(s Step) []string {
 	var refs []string
 	seen := map[string]bool{}
-	walkStepStrings(&s, func(p *string) {
-		for _, m := range placeholderRe.FindAllStringSubmatch(*p, -1) {
+	WalkStepStrings(&s, func(p *string) {
+		for _, m := range PlaceholderRe.FindAllStringSubmatch(*p, -1) {
 			if !seen[m[1]] {
 				seen[m[1]] = true
 				refs = append(refs, m[1])
@@ -252,11 +252,11 @@ func stepRefs(s Step) []string {
 	return refs
 }
 
-// rewriteStepRefs replaces results.<id>. and steps.<id>. references whose
+// RewriteStepRefs replaces results.<id>. and steps.<id>. references whose
 // id is in rename, in placeholders and bare conditions alike, and renames
 // a structured due's After the same way.
-func rewriteStepRefs(s *Step, rename map[string]string) {
-	walkStepStrings(s, func(p *string) {
+func RewriteStepRefs(s *Step, rename map[string]string) {
+	WalkStepStrings(s, func(p *string) {
 		*p = stepRefRe.ReplaceAllStringFunc(*p, func(m string) string {
 			sub := stepRefRe.FindStringSubmatch(m)
 			if to, ok := rename[sub[2]]; ok {
@@ -276,9 +276,9 @@ func rewriteStepRefs(s *Step, rename map[string]string) {
 // uses it to splice a parent's `with` expressions, a child's defaults and
 // the iteration number into block steps.
 func substituteVars(s *Step, bindings map[string]string) {
-	walkStepStrings(s, func(p *string) {
-		*p = placeholderRe.ReplaceAllStringFunc(*p, func(m string) string {
-			ref := placeholderRe.FindStringSubmatch(m)[1]
+	WalkStepStrings(s, func(p *string) {
+		*p = PlaceholderRe.ReplaceAllStringFunc(*p, func(m string) string {
+			ref := PlaceholderRe.FindStringSubmatch(m)[1]
 			if v, ok := bindings[ref]; ok {
 				return v
 			}

@@ -66,7 +66,7 @@ func (ex *expander) expandList(steps []Step) ([]Step, error) {
 		case s.IsRepeat():
 			flat, lv, err = ex.expandRepeat(s)
 		default:
-			out = append(out, copyStep(*s))
+			out = append(out, CopyStep(*s))
 			continue
 		}
 		if err != nil {
@@ -135,9 +135,9 @@ func bindIncludeVars(s *Step, child *Flow) (map[string]string, error) {
 	for name, def := range child.Vars {
 		switch {
 		case hasAnyKey(s.With, name):
-			bindings[name] = templateValue(s.With[name])
+			bindings[name] = TemplateValue(s.With[name])
 		case def.Default != nil:
-			bindings[name] = templateValue(def.Default)
+			bindings[name] = TemplateValue(def.Default)
 		case def.Required:
 			return nil, fmt.Errorf("step %s: include %s: required var %q is not bound; add it under with", s.ID, child.Key(), name)
 		}
@@ -188,7 +188,7 @@ func derivedWhen(until string, children []Step, prevPrefix string) string {
 		rename[children[i].ID] = prevPrefix + "/" + children[i].ID
 	}
 	probe := Step{When: negateExpr(until)}
-	rewriteStepRefs(&probe, rename)
+	RewriteStepRefs(&probe, rename)
 	return probe.When
 }
 
@@ -212,7 +212,7 @@ func prefixBlock(flat []Step, prefix string, inherit []string) ([]Step, []string
 		if len(st.DependsOn) == 0 {
 			st.DependsOn = slices.Clone(inherit)
 		}
-		rewriteStepRefs(st, rename)
+		RewriteStepRefs(st, rename)
 	}
 	var leaves []string
 	for i := range flat {

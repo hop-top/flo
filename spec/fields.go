@@ -13,7 +13,7 @@ type Field struct {
 }
 
 // StepFields lists every templatable string of s in a stable order, the
-// same set walkStepStrings visits, each with its document path. It reads
+// same set WalkStepStrings visits, each with its document path. It reads
 // s and never mutates it; nested steps are not included.
 func StepFields(s *Step) []Field {
 	out := []Field{

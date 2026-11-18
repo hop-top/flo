@@ -78,8 +78,8 @@ func validateStepShape(s *Step, idx int, until string) error {
 	if s.ID == "" {
 		return fmt.Errorf("step #%d: id is required", idx+1)
 	}
-	if !stepIDRe.MatchString(s.ID) {
-		return fmt.Errorf("step id %q must match %s (\"/\" is reserved for expansion)", s.ID, stepIDRe)
+	if !StepIDRe.MatchString(s.ID) {
+		return fmt.Errorf("step id %q must match %s (\"/\" is reserved for expansion)", s.ID, StepIDRe)
 	}
 	if until != "" && s.When != "" {
 		return fmt.Errorf("step %s: cannot combine when with the enclosing block's until", s.ID)

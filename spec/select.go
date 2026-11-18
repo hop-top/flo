@@ -59,7 +59,7 @@ func (s Selector) addPiece(piece string) error {
 		for n := lo; n <= hi; n++ {
 			s.Ordinals[n] = true
 		}
-	case selectorNumeric.MatchString(piece) || !stepIDRe.MatchString(piece):
+	case selectorNumeric.MatchString(piece) || !StepIDRe.MatchString(piece):
 		return fmt.Errorf("--task %s: want an ordinal (3), a range (1-5) or a step id (lint)", piece)
 	default:
 		s.IDs[piece] = true
@@ -88,7 +88,7 @@ func Select(steps []Step, sel Selector, withDeps bool) ([]Step, map[string][]str
 		if !keep[steps[i].ID] {
 			continue
 		}
-		c := copyStep(steps[i])
+		c := CopyStep(steps[i])
 		c.DependsOn = nil
 		for _, d := range steps[i].DependsOn {
 			if keep[d] {
@@ -105,7 +105,7 @@ func Select(steps []Step, sel Selector, withDeps bool) ([]Step, map[string][]str
 func cloneSteps(steps []Step) []Step {
 	out := make([]Step, len(steps))
 	for i := range steps {
-		out[i] = copyStep(steps[i])
+		out[i] = CopyStep(steps[i])
 	}
 	return out
 }

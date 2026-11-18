@@ -2,7 +2,7 @@ package spec
 
 import "testing"
 
-// StepFields must list exactly the strings walkStepStrings visits, or the
+// StepFields must list exactly the strings WalkStepStrings visits, or the
 // two lists of "where a template may appear" drift apart.
 func TestStepFields_MatchesWalk(t *testing.T) {
 	s := Step{
@@ -17,14 +17,14 @@ func TestStepFields_MatchesWalk(t *testing.T) {
 	}
 	want := 0
 	c := s
-	walkStepStrings(&c, func(p *string) {
+	WalkStepStrings(&c, func(p *string) {
 		if *p != "" {
 			want++
 		}
 	})
 	got := StepFields(&s)
 	if len(got) != want {
-		t.Fatalf("StepFields = %d fields (%v), walkStepStrings = %d", len(got), got, want)
+		t.Fatalf("StepFields = %d fields (%v), WalkStepStrings = %d", len(got), got, want)
 	}
 	paths := map[string]string{}
 	for _, f := range got {
