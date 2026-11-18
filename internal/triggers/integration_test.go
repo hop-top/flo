@@ -40,11 +40,11 @@ func TestScheduleOnTheRealStack(t *testing.T) {
 	w := jobs.NewWorker(q, jobs.WorkerOptions{Pollers: 2, Interval: 5 * time.Millisecond})
 	s.Register(w)
 
-	v, _, err := st.Flows.PutVersion(bg, core.NewFlowVersion{Tenant: T, Name: "demo", Version: "1.0.0", Hash: "h1", Source: []byte(fmt.Sprintf(flowDoc, daily, ""))})
-	if err != nil {
+	if _, _, err := st.Flows.PutVersion(bg, core.NewFlowVersion{Tenant: T, Name: "demo", Version: "1.0.0", Hash: "h1", Source: []byte(fmt.Sprintf(flowDoc, daily, ""))}); err != nil {
 		t.Fatal(err)
 	}
-	if v, err = st.Flows.SetState(bg, T, "demo", "h1", core.FlowActive, clock.Now()); err != nil {
+	v, err := st.Flows.SetState(bg, T, "demo", "h1", core.FlowActive, clock.Now())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Sync(bg, T, v); err != nil {

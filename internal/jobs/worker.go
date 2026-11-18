@@ -77,14 +77,15 @@ func (w *Worker) Handle(t core.JobType, h core.JobHandler) {
 // the pollers without leaving a claim unsettled.
 type gate struct {
 	job.Service
+	q       *Queue
 	mu      sync.Mutex
 	cond    *sync.Cond
 	stopped bool
 	n       int
 }
 
-func newGate(s job.Service) *gate {
-	g := &gate{Service: s}
+func newGate(q *Queue) *gate {
+	g := &gate{Service: q.eng, q: q}
 	g.cond = sync.NewCond(&g.mu)
 	return g
 }
@@ -106,12 +107,22 @@ func (g *gate) Claim(ctx context.Context, queue, worker string) (*job.Job, error
 
 func (g *gate) Complete(ctx context.Context, id string, result any) error {
 	defer g.settle()
-	return g.Service.Complete(ctx, id, result) //nolint:wrapcheck // kit service error passes through
+	j, _ := g.Get(ctx, id)
+	err := g.Service.Complete(ctx, id, result)
+	if err == nil && j != nil {
+		g.q.afterSettle(ctx, j)
+	}
+	return err //nolint:wrapcheck // kit service error passes through
 }
 
 func (g *gate) Fail(ctx context.Context, id string, opts job.FailOpts) error {
 	defer g.settle()
-	return g.Service.Fail(ctx, id, opts) //nolint:wrapcheck // kit service error passes through
+	j, _ := g.Get(ctx, id)
+	err := g.Service.Fail(ctx, id, opts)
+	if err == nil && j != nil {
+		g.q.afterSettle(ctx, j)
+	}
+	return err //nolint:wrapcheck // kit service error passes through
 }
 
 func (g *gate) settle() {
@@ -152,7 +163,7 @@ func (w *Worker) Serve(ctx context.Context) error {
 	}
 	w.mu.Unlock()
 
-	g := newGate(w.q.eng)
+	g := newGate(w.q)
 	var wg sync.WaitGroup
 	for i := 1; i <= w.opts.Pollers; i++ {
 		p := &job.Poller{

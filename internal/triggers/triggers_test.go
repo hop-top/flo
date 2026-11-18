@@ -50,13 +50,14 @@ func newRig(t *testing.T, on, extra string) *rig {
 
 func (r *rig) put(t *testing.T, on, extra, hash string) core.FlowVersion {
 	t.Helper()
-	v, _, err := r.f.DB.Flows.PutVersion(bg, core.NewFlowVersion{
+	_, _, err := r.f.DB.Flows.PutVersion(bg, core.NewFlowVersion{
 		Tenant: T, Name: "demo", Version: "1.0.0", Hash: hash, Source: []byte(fmt.Sprintf(flowDoc, on, extra)),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err = r.f.DB.Flows.SetState(bg, T, "demo", hash, core.FlowActive, r.f.Clock.Now()); err != nil {
+	v, err := r.f.DB.Flows.SetState(bg, T, "demo", hash, core.FlowActive, r.f.Clock.Now())
+	if err != nil {
 		t.Fatal(err)
 	}
 	return v

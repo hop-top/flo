@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS flo_job_keys (
 	key    TEXT NOT NULL,
 	job_id TEXT NOT NULL DEFAULT '',
 	at     INTEGER NOT NULL,
+	rerun  INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (type, tenant, key)
 );
 CREATE INDEX IF NOT EXISTS flo_job_keys_job ON flo_job_keys (job_id);
@@ -201,6 +202,16 @@ func (q *Queue) reserve(ctx context.Context, spec core.JobSpec) (owner bool, exi
 	switch {
 	case id != "":
 		j, gerr := q.eng.Get(ctx, id)
+		if gerr == nil && j.Status == job.StatusActive {
+			// Running now: what the caller wants done may have been missed by
+			// this turn, so ask for another once it settles (see afterSettle).
+			// Re-read after flagging: a job that settled in between has already
+			// looked at the flag, so this enqueue must make the new job itself.
+			if _, err = tx.ExecContext(ctx, `UPDATE flo_job_keys SET rerun = 1 WHERE type = ? AND tenant = ? AND key = ?`, typ, ten, spec.Key); err != nil {
+				return false, "", internal(err)
+			}
+			j, gerr = q.eng.Get(ctx, id)
+		}
 		if gerr == nil && unfinished(j.Status) {
 			return false, core.JobID(id), internal(tx.Commit())
 		}
@@ -211,7 +222,7 @@ func (q *Queue) reserve(ctx context.Context, spec core.JobSpec) (owner bool, exi
 	case time.Duration(now-at) < reservationStale:
 		return false, "", internal(tx.Commit()) // someone else is enqueuing it
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE flo_job_keys SET job_id = '', at = ? WHERE type = ? AND tenant = ? AND key = ?`, now, typ, ten, spec.Key); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE flo_job_keys SET job_id = '', at = ?, rerun = 0 WHERE type = ? AND tenant = ? AND key = ?`, now, typ, ten, spec.Key); err != nil {
 		return false, "", internal(err)
 	}
 	return true, "", internal(tx.Commit())
@@ -353,4 +364,32 @@ func (q *Queue) List(ctx context.Context, f core.JobFilter) ([]core.JobInfo, err
 		out = append(out, info)
 	}
 	return out, nil
+}
+
+// afterSettle runs once a claimed job has been completed or failed for good:
+// if an Enqueue of the same (type, tenant, key) arrived while it ran, the key
+// is queued again, so a resume that landed mid-turn is not lost. A job that
+// goes back to the queue for a retry needs no extra one.
+func (q *Queue) afterSettle(ctx context.Context, j *job.Job) {
+	ten, _ := j.Metadata["tenant"].(string)
+	key, _ := j.Metadata["key"].(string)
+	if key == "" {
+		return
+	}
+	var rerun int
+	err := q.db.QueryRowContext(ctx, `SELECT rerun FROM flo_job_keys WHERE type = ? AND tenant = ? AND key = ? AND job_id = ?`,
+		j.Type, ten, key, j.ID).Scan(&rerun)
+	if err != nil || rerun == 0 {
+		return
+	}
+	cur, err := q.eng.Get(ctx, j.ID)
+	if err != nil || unfinished(cur.Status) {
+		_, _ = q.db.ExecContext(ctx, `UPDATE flo_job_keys SET rerun = 0 WHERE type = ? AND tenant = ? AND key = ? AND job_id = ?`, j.Type, ten, key, j.ID)
+		return
+	}
+	spec := core.JobSpec{Type: core.JobType(j.Type), Tenant: core.TenantID(ten), Key: key, MaxAttempts: j.MaxAttempts}
+	if j.Payload != nil {
+		spec.Payload = j.Payload
+	}
+	_, _ = q.Enqueue(ctx, spec) // reserve sees the finished job and takes the key over, clearing the flag
 }

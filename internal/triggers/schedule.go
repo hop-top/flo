@@ -91,7 +91,7 @@ func (s *schedule) delay(at time.Time) time.Duration {
 	}
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(string(s.id) + "|" + at.UTC().Format(time.RFC3339)))
-	return time.Duration(h.Sum64() % uint64(s.jitter))
+	return time.Duration(int64(h.Sum64()>>1) % int64(s.jitter))
 }
 
 // parseDuration reads a Go duration, also with a day unit ("7d", "-1d12h").

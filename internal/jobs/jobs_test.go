@@ -34,10 +34,6 @@ func newQueue(t *testing.T, clock core.Clock) *jobs.Queue {
 	return openQueue(t, filepath.Join(t.TempDir(), "jobs.db"), clock, 0)
 }
 
-type payload struct {
-	N int `json:"n"`
-}
-
 // The Jobs contract runs on the fake queue and on kit's durabletask.
 func bothQueues(t *testing.T, fn func(t *testing.T, q core.Jobs, clock *coretest.Clock)) {
 	t.Helper()
@@ -433,4 +429,62 @@ func TestPayloadAndMetadataSurviveReopen(t *testing.T) {
 	if again, _ := q2.Enqueue(bg, core.JobSpec{Type: core.JobRunAdvance, Tenant: T, Key: "r"}); again != id {
 		t.Error("the key survives a reopen")
 	}
+}
+
+// An enqueue that lands while the job runs is not dropped: the job runs again
+// once the current run settles. A pending duplicate still dedupes.
+func TestEnqueueDuringActiveRunsAgain(t *testing.T) {
+	q := newQueue(t, nil)
+	started, release := make(chan struct{}, 4), make(chan struct{})
+	var runs atomic.Int32
+	w := fastWorker(q, 3) // several pollers: the rerun must not overlap the first run
+	var inFlight, overlapped atomic.Int32
+	w.Handle(core.JobRunAdvance, func(context.Context, core.Job) error {
+		if inFlight.Add(1) > 1 {
+			overlapped.Add(1)
+		}
+		defer inFlight.Add(-1)
+		n := runs.Add(1)
+		started <- struct{}{}
+		if n == 1 {
+			<-release
+		}
+		return nil
+	})
+	spec := core.JobSpec{Type: core.JobRunAdvance, Tenant: T, Key: "r1"}
+	first, _ := q.Enqueue(bg, spec)
+	if dup, _ := q.Enqueue(bg, spec); dup != first {
+		t.Fatal("a pending duplicate dedupes")
+	}
+	s := serve(t, w)
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	<-started
+	mid, _ := q.Enqueue(bg, spec) // mid-turn: the first run is active
+	if mid != first {
+		t.Errorf("returns the running job's id: %s vs %s", mid, first)
+	}
+	if again, _ := q.Enqueue(bg, spec); again != first {
+		t.Error("repeat requests during the run collapse into one")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if runs.Load() != 1 {
+		t.Fatal("the rerun must wait for the current run")
+	}
+	once.Do(func() { close(release) })
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the mid-turn enqueue was lost: no second run")
+	}
+	eventually(t, "second run settles", func() bool {
+		l, _ := q.List(bg, core.JobFilter{Type: core.JobRunAdvance, Key: "r1", Statuses: []core.JobStatus{core.JobPending, core.JobActive}})
+		return len(l) == 0 && runs.Load() == 2
+	})
+	time.Sleep(60 * time.Millisecond)
+	if runs.Load() != 2 || overlapped.Load() != 0 {
+		t.Errorf("ran %d times, %d overlapped; want 2 and 0", runs.Load(), overlapped.Load())
+	}
+	s.cancel()
+	<-s.done
 }

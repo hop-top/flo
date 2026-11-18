@@ -99,7 +99,7 @@ func TestEmitOrderSeqAndCloudEventLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	n := 0
 	for sc.Scan() {
@@ -149,7 +149,8 @@ func TestTornLineIsSkippedAndNextEventParses(t *testing.T) {
 	l := e.log()
 	e.emit(t, l, "run_1", core.TopicRunCreated)
 	p := filepath.Join(e.dir, "default", "runs", "run_1.jsonl")
-	f, _ := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o600)
+	f, _ := os.OpenFile(p, //nolint:gosec // test path under TempDir
+		os.O_APPEND|os.O_WRONLY, 0o600)
 	_, _ = f.WriteString(`{"specversion":"1.0","id":"evt_x","sou`) // a crash mid-write
 	_ = f.Close()
 	l2 := e.log()
