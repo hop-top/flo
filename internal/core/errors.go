@@ -73,6 +73,7 @@ const (
 const (
 	CodeUsage                 Code = "usage"
 	CodeInvalidFlow           Code = "invalid_flow"
+	CodeFlowNotTested         Code = "flow_not_tested" // activation needs a passing test of that exact version
 	CodeInvalidVar            Code = "invalid_var"
 	CodeInvalidNode           Code = "invalid_node"
 	CodeInvalidDecision       Code = "invalid_decision"
@@ -159,7 +160,7 @@ func buildCodeTable() map[Code]codeInfo {
 		CodeInternal, CodePlacementRefused, CodeIrreversibleUnsafe, CodeApprovalTimedOut)
 	set(ExitGeneral, TransienceTransient, CodeTimeout, CodeAdmissionUnavailable)
 	set(ExitUsage, TransiencePermanent,
-		CodeUsage, CodeInvalidFlow, CodeInvalidVar, CodeInvalidNode, CodeInvalidDecision, CodeReservedKey,
+		CodeUsage, CodeInvalidFlow, CodeFlowNotTested, CodeInvalidVar, CodeInvalidNode, CodeInvalidDecision, CodeReservedKey,
 		CodeEngineNode, CodeEngineFeature, CodeConfirmationRequired, CodeTTYRequired,
 		CodeUnguardedIrreversible, CodePrivacyViolation, CodeCapabilityMismatch, CodeSyntaxError,
 		CodeUndeclaredRef, CodeUnknownFunction, CodeTypeError, CodeNotBoolean, CodeNotList,

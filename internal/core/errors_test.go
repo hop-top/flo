@@ -14,7 +14,7 @@ func TestCodeTablePinned(t *testing.T) {
 		CodeRunFailed: 1, CodeCheckFailed: 1, CodeBudgetExceeded: 1, CodeOutputInvalid: 1, CodeNodeReportedFailure: 1,
 		CodeTimeout: 1, CodeStateTooLarge: 1, CodeDecisionNotRecorded: 1, CodeUpstreamFailed: 1, CodeUncertain: 1,
 		// 2 usage
-		CodeInvalidFlow: 2, CodeInvalidVar: 2, CodeConfirmationRequired: 2, CodeTTYRequired: 2, CodeEngineNode: 2,
+		CodeInvalidFlow: 2, CodeFlowNotTested: 2, CodeInvalidVar: 2, CodeConfirmationRequired: 2, CodeTTYRequired: 2, CodeEngineNode: 2,
 		CodeEngineFeature: 2, CodeReservedKey: 2, CodeUnguardedIrreversible: 2, CodePrivacyViolation: 2,
 		CodeCapabilityMismatch: 2, CodeUnknownFunction: 2, CodeSyntaxError: 2, CodeCycle: 2, CodeInvalidNode: 2,
 		// 3 not found

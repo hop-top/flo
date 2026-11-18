@@ -18,6 +18,7 @@ import (
 	"hop.top/flo/internal/check/eva"
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/run"
+	"hop.top/flo/internal/flowtest"
 	"hop.top/flo/internal/jobs"
 	"hop.top/flo/internal/nodes/builtin"
 	"hop.top/flo/internal/nodes/command"
@@ -49,6 +50,9 @@ type Engine struct {
 	Pruner    *brief.Pruner
 	Grants    *grants.Service
 	Flows     *Flows
+	// TestResults keeps the latest test of each flow version, which the
+	// activation gate reads.
+	TestResults *flowtest.Store
 }
 
 // Open assembles the engine over the data root. It creates the root, the
@@ -167,7 +171,8 @@ func (e *Engine) wire() error {
 		Scheduler: e.Scheduler, Config: calendar.ConfigOf(cfg.ExprConfig),
 	})
 
-	gate := &validatedGate{}
+	e.TestResults = flowtest.NewStore(e.Store.Registry().Dir)
+	gate := &testedGate{results: e.TestResults}
 	e.Services = &core.Services{
 		Clock: cfg.Clock, IDs: ids,
 		Tenants: st.Tenants, Runs: st.Runs, State: st.State, Flows: st.Flows, Approvals: st.Approvals,

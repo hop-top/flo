@@ -10,6 +10,7 @@ import (
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/serve"
+	"hop.top/flo/internal/flowtest"
 )
 
 var bg = context.Background()
@@ -34,6 +35,20 @@ func open(t *testing.T) *serve.Engine {
 	}
 	t.Cleanup(func() { _ = e.Close(bg) })
 	return e
+}
+
+// passTest stores a passing test of the version, as `flo flow test` does.
+func passTest(t *testing.T, e *serve.Engine, src serve.Source, v core.FlowVersion) {
+	t.Helper()
+	digest, err := flowtest.Digest(src.Bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.TestResults.Save(core.DefaultTenant, flowtest.Result{
+		Schema: flowtest.SchemaVersion, Flow: v.Name, Version: v.Version, Hash: v.Hash, Digest: digest, Mode: flowtest.ModeReplay, Passed: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func copyTree(t *testing.T, src, dst string) {
@@ -208,6 +223,11 @@ func TestSetStateActivatesPausesAndSyncsTriggers(t *testing.T) {
 	if _, err := e.Flows.SetState(bg, core.DefaultTenant, "noor", "dependency-watch", "", core.FlowActive); !core.IsCode(err, core.CodeGrantDenied) {
 		t.Errorf("activate as someone who may not: %v", err)
 	}
+	// the gate: no test, no activation
+	if _, err := e.Flows.SetState(bg, core.DefaultTenant, "jad", "dependency-watch", "", core.FlowActive); !core.IsCode(err, core.CodeFlowNotTested) {
+		t.Errorf("activate an untested version: %v", err)
+	}
+	passTest(t, e, src, a.Version)
 	r, err := e.Flows.SetState(bg, core.DefaultTenant, "jad", "dependency-watch", "", core.FlowActive)
 	if err != nil || !r.Changed || r.Version.State != core.FlowActive || r.Version.Hash != a.Version.Hash {
 		t.Fatalf("activate = %+v %v", r, err)
@@ -235,18 +255,6 @@ func TestSetStateActivatesPausesAndSyncsTriggers(t *testing.T) {
 	}
 	if _, err := e.Flows.SetState(bg, core.DefaultTenant, "jad", "dependency-watch", "", core.FlowDraft); !core.IsCode(err, core.CodeUsage) {
 		t.Errorf("an unsettable state: %v", err)
-	}
-}
-
-func TestValidatedGate(t *testing.T) {
-	e := open(t)
-	good, _ := serve.ReadSource(testdata("flows", "inbox-triage"))
-	if err := e.Services.Gate.Allow(bg, core.DefaultTenant, core.FlowVersion{Name: "inbox-triage", Version: "0.1.0", Source: good.Data, Bundle: good.Bundle}); err != nil {
-		t.Errorf("a valid version: %v", err)
-	}
-	bad := core.FlowVersion{Name: "f", Version: "0.1.0", Source: []byte("flow: f\nversion: 0.1.0\nsteps:\n  - id: a\n    uses: nobody/home@1\n")}
-	if err := e.Services.Gate.Allow(bg, core.DefaultTenant, bad); !core.IsCode(err, core.CodeInvalidFlow) {
-		t.Errorf("a version that does not validate: %v", err)
 	}
 }
 

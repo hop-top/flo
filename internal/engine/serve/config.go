@@ -13,7 +13,8 @@
 //	nodes.go    node layers: bundle, installed packs, built-ins; the locator
 //	packs.go    installed packs on disk
 //	flows.go    validate, apply and set-state of flows
-//	gate.go     the phase-1 ActivationGate
+//	gate.go     the ActivationGate: validates, and has a passing test of that version
+//	testrun.go  `flo flow test`: a flow version run in a sandbox engine
 //	state.go    engine state file, read by `flo status` and `run create --wait`
 package serve
 
