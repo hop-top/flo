@@ -1,0 +1,11 @@
+name: release-please-preflight
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  preflight:
+    permissions:
+      contents: read
+    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@v0
