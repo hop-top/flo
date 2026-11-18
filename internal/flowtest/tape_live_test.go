@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
 	"hop.top/kit/go/runtime/sideeffect/real"
 
 	"hop.top/flo/internal/flowtest"
@@ -161,5 +162,72 @@ func TestLiveTapeNotesACassetteThatCannotBeWritten(t *testing.T) {
 	}
 	if len(tp.Partial()) != 1 {
 		t.Errorf("partial = %v", tp.Partial())
+	}
+}
+
+// A test's recording (not Live) is scrubbed as a live one is: Scrub applies,
+// credentials never reach a cassette (XRR_REDACT_DISABLE does not matter),
+// and a cassette that cannot be written fails the call, as a test should.
+func testTape(t *testing.T, scrub func(any) any) (*flowtest.Tape, string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "cassettes")
+	tp, err := flowtest.NewTapeWith(flowtest.ModeRecord, dir, flowtest.Options{Scrub: scrub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tp, dir
+}
+
+func TestRecordingTestAppliesTheScrubAndKeepsNoCredentials(t *testing.T) {
+	t.Setenv("XRR_REDACT_DISABLE", "1")
+	const token = "ghp_" + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "sid=cookievalue12345")
+		_, _ = io.WriteString(w, `{"ok":true,"leak":"scrub-me-1234"}`)
+	}))
+	t.Cleanup(srv.Close)
+	tp, dir := testTape(t, func(v any) any {
+		b, _ := yaml.Marshal(v)
+		return map[string]any{"copy": strings.ReplaceAll(string(b), "scrub-me-1234", "[redacted]")}
+	})
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
+	req.Header.Set("Authorization", "Bearer abcdefghijklmnop0123")
+	resp, err := tp.HTTP(real.NewHTTP(nil)).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "scrub-me-1234") {
+		t.Fatalf("the caller must get the live response: %s", body)
+	}
+	cmd := sh(`echo ` + token)
+	cmd.Env = append(os.Environ(), "FLO_TEST_VALUE=env-value-7f3a9c")
+	cmd.Stdout = io.Discard
+	if err := tp.Exec(real.Exec{}).Run(cmd); err != nil {
+		t.Fatal(err)
+	}
+	text := readAll(t, dir)
+	for _, secret := range []string{"scrub-me-1234", "abcdefghijklmnop0123", "cookievalue12345", token, "env-value-7f3a9c"} {
+		if strings.Contains(text, secret) {
+			t.Errorf("a cassette keeps %q", secret)
+		}
+	}
+	if !strings.Contains(text, "[redacted]") {
+		t.Errorf("the scrub was not applied:\n%s", text)
+	}
+}
+
+func TestRecordingTestFailsWhenACassetteCannotBeWritten(t *testing.T) {
+	tp, dir := testTape(t, func(v any) any { return v })
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("a file where the directory was"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := sh(`echo fine`)
+	cmd.Stdout = io.Discard
+	if err := tp.Exec(real.Exec{}).Run(cmd); err == nil {
+		t.Error("a test recorded nothing and did not fail")
 	}
 }

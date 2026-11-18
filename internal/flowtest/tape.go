@@ -62,16 +62,24 @@ type Options struct {
 	Live bool
 	// Scrub copies a request or response payload for the cassette with what
 	// must not be stored removed. Nil stores the payload as is (xrr's own
-	// secret redaction still applies).
+	// secret redaction still applies). It applies to every recording, a
+	// test's too; a recording that is not Live fails the call when the
+	// cassette cannot be written.
 	Scrub func(any) any
+}
+
+// direct reports whether a call is made and saved by the tape itself (live
+// recording, or a recording with a Scrub) instead of through the xrr session.
+func (t *Tape) direct() bool {
+	return t.opts.Live || (t.mode == ModeRecord && t.opts.Scrub != nil)
 }
 
 // NewTape returns a Tape over dir. Recording creates it; replaying reads it,
 // and a call without a cassette fails.
 func NewTape(mode Mode, dir string) (*Tape, error) { return NewTapeWith(mode, dir, Options{}) }
 
-// NewTapeWith is NewTape with options. A Live tape ignores XRR_REDACT_*: the
-// default credential redaction of xrr is always on for it.
+// NewTapeWith is NewTape with options. A tape that records ignores
+// XRR_REDACT_*: the default credential redaction of xrr is always on for it.
 func NewTapeWith(mode Mode, dir string, opts Options) (*Tape, error) {
 	if !mode.Valid() {
 		return nil, fmt.Errorf("flowtest: mode %q is not replay or record", mode)
@@ -84,7 +92,7 @@ func NewTapeWith(mode Mode, dir string, opts Options) (*Tape, error) {
 		}
 	}
 	cass := xrr.NewFileCassette(dir)
-	if opts.Live {
+	if mode == ModeRecord {
 		cass = xrr.NewFileCassetteWithRedactor(dir, xrr.NewRedactor(xrr.RedactConfig{}))
 	}
 	return &Tape{mode: mode, dir: dir, sess: xrr.NewSession(xm, cass), cass: cass, opts: opts}, nil
@@ -105,7 +113,7 @@ func (t *Tape) notePartial(why string) {
 
 // save writes one live interaction to the cassette, scrubbed. A failure
 // leaves the call as it was and the recording partial.
-func (t *Tape) save(adapter xrr.Adapter, req xrr.Request, resp xrr.Response, doErr error, what string) {
+func (t *Tape) save(adapter xrr.Adapter, req xrr.Request, resp xrr.Response, doErr error, what string) error {
 	fp, err := adapter.Fingerprint(req)
 	if err == nil {
 		var sreq, sresp any = req, resp
@@ -128,9 +136,13 @@ func (t *Tape) save(adapter xrr.Adapter, req xrr.Request, resp xrr.Response, doE
 	}
 	if err != nil {
 		t.notePartial(what + ": " + err.Error())
-		return
+		if t.opts.Live {
+			return nil
+		}
+		return fmt.Errorf("flowtest: recording %s: %w", what, err)
 	}
 	t.count(false)
+	return nil
 }
 
 // Stats returns how many calls went through the tape and how many of them a
@@ -216,7 +228,7 @@ func (e *execSeam) Run(cmd *exec.Cmd) error {
 		argv[i] = stepDirRe.ReplaceAllString(a, stepDirHolder)
 	}
 	req := &xexec.Request{Argv: argv, Stdin: string(stdin), Env: envKeys(cmd.Env)}
-	if e.t.opts.Live {
+	if e.t.direct() {
 		return e.runLive(cmd, req, stepDir)
 	}
 
@@ -289,16 +301,23 @@ func (e *execSeam) runLive(cmd *exec.Cmd, req *xexec.Request, stepDir string) er
 	case errors.As(runErr, &ee):
 		resp.ExitCode = ee.ExitCode()
 	default: // did not start: recorded as an error
-		e.t.save(&xexec.Adapter{}, req, nil, runErr, what)
+		if err := e.t.save(&xexec.Adapter{}, req, nil, runErr, what); err != nil {
+			return err
+		}
 		return runErr
 	}
 	files, ferr := readStepFiles(stepDir)
 	if ferr != nil {
+		if !e.t.opts.Live {
+			return ferr
+		}
 		e.t.notePartial(what + ": " + ferr.Error())
 		return runErr
 	}
 	resp.Files = files
-	e.t.save(&xexec.Adapter{}, req, resp, nil, what)
+	if err := e.t.save(&xexec.Adapter{}, req, resp, nil, what); err != nil {
+		return err
+	}
 	return runErr
 }
 
@@ -460,7 +479,7 @@ func (h *httpSeam) Do(req *http.Request) (*http.Response, error) {
 		req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
 	}
 	xreq := &xhttp.Request{Method: req.Method, URL: req.URL.String(), Headers: keep(req.Header), Body: string(body)}
-	if h.t.opts.Live {
+	if h.t.direct() {
 		return h.doLive(req, xreq)
 	}
 	do := func() (xrr.Response, error) {
@@ -523,13 +542,19 @@ func (h *httpSeam) doLive(req *http.Request, xreq *xhttp.Request) (*http.Respons
 	what := req.Method + " " + req.URL.String()
 	resp, err := h.live.Do(req)
 	if err != nil {
-		h.t.save(&xhttp.Adapter{}, xreq, nil, err, what)
+		if serr := h.t.save(&xhttp.Adapter{}, xreq, nil, err, what); serr != nil {
+			return nil, serr
+		}
 		return nil, err //nolint:wrapcheck // the live error
 	}
 	rb, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		_ = resp.Body.Close()
 		return nil, fmt.Errorf("flowtest: response body: %w", err)
+	}
+	if len(rb) > maxBody && !h.t.opts.Live {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("flowtest: the response of %s is over %d bytes: too large to record", what, maxBody)
 	}
 	if len(rb) > maxBody {
 		h.t.notePartial(what + ": the response is over the size a recording keeps")
@@ -541,7 +566,9 @@ func (h *httpSeam) doLive(req *http.Request, xreq *xhttp.Request) (*http.Respons
 	}
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(rb))
-	h.t.save(&xhttp.Adapter{}, xreq, &xhttp.Response{Status: resp.StatusCode, Headers: keep(resp.Header), Body: string(rb)}, nil, what)
+	if err := h.t.save(&xhttp.Adapter{}, xreq, &xhttp.Response{Status: resp.StatusCode, Headers: keep(resp.Header), Body: string(rb)}, nil, what); err != nil {
+		return nil, err
+	}
 	return resp, nil
 }
 
