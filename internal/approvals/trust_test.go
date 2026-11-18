@@ -176,6 +176,25 @@ func TestParseProviderStrict(t *testing.T) {
 	}
 }
 
+// A provider document is read by two parsers, the spec's (at install) and the
+// engine's (at run time): what the first accepts the second must too.
+func TestParseProviderAcceptsTheSpecsKeys(t *testing.T) {
+	doc := `trust: inbox
+kind: command
+description: Trust state owned by a script.
+side_effect: write-shared
+x-owner: ops
+read: { argv: [inbox-trust, list] }
+`
+	p, err := approvals.ParseProvider([]byte(doc))
+	if err != nil {
+		t.Fatalf("a document the spec accepts: %v", err)
+	}
+	if p.Description != "Trust state owned by a script." || p.Read == nil || p.Read.Argv[0] != "inbox-trust" {
+		t.Errorf("provider = %+v", p)
+	}
+}
+
 func TestDirLocator(t *testing.T) {
 	flowDir, packDir := t.TempDir(), t.TempDir()
 	write := func(dir, name, doc string) {

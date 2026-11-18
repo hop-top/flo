@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -23,8 +24,13 @@ import (
 //	          stdin: { json: "{{ in.decisions }}" } }
 //	set:    { argv: [inbox, trust, "{{ in.level == 'auto' ? 'promote' : 'reset' }}", "{{ in.class }}"] }
 type Provider struct {
-	Trust  string  `yaml:"trust"`
-	Kind   string  `yaml:"kind"`
+	Trust string `yaml:"trust"`
+	Kind  string `yaml:"kind"`
+	// Description and SideEffect are read for the spec's sake (it validates
+	// them at install); the engine uses neither.
+	Description string `yaml:"description,omitempty"`
+	SideEffect  string `yaml:"side_effect,omitempty"`
+	// Read, Decide and Set are the three operations.
 	Read   *Action `yaml:"read,omitempty"`
 	Decide *Action `yaml:"decide,omitempty"`
 	Set    *Action `yaml:"set,omitempty"`
@@ -52,6 +58,10 @@ type Stdin struct {
 // ParseProvider decodes a provider document strictly.
 func ParseProvider(data []byte) (Provider, error) {
 	var p Provider
+	data, err := withoutExtensions(data)
+	if err != nil {
+		return Provider{}, core.Errorf(core.CodeInvalidNode, "trust provider: %w", err)
+	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&p); err != nil {
@@ -73,6 +83,28 @@ func ParseProvider(data []byte) (Provider, error) {
 		}
 	}
 	return p, nil
+}
+
+// withoutExtensions drops the x-* keys of the document's root: the spec lets
+// a document carry them, and the engine has no use for them.
+func withoutExtensions(data []byte) ([]byte, error) {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, err //nolint:wrapcheck // named by the caller
+	}
+	if root.Kind != yaml.DocumentNode || len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
+		return data, nil
+	}
+	m := root.Content[0]
+	kept := m.Content[:0:0]
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if strings.HasPrefix(m.Content[i].Value, "x-") {
+			continue
+		}
+		kept = append(kept, m.Content[i], m.Content[i+1])
+	}
+	m.Content = kept
+	return yaml.Marshal(&root) //nolint:wrapcheck // named by the caller
 }
 
 // Locator finds the provider document of a name. Where providers live
