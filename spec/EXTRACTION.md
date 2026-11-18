@@ -189,10 +189,10 @@ read); the root package still does not.
 - V20 trust guard: `spec.Step` has no `trust` key, so the check reads the
   provider name from `with.trust` of a node that declares `approval: trust`
   and a trust class. An ancestor `flo/approval@1` is the other guard.
-- `{{ in.x }}` does not compile in `spec/cel` (`in` is a CEL reserved word):
-  node templates need `in` rewritten before they are compiled; `node` does
-  that for its own reference scan (`node.TemplateRefs`), the engine renderer
-  must do it too.
+- `in` (a CEL keyword) is aliased inside `spec/cel`: `normalizeRefs` rewrites
+  a namespace `in` (followed by `.` or `[`, not after an operand) to an
+  internal alias, `Eval` binds `act["in"]` to it, refs and messages say `in`.
+  `node/refs.go` keeps its own alias for its parse-only scan.
 - Error codes: `run.Issue`, `node.Error` and `cel.Error` carry typed codes;
   the root package's own errors still carry them as message prefixes.
 - Bundle layout and pack/bundle search layers (§2.4): `node.Locator` covers

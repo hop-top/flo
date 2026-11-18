@@ -177,8 +177,15 @@ func normalizeRefs(s string, known map[string]bool) (string, []edit) {
 				j++
 			}
 			word := s[i:j]
-			b.WriteString(word)
 			prevDot := i > 0 && s[i-1] == '.'
+			if word == "in" && !prevDot && isInNamespace(s, i, j) {
+				start := b.Len()
+				b.WriteString(inAlias)
+				edits = append(edits, edit{origStart: i, origEnd: j, newStart: start, newEnd: b.Len()})
+				i = j
+				continue
+			}
+			b.WriteString(word)
 			if (word == "results" || word == "steps") && !prevDot && j < len(s) && s[j] == '.' {
 				if k, ok := stepIDRun(s, j+1, known); ok {
 					start := b.Len()
@@ -214,4 +221,42 @@ func stepIDRun(s string, from int, known map[string]bool) (int, bool) {
 		return end, true
 	}
 	return 0, false
+}
+
+// inAlias stands for the `in` namespace while an expression is compiled:
+// `in` is a CEL keyword (the membership operator), so `in.x` does not parse.
+// normalizeRefs rewrites the namespace to the alias, Eval binds act["in"]
+// to it, and everything user-visible (refs, messages) says `in` again.
+const inAlias = "in__"
+
+// isInNamespace reports whether the `in` at s[i:j] starts a selection of the
+// namespace (`in.x`, `in['a']`) rather than being the membership operator
+// (`a in b`, `"k" in m`): it must be followed by `.` or `[` and must not
+// follow an operand.
+func isInNamespace(s string, i, j int) bool {
+	k := j
+	for k < len(s) && (s[k] == ' ' || s[k] == '\t' || s[k] == '\n') {
+		k++
+	}
+	if k >= len(s) || (s[k] != '.' && s[k] != '[') {
+		return false
+	}
+	p := i - 1
+	for p >= 0 && (s[p] == ' ' || s[p] == '\t' || s[p] == '\n') {
+		p--
+	}
+	if p < 0 {
+		return true
+	}
+	switch c := s[p]; {
+	case c == ')' || c == ']' || c == '}' || c == '\'' || c == '"':
+		return false
+	case isIdentByte(c):
+		q := p
+		for q >= 0 && isIdentByte(s[q]) {
+			q--
+		}
+		return s[q+1:p+1] == "in" // `x in in.list`: the second `in` is the namespace
+	}
+	return true
 }

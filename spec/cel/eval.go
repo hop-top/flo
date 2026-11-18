@@ -16,13 +16,13 @@ import (
 // missing key is an *Error with code unresolved_ref; any other failure has
 // code eval_error.
 func (x *Expr) Eval(act Activation) (any, error) {
-	v, _, err := x.prg.Eval(map[string]any(act))
+	v, _, err := x.prg.Eval(aliasIn(act))
 	if err != nil {
 		code := CodeEval
 		if strings.Contains(err.Error(), "no such key") || strings.Contains(err.Error(), "no such attribute") {
 			code = CodeUnresolved
 		}
-		return nil, &Error{Code: code, Msg: err.Error()}
+		return nil, &Error{Code: code, Msg: strings.ReplaceAll(err.Error(), inAlias, "in")}
 	}
 	return toNative(v), nil
 }
@@ -99,4 +99,19 @@ func jsonText(v any) string {
 		return fmt.Sprint(v)
 	}
 	return string(b)
+}
+
+// aliasIn returns act with act["in"] also bound under inAlias, where the
+// compiled expressions read it. act itself is not modified.
+func aliasIn(act Activation) map[string]any {
+	in, ok := act["in"]
+	if !ok {
+		return act
+	}
+	out := make(map[string]any, len(act)+1)
+	for k, val := range act {
+		out[k] = val
+	}
+	out[inAlias] = in
+	return out
 }

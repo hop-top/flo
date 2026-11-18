@@ -83,7 +83,7 @@ func issueErrors(iss *celgo.Issues, at func(int, int) (int, int), code string, c
 		if code == CodeType {
 			msg, c = classify(msg, calls)
 		}
-		out = append(out, &Error{Code: c, Msg: msg, Line: line, Col: col})
+		out = append(out, &Error{Code: c, Msg: strings.ReplaceAll(msg, inAlias, "in"), Line: line, Col: col})
 	}
 	return out
 }
@@ -148,6 +148,10 @@ func collectRefs(ast *celgo.Ast) Refs {
 			}
 		}
 	}))
+	if spaces[inAlias] {
+		delete(spaces, inAlias)
+		spaces["in"] = true
+	}
 	return Refs{Results: keys(results), State: keys(state), Namespaces: keys(spaces)}
 }
 

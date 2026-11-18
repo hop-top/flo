@@ -52,6 +52,9 @@ func newEnv(vars map[string]spec.VarDef, ids []string) (*Env, error) {
 	opts := []celgo.EnvOption{ext.Lists(), ext.Strings(),
 		celgo.Variable("item", celgo.DynType), celgo.Variable("index", celgo.IntType)}
 	for _, ns := range mapNamespaces {
+		if ns == "in" {
+			ns = inAlias
+		}
 		opts = append(opts, celgo.Variable(ns, dyn))
 	}
 	names := make([]string, 0, len(vars))
