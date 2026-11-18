@@ -1,0 +1,63 @@
+#!/bin/sh
+# gh-advisories --out FILE --batch N --    (packages as JSON on stdin)
+#
+# Published advisories affecting the given package versions. Packages are
+# grouped by ecosystem and sent in batches as the provider's
+# `affects=pkg@version,...` filter, following its cursor pagination.
+# Withdrawn advisories are dropped; severity is lowercase (moderate is
+# medium); the patched version is a plain string. Packages with an unknown
+# ecosystem or a version range ("4.*.*") are not asked about.
+. "$(dirname "$0")/gh-lib.sh"
+need_jq
+
+batch=50
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --batch) batch=$2; shift 2 ;;
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    *) echo "gh-advisories: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] || { echo "gh-advisories: --out is required" >&2; exit 64; }
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+jq -c --argjson n "$batch" '
+  map(select(.ecosystem != "other" and (.version | contains("*") | not)))
+  | group_by(.ecosystem)
+  | map(. as $g | {ecosystem: $g[0].ecosystem,
+      batches: (reduce ($g | sort_by(.name, .version))[] as $p ([[]];
+        # a batch holds one version of a name, so a match is unambiguous
+        if ((.[-1] | length) >= $n) or (.[-1] | any(.name == $p.name)) then . + [[$p]]
+        else .[-1] += [$p] end))})
+  | .[] | .ecosystem as $e | .batches[] | {ecosystem: $e, packages: .}
+' > "$tmp/batches.ndjson"
+
+: > "$tmp/found.ndjson"
+i=0
+while IFS= read -r b; do
+  i=$((i + 1))
+  eco=$(printf '%s' "$b" | jq -r .ecosystem)
+  affects=$(printf '%s' "$b" | jq -r '[.packages[] | .name + "@" + .version] | join(",")')
+  if ! gh_get "$tmp/adv.json" -X GET /advisories --paginate -f "ecosystem=$eco" -f "affects=$affects" -f per_page=100; then
+    gh_die "$tmp/adv.json"
+  fi
+  # --paginate prints one array per page
+  printf '%s' "$b" | jq -c --slurpfile pages "$tmp/adv.json" '
+    .packages as $pk
+    | [$pages[] | if type == "array" then .[] else empty end]
+    | .[] | select(.withdrawn_at == null) as $a
+    | $a.vulnerabilities[] as $v
+    | $pk[] | select(.name == $v.package.name)
+    | {ghsa_id: $a.ghsa_id, cve_id: $a.cve_id, package: .name, ecosystem: .ecosystem, version: .version,
+       severity: (($a.severity // "low") | ascii_downcase | if . == "moderate" then "medium" else . end),
+       summary: ($a.summary // ""), vulnerable_range: ($v.vulnerable_version_range // ""),
+       first_patched: (if ($v.first_patched_version | type) == "object" then $v.first_patched_version.identifier
+                       else $v.first_patched_version end),
+       url: ($a.html_url // $a.url // ""), used_by: (.used_by // [])}
+  ' >> "$tmp/found.ndjson" || { echo "gh-advisories: unreadable advisory page" >&2; exit 1; }
+done < "$tmp/batches.ndjson"
+
+jq -n --slurpfile f "$tmp/found.ndjson" '{advisories: ($f | unique_by([.ghsa_id, .package, .version]))}' > "$out"

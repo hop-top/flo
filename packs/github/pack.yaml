@@ -2,7 +2,7 @@ pack: github
 version: 0.1.0
 description: Dependency lists, advisories and releases from GitHub through gh.
 requires: { flo: ">=0.1" }
-# The nodes run the wrappers in bin/ (gh-deps, gh-advisories, gh-releases, with
+# The nodes run the wrappers in wrappers/ (gh-deps, gh-advisories, gh-releases, with
 # gh-lib.sh beside them) as `aps run <profile> -- <wrapper>`: put that
 # directory on the PATH of the profile. They need gh and jq.
 nodes: [nodes/dependency-list.yaml, nodes/advisories.yaml, nodes/releases-since.yaml]

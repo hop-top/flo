@@ -1,0 +1,77 @@
+#!/bin/sh
+# gh-deps --mode sbom --include-actions true|false --out FILE -- REPO...
+#
+# Packages the repositories depend on, from the dependency graph SBOM (one call
+# per repo, the 100/h `dependency_sbom` bucket), deduplicated across
+# repositories with `used_by`. Writes {packages, skipped} to FILE.
+#
+# Normalization: versions lose `v`, `= ` and purl escapes; ecosystems map to
+# the advisory vocabulary (golang->go, pypi->pip, cargo->rust,
+# githubactions->actions, gem->rubygems, hex->erlang). The graph gives no
+# source repository, so it is computed for Go modules hosted on github.com
+# (owner/repo, with the module subdirectory as tag_prefix) and golang.org/x.
+# A 404 is a missing repo or a disabled graph: one more call says which, and
+# the repo goes to `skipped` instead of failing the step.
+. "$(dirname "$0")/gh-lib.sh"
+need_jq
+
+mode=sbom
+actions=false
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --mode) mode=$2; shift 2 ;;
+    --include-actions) actions=$2; shift 2 ;;
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    *) echo "gh-deps: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] || { echo "gh-deps: --out is required" >&2; exit 64; }
+[ "$mode" = sbom ] || { echo "gh-deps: mode $mode is not supported; only sbom" >&2; exit 64; }
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+: > "$tmp/pkgs.ndjson"
+: > "$tmp/skipped.ndjson"
+
+for repo in "$@"; do
+  f="$tmp/sbom.json"
+  if gh_get "$f" "/repos/$repo/dependency-graph/sbom"; then
+    jq -c --arg repo "$repo" --argjson actions "$([ "$actions" = true ] && echo true || echo false)" '
+      def eco: ({golang:"go",pypi:"pip",cargo:"rust",githubactions:"actions",npm:"npm",
+                 maven:"maven",nuget:"nuget",composer:"composer",gem:"rubygems",
+                 pub:"pub",swift:"swift",hex:"erlang"})[.] // "other";
+      def norm: sub("^= *"; "") | sub("^v"; "") | gsub("%2[Aa]"; "*") | gsub("%2[Bb]"; "+");
+      def src($e; $n):
+        if $e != "go" then {}
+        elif ($n | test("^github\\.com/[^/]+/[^/]+")) then
+          ($n | capture("^github\\.com/(?<o>[^/]+)/(?<r>[^/]+)(?<rest>/.*)?$")) as $m
+          | ($m.rest // "" | sub("^/"; "") | sub("(^|/)v[0-9]+$"; "")) as $sub
+          | {source_repo: ($m.o + "/" + $m.r)} + (if $sub == "" then {} else {tag_prefix: ($sub + "/")} end)
+        elif ($n | test("^golang\\.org/x/[^/]+")) then
+          {source_repo: ("golang/" + ($n | capture("^golang\\.org/x/(?<r>[^/]+)").r))}
+        else {} end;
+      .sbom.packages[]
+      | ((.externalRefs // [])[] | select(.referenceType == "purl") | .referenceLocator) as $purl
+      | ($purl | capture("^pkg:(?<t>[^/]+)/").t) as $t
+      | select($t != "github" and (.versionInfo // "") != "")
+      | ($t | eco) as $e
+      | select($e != "actions" or $actions)
+      | {name: .name, ecosystem: $e, version: (.versionInfo | norm), used_by: [$repo]} + src($e; .name)
+    ' "$f" >> "$tmp/pkgs.ndjson" || { echo "gh-deps: $repo: unreadable SBOM" >&2; exit 1; }
+    continue
+  fi
+  case $GH_STATUS in
+    404)
+      if gh_get "$tmp/repo.json" "/repos/$repo"; then reason="dependency graph disabled"; else reason="repository not found"; fi
+      jq -nc --arg repo "$repo" --arg reason "$reason" '{repo: $repo, reason: $reason}' >> "$tmp/skipped.ndjson"
+      ;;
+    *) gh_die "$f" ;;
+  esac
+done
+
+jq -n --slurpfile p "$tmp/pkgs.ndjson" --slurpfile s "$tmp/skipped.ndjson" '
+  {packages: ($p | group_by([.ecosystem, .name, .version]) | map(.[0] + {used_by: (map(.used_by[]) | unique)})
+              | sort_by([.ecosystem, .name, .version])),
+   skipped: $s}' > "$out"

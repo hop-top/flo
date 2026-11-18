@@ -1,0 +1,132 @@
+#!/bin/sh
+# gh-releases --out FILE --repo O/R --package P --version V [--tag-prefix X]
+#             [--prerelease exclude|include|match] [--since TS] [--lookback 14d]
+#
+# Releases (tags, when there are none) of one package's source repository
+# newer than a point in time. Never calls the "latest release" endpoint.
+# Writes {source: releases|tags|none, releases: [...]} to FILE.
+#
+# - Walks releases newest-created first, one page at a time, and stops at the
+#   `since` point (inclusive; the caller dedupes) or at the installed version.
+# - A tag counts only with the module prefix (`kit/` for `kit/v0.5.0`); with
+#   no prefix, a tag with a `/` belongs to another module and is skipped.
+#   version is the tag without prefix and `v`.
+# - Drafts are always skipped. prerelease: `match` reports prereleases only
+#   when the installed version is itself one; `exclude` never; `include` always.
+# - No releases at all: tags with their commit dates from GraphQL (no notes).
+# - since defaults to now - lookback. FLO_WATCH_NOW overrides the clock.
+. "$(dirname "$0")/gh-lib.sh"
+need_jq
+
+out= repo= pkg= ver= prefix= pre=match since= lookback=14d
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --repo) repo=$2; shift 2 ;;
+    --package) pkg=$2; shift 2 ;;
+    --version) ver=$2; shift 2 ;;
+    --tag-prefix) prefix=$2; shift 2 ;;
+    --prerelease) pre=$2; shift 2 ;;
+    --since) since=$2; shift 2 ;;
+    --lookback) lookback=$2; shift 2 ;;
+    *) echo "gh-releases: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] && [ -n "$repo" ] && [ -n "$ver" ] || { echo "gh-releases: --out, --repo and --version are required" >&2; exit 64; }
+case $pre in exclude | include | match) ;; *) echo "gh-releases: bad --prerelease $pre" >&2; exit 64 ;; esac
+
+# duration (Nd, Nh, Nw, Nm minutes) to seconds
+case $lookback in
+  *w) secs=$(( ${lookback%w} * 604800 )) ;;
+  *d) secs=$(( ${lookback%d} * 86400 )) ;;
+  *h) secs=$(( ${lookback%h} * 3600 )) ;;
+  *m) secs=$(( ${lookback%m} * 60 )) ;;
+  *) echo "gh-releases: bad --lookback $lookback" >&2; exit 64 ;;
+esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+now=$(now_utc)
+cutoff=$(jq -nr --arg now "$now" --arg since "$since" --argjson secs "$secs" '
+  def ts: sub("\\.[0-9]+"; "") | fromdateiso8601;
+  (if $since == "" then (($now | ts) - $secs) else ($since | ts) end) | todate')
+
+# The filter shared by both sources: items are {tag, name?, notes, url,
+# published_at, prerelease, draft}. Prints the matching ones, newest first.
+cat > "$tmp/pick.jq" <<'JQ'
+def norm: sub("^v"; "");
+def ispre: test("^[0-9]+(\\.[0-9]+)*-");
+($ver | norm) as $installed
+| ($installed | ispre) as $installed_pre
+| [ .[]
+    | select(.draft | not)
+    | select(.tag | startswith($prefix))
+    | (.tag | ltrimstr($prefix)) as $rest
+    | select($prefix != "" or ($rest | contains("/") | not))
+    | . + {version: ($rest | norm)}
+    | . + {prerelease: (.prerelease or (.version | ispre))}
+    | select($pre == "include" or ($pre == "match" and ($installed_pre or (.prerelease | not))) or ($pre == "exclude" and (.prerelease | not)))
+  ]
+JQ
+
+page=1
+: > "$tmp/all.json"
+echo '[]' > "$tmp/all.json"
+source=releases
+done_walk=0
+while [ "$done_walk" = 0 ] && [ "$page" -le 10 ]; do
+  if ! gh_get "$tmp/page.json" "/repos/$repo/releases?per_page=100&page=$page"; then
+    if [ "$GH_STATUS" = 404 ]; then source=none; break; fi
+    gh_die "$tmp/page.json"
+  fi
+  n=$(jq 'length' "$tmp/page.json")
+  [ "$n" -gt 0 ] || break
+  # keep this page's items up to the cutoff or the installed tag; stop there
+  jq --arg cutoff "$cutoff" --arg prefix "$prefix" --arg ver "$ver" --slurpfile acc "$tmp/all.json" '
+    def norm: sub("^v"; "");
+    def ts: sub("\\.[0-9]+"; "");
+    (reduce .[] as $r ({items: [], stop: false};
+       if .stop then .
+       elif ($r.tag_name | startswith($prefix)) and (($r.tag_name | ltrimstr($prefix) | norm) == ($ver | norm)) then .stop = true
+       elif ((($r.published_at // $r.created_at) | ts) < $cutoff) then .stop = true
+       else .items += [{tag: $r.tag_name, notes: (($r.body // "") | .[0:4000]), url: ($r.html_url // $r.url // ""),
+                        published_at: ($r.published_at // $r.created_at), prerelease: $r.prerelease, draft: $r.draft}] end))
+    | {all: ($acc[0] + .items), stop: .stop}' "$tmp/page.json" > "$tmp/step.json" || { echo "gh-releases: unreadable releases page" >&2; exit 1; }
+  jq '.all' "$tmp/step.json" > "$tmp/all.json"
+  [ "$(jq .stop "$tmp/step.json")" = true ] && done_walk=1
+  page=$((page + 1))
+done
+
+if [ "$source" = releases ] && [ "$page" = 1 ] && [ "$(jq 'length' "$tmp/page.json" 2> /dev/null || echo 0)" = 0 ]; then
+  # no releases at all: tags with commit dates
+  source=tags
+  owner=${repo%%/*}
+  name=${repo#*/}
+  q='query($o:String!,$n:String!){repository(owner:$o,name:$n){refs(refPrefix:"refs/tags/",first:100,orderBy:{field:TAG_COMMIT_DATE,direction:DESC}){nodes{name target{__typename ... on Commit{committedDate} ... on Tag{tagger{date} target{... on Commit{committedDate}}}}}}}}'
+  if gh_get "$tmp/refs.json" graphql -f "query=$q" -f "o=$owner" -f "n=$name"; then
+    jq --arg cutoff "$cutoff" --arg prefix "$prefix" --arg ver "$ver" '
+      def norm: sub("^v"; "");
+      [.data.repository.refs.nodes // [] | .[]
+       | {tag: .name, notes: "", url: ("https://github.com/'"$repo"'/releases/tag/" + .name),
+          published_at: (.target.committedDate // .target.tagger.date // .target.target.committedDate),
+          prerelease: false, draft: false}
+       | select(.published_at != null)]
+      | . as $t
+      | def stop: ((.tag | startswith($prefix)) and ((.tag | ltrimstr($prefix) | norm) == ($ver | norm)))
+                  or ((.published_at | sub("\\.[0-9]+"; "")) < $cutoff);
+        (first(range(0; $t | length) | select($t[.] | stop)) // ($t | length)) as $i
+      | $t[:$i]' "$tmp/refs.json" > "$tmp/all.json" ||
+      { echo "gh-releases: unreadable refs" >&2; exit 1; }
+  elif [ "$GH_STATUS" = 404 ]; then
+    source=none
+  else
+    gh_die "$tmp/refs.json"
+  fi
+fi
+
+if [ "$source" = none ]; then
+  echo '[]' > "$tmp/all.json"
+fi
+jq --arg prefix "$prefix" --arg ver "$ver" --arg pre "$pre" --arg source "$source" -f "$tmp/pick.jq" "$tmp/all.json" |
+  jq --arg source "$source" '{source: $source, releases: map({version, tag, notes, url, published_at, prerelease})}' > "$out"

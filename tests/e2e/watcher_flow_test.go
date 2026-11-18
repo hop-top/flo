@@ -18,7 +18,7 @@ import (
 
 // The dependency-watch flow of flows/ over the github pack of packs/: the
 // wrappers run for real, gh is a fake that serves testdata/github and
-// testdata/watcher (testdata/watcher/bin/gh), aps is the harness shim.
+// testdata/watcher (testdata/watcher/shims/gh), aps is the harness shim.
 
 func needJQ(t *testing.T) {
 	t.Helper()
@@ -40,7 +40,7 @@ func watcherEnv(t *testing.T) *env {
 	if out, err := cpR(pack, filepath.Join(e.root(), "packs", "github")); err != nil {
 		t.Fatalf("install pack: %v\n%s", err, out)
 	}
-	for _, dir := range []string{filepath.Join(pack, "bin"), testdata("watcher", "bin")} {
+	for _, dir := range []string{filepath.Join(pack, "wrappers"), testdata("watcher", "shims")} {
 		ents, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)

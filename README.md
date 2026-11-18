@@ -45,7 +45,7 @@ flo run cancel <run> --yes
   until it exists). Unset configures none and a step using the node fails
   with `engine_feature`: no backend stands in for another.
 - `packs/github` holds the GitHub nodes of `flows/dependency-watch.yaml`. Its
-  wrappers (`bin/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
+  wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.
 - `flo status` reports the engine: running, stopped, or stale after a crash.
 - Tests: `go test ./tests/e2e` builds the binary and runs it against fake

@@ -1,0 +1,62 @@
+#!/bin/sh
+# Fake gh for the watcher tests: serves testdata/github and testdata/watcher.
+# Flags in $FLO_E2E_DIR: fail-advisories (401), new-cli-release (adds v2.106.0).
+# Every date in releases and tags is rewritten to the current time, so the
+# fixtures are always inside the lookback and always newer than a cursor.
+echo "gh $*" >> "$FLO_E2E_DIR/gh.log"
+[ "$1" = api ] || { echo "fake gh: unsupported: $*" >&2; exit 64; }
+shift
+path= eco= affects= owner= name= page=1
+while [ $# -gt 0 ]; do
+  case $1 in
+    -X) shift 2 ;;
+    --paginate) shift ;;
+    -f)
+      case $2 in
+        ecosystem=*) eco=${2#ecosystem=} ;;
+        affects=*) affects=${2#affects=} ;;
+        o=*) owner=${2#o=} ;;
+        n=*) name=${2#n=} ;;
+      esac
+      shift 2 ;;
+    *) path=$1; shift ;;
+  esac
+done
+if [ -e "$FLO_E2E_DIR/http-fail" ]; then
+  read -r status msg < "$FLO_E2E_DIR/http-fail"
+  echo "gh: $msg (HTTP $status)" >&2
+  exit 1
+fi
+gh_td="$FLO_E2E_TESTDATA/github"
+w_td="$FLO_E2E_TESTDATA/watcher"
+now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fresh() { sed -E "s/20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z/$now/g"; }
+case $path in
+  /repos/example-org/api/dependency-graph/sbom) cat "$w_td/sbom_api.json" ;;
+  /repos/example-org/web/dependency-graph/sbom) cat "$w_td/sbom_web.json" ;;
+  /repos/example-org/off/dependency-graph/sbom) cat "$gh_td/sbom_404.json"; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  /repos/example-org/off) echo '{"name":"off"}' ;;
+  /repos/example-org/gone/dependency-graph/sbom) cat "$gh_td/sbom_404.json"; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  /repos/example-org/gone) echo '{"message":"Not Found"}'; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  /advisories)
+    [ -e "$FLO_E2E_DIR/fail-advisories" ] && { echo "gh: Bad credentials (HTTP 401)" >&2; exit 1; }
+    case $affects in
+      *golang.org/x/net@*) cat "$gh_td/advisories_go_x_net.json" ;;
+      *left-pad@*) cat "$w_td/advisories_npm.json" ;;
+      *) echo '[]' ;;
+    esac ;;
+  "/repos/cli/cli/releases?"*page=1) 
+    if [ -e "$FLO_E2E_DIR/new-cli-release" ]; then
+      jq '[.[0] | .tag_name="v2.106.0" | .name="GitHub CLI 2.106.0" | .html_url="https://github.com/cli/cli/releases/tag/v2.106.0"] + .' "$gh_td/releases_cli_cli.json" | fresh
+    else fresh < "$gh_td/releases_cli_cli.json"; fi ;;
+  "/repos/hop-top/poly-kit/releases?"*page=1) fresh < "$gh_td/releases_poly_kit_prerelease_monorepo.json" ;;
+  "/repos/example-org/oldlib/releases?"*page=1)
+    printf '%s' '[{"tag_name":"v3.0.0","draft":false,"prerelease":false,"created_at":"2026-01-03T00:00:00Z","published_at":"2026-01-03T00:00:00Z","body":"BREAKING: new API","html_url":"https://github.com/example-org/oldlib/releases/tag/v3.0.0"},
+{"tag_name":"v2.9.0","draft":false,"prerelease":false,"created_at":"2026-01-02T00:00:00Z","published_at":"2026-01-02T00:00:00Z","body":"fixes","html_url":"https://github.com/example-org/oldlib/releases/tag/v2.9.0"},
+{"tag_name":"v2.8.0","draft":false,"prerelease":false,"created_at":"2026-01-01T00:00:00Z","published_at":"2026-01-01T00:00:00Z","body":"","html_url":"https://github.com/example-org/oldlib/releases/tag/v2.8.0"}]' | fresh ;;
+  /repos/example-org/gone/releases*) echo '{"message":"Not Found"}'; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  /repos/golang/net/releases*) echo '[]' ;;
+  /repos/*/releases*) echo '[]' ;;
+  graphql) fresh < "$gh_td/graphql_releases_refs_golang_net.json" ;;
+  *) echo "fake gh: unsupported: $path" >&2; exit 64 ;;
+esac
