@@ -103,7 +103,7 @@ func (e *Env) Value(v any, act cel.Activation) (any, error) {
 		if !strings.Contains(t, "{{") {
 			return t, nil
 		}
-		c, err := e.compile(t, true)
+		c, err := e.compile(t)
 		if err != nil {
 			return nil, err
 		}
@@ -224,16 +224,4 @@ func Text(v any) string {
 		return fmt.Sprint(v)
 	}
 	return string(b)
-}
-
-// InAliasAvailable reports whether the spec module compiles `{{ in.x }}`
-// (`in` is a CEL keyword; the module aliases it). Tests of node templates
-// skip while it does not.
-func InAliasAvailable() bool {
-	e, err := Shared()
-	if err != nil {
-		return false
-	}
-	_, err = e.env.CompileTemplate("{{ in.x }}")
-	return err == nil
 }

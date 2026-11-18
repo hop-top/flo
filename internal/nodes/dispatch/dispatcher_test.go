@@ -20,7 +20,6 @@ import (
 	"hop.top/flo/internal/nodes/dispatch"
 	httpnode "hop.top/flo/internal/nodes/http"
 	"hop.top/flo/internal/nodes/plugin"
-	"hop.top/flo/internal/nodes/render"
 	"hop.top/flo/spec/node"
 )
 
@@ -78,7 +77,6 @@ cost: { class: low, estimate: { usd: 0.001 } }
 `
 
 func TestCommandNodeThroughDispatcher(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	r.fx.Commands.Reply([]string{"gh", "api"}, core.CommandResult{Stdout: []byte(`[{"tag":"v1"}]`)})
 	res, err := r.d.Dispatch(context.Background(), inv(spec(t, readCmd), map[string]any{"repo": "a/b"}))
@@ -95,7 +93,6 @@ func TestCommandNodeThroughDispatcher(t *testing.T) {
 }
 
 func TestInputInvalidNeverRuns(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	for name, in := range map[string]map[string]any{
 		"missing": {}, "bad type": {"repo": 1}, "below minimum": {"repo": "a", "limit": 0}, "unknown": {"repo": "a", "nope": true},
@@ -111,7 +108,6 @@ func TestInputInvalidNeverRuns(t *testing.T) {
 }
 
 func TestOutputInvalid(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	r.fx.Commands.Reply([]string{"gh", "api"}, core.CommandResult{Stdout: []byte(`[{"nope":1}]`)})
 	res, _ := r.d.Dispatch(context.Background(), inv(spec(t, readCmd), map[string]any{"repo": "a/b"}))
@@ -139,7 +135,6 @@ capabilities: [mail.send]
 `
 
 func TestDryRunNeverExecutesIrreversibleAndReturnsPlan(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	i := inv(spec(t, irreversible), map[string]any{"to": "a@b.c"})
 	i.DryRun = true
@@ -172,7 +167,6 @@ func TestDryRunNeverExecutesIrreversibleAndReturnsPlan(t *testing.T) {
 }
 
 func TestDryRunOutputFromExamplesOrNull(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	base := `
 node: tlc/create@1
@@ -212,7 +206,6 @@ capabilities: [tasks.write]
 }
 
 func TestDryRunStillRunsReads(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	r.fx.Commands.Reply([]string{"gh", "api"}, core.CommandResult{Stdout: []byte(`[]`)})
 	i := inv(spec(t, readCmd), map[string]any{"repo": "a/b"})
@@ -224,7 +217,6 @@ func TestDryRunStillRunsReads(t *testing.T) {
 }
 
 func TestDryRunHTTPSendsNothing(t *testing.T) {
-	skipWithoutInAlias(t)
 	var hits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hits, 1) }))
 	defer srv.Close()
@@ -243,7 +235,6 @@ func TestDryRunHTTPSendsNothing(t *testing.T) {
 }
 
 func TestBuiltinThroughDispatcher(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	spec, err := builtin.Spec("flo/dedupe@1")
 	if err != nil {
@@ -297,7 +288,6 @@ capabilities: [calendar.read]
 `
 
 func TestPluginSchemaBothSides(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	s := spec(t, pluginSpec)
 	p := &testPlugin{specs: []*node.Spec{s}, reply: map[string]any{"count": 3}}
@@ -343,7 +333,6 @@ rate_limit: { bucket: vcs, max: 2, per: 1h }
 }
 
 func TestSharedBucketAcrossNodes(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	r.fx.Commands.Reply([]string{"gh"}, core.CommandResult{Stdout: []byte(`{}`)})
 	a, b := spec(t, limited("a")), spec(t, limited("b"))
@@ -434,7 +423,6 @@ func TestAgentAndFlowKindsRefused(t *testing.T) {
 }
 
 func TestCancelledContext(t *testing.T) {
-	skipWithoutInAlias(t)
 	r := newRig(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -475,12 +463,5 @@ func TestSideEffectMapping(t *testing.T) {
 		if got := dispatch.ExecutesInDryRun(tc.in); got != tc.dryExec {
 			t.Errorf("%s executes in dry run = %v, want %v", tc.in, got, tc.dryExec)
 		}
-	}
-}
-
-func skipWithoutInAlias(t *testing.T) {
-	t.Helper()
-	if !render.InAliasAvailable() {
-		t.Skip("spec/cel does not yet alias the CEL keyword `in`; {{ in.x }} does not compile")
 	}
 }

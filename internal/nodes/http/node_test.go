@@ -17,7 +17,6 @@ import (
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/core/coretest"
 	httpnode "hop.top/flo/internal/nodes/http"
-	"hop.top/flo/internal/nodes/render"
 	"hop.top/flo/internal/nodes/schema"
 	"hop.top/flo/spec/node"
 )
@@ -77,7 +76,6 @@ func secretsFor(t *testing.T) *coretest.Secrets {
 }
 
 func TestRequestAndOutput(t *testing.T) {
-	skipWithoutInAlias(t)
 	var gotAuth, gotIdem, gotCT, gotAccept, gotQuery string
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +127,6 @@ func assertNoSecret(t *testing.T, vals ...any) {
 }
 
 func TestRateLimited429HonorsRetryAfter(t *testing.T) {
-	skipWithoutInAlias(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "7")
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -151,7 +148,6 @@ func TestRateLimited429HonorsRetryAfter(t *testing.T) {
 }
 
 func TestStatusClasses(t *testing.T) {
-	skipWithoutInAlias(t)
 	s := spec(t, findSpec)
 	for name, tc := range map[string]struct {
 		status    int
@@ -190,7 +186,6 @@ func TestStatusClasses(t *testing.T) {
 }
 
 func TestSecretNeverLeaks(t *testing.T) {
-	skipWithoutInAlias(t)
 	// a server that echoes the request back into the body, a header and the error text
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Echo", r.Header.Get("Authorization"))
@@ -220,7 +215,6 @@ func TestSecretNeverLeaks(t *testing.T) {
 }
 
 func TestSecretMissing(t *testing.T) {
-	skipWithoutInAlias(t)
 	s := spec(t, findSpec)
 	res, err := newExec(&coretest.Secrets{}).Execute(context.Background(), invoke(s, map[string]any{"query": "q", "limit": 1, "tags": []any{}, "none": nil}, map[string]any{"url": "http://127.0.0.1:1"}))
 	if err != nil || res.Err.Code != core.CodeSecretNotFound || res.Effect != core.EffectNone {
@@ -276,7 +270,6 @@ func TestRedirectsFollowOnlyForGet(t *testing.T) {
 }
 
 func TestBodiesFormAndText(t *testing.T) {
-	skipWithoutInAlias(t)
 	var ct, body string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
@@ -358,11 +351,4 @@ func TestStoreSecretsAdapter(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	var _ secret.Store = st
-}
-
-func skipWithoutInAlias(t *testing.T) {
-	t.Helper()
-	if !render.InAliasAvailable() {
-		t.Skip("spec/cel does not yet alias the CEL keyword `in`; {{ in.x }} does not compile")
-	}
 }
