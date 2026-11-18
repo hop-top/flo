@@ -1,0 +1,74 @@
+node: gh/releases-since@1
+kind: command
+lowers_to: engine               # reshapes its output with `map`
+description: >-
+  Releases (or tags, when there are none) of one package's source repository
+  newer than a point in time. Never uses the "latest release" endpoint.
+argv:
+  - gh-releases
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --repo
+  - "{{ in.source_repo }}"
+  - --package
+  - "{{ in.package }}"
+  - --version
+  - "{{ in.version }}"
+  - --tag-prefix
+  - "{{ in.tag_prefix }}"
+  - --prerelease
+  - "{{ in.prerelease }}"
+  - --since
+  - "{{ in.since }}"
+  - --lookback
+  - "{{ in.lookback }}"
+inputs:
+  source_repo: { type: string, required: true }
+  package:     { type: string, required: true }
+  version:     { type: string, required: true, description: The installed version. }
+  tag_prefix:  { type: string, default: "", description: "Monorepo module prefix such as `sub/`; only tags with it count." }
+  prerelease:
+    type: string
+    enum: [exclude, include, match]
+    default: match
+    description: >-
+      match reports prereleases only when the installed version is itself
+      one; exclude never; include always. Drafts are always skipped.
+  used_by:  { type: array, items: { type: string }, default: [] }
+  since:    { type: [string, 'null'], format: date-time, default: null }
+  lookback: { type: string, format: duration, default: 14d }
+exit_codes: { ok: [0], retry: [75] }
+outputs:
+  from: file:out.json
+  format: json
+  map: >-
+    {{ {'source': out.source,
+        'releases': out.releases.map(r,
+          {'package': in.package, 'version': r.version, 'tag': r.tag,
+           'notes': r.notes, 'url': r.url, 'published_at': r.published_at,
+           'prerelease': r.prerelease, 'installed': in.version, 'used_by': in.used_by})} }}
+  schema:
+    type: object
+    required: [source, releases]
+    properties:
+      source: { type: string, enum: [releases, tags, none] }
+      releases:
+        type: array
+        items:
+          type: object
+          required: [package, version]
+          properties:
+            package: { type: string }
+            version: { type: string }                    # tag with prefix and "v" removed
+            tag: { type: string }
+            notes: { type: string }                       # empty for tag-only repos
+            url: { type: string }
+            published_at: { type: [string, 'null'] }
+            prerelease: { type: boolean }
+            installed: { type: string }                  # the version in use, for classifying the jump
+            used_by: { type: array, items: { type: string } }
+side_effect: read
+privacy: cloud
+capabilities: [vcs.read]
+timeout: 30s
+retry: { max_attempts: 3, backoff: 2s }

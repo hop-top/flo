@@ -1,0 +1,66 @@
+node: gh/dependency-list@1
+kind: command
+lowers_to: engine
+description: >-
+  Packages the given repositories depend on, deduplicated across repositories,
+  with who uses them.
+argv:
+  - gh-deps
+  - --mode
+  - "{{ in.mode }}"
+  - --include-actions
+  - "{{ in.include_actions }}"
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --
+  - "{{ in.repos }}"
+inputs:
+  repos:
+    type: array
+    items: { type: string }
+    required: true
+    description: Source repositories, not mirrors.
+  mode:
+    type: string
+    enum: [sbom]
+    default: sbom
+    description: >-
+      sbom is one call per repo and cheap, with no direct/transitive flag. The graph
+      has no source repo; the wrapper computes source_repo and tag_prefix for Go
+      modules on github.com and golang.org/x. A graphql mode (relationship, source_repo
+      for any ecosystem, more calls per repo) is not implemented yet.
+  include_actions: { type: boolean, default: false }
+exit_codes: { ok: [0], retry: [75] }    # 75: provider rate limit, retry later
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [packages, skipped]
+    properties:
+      packages:
+        type: array
+        items:
+          type: object
+          required: [name, ecosystem, version, used_by]
+          properties:
+            name: { type: string }
+            ecosystem: { type: string, enum: [go, npm, pip, rust, actions, maven, nuget, composer, rubygems, pub, swift, erlang, other] }
+            version: { type: string }               # normalized, no "v"
+            source_repo: { type: string }           # owner/repo, when known
+            tag_prefix: { type: string }            # monorepo module prefix, when known
+            relationship: { type: string, enum: [direct, transitive] }   # graphql mode only
+            used_by: { type: array, items: { type: string } }
+      skipped:
+        type: array
+        description: Repos that could not be listed, with why (graph disabled, not found).
+        items:
+          type: object
+          properties: { repo: { type: string }, reason: { type: string } }
+side_effect: read
+privacy: cloud
+capabilities: [vcs.read]
+rate_limit: { bucket: vcs-dependency-export, max: 100, per: 1h }   # applies to mode: sbom
+timeout: 120s
+retry: { max_attempts: 2, backoff: 30s }
+cost: { class: low }
