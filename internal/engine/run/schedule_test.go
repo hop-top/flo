@@ -207,3 +207,25 @@ steps:
 		t.Errorf("calls = %d, a terminal run is not advanced again", n)
 	}
 }
+
+// Blocks are expanded before the run: repeat unrolls into prefixed steps,
+// and the iterations chain.
+func TestRepeatBlockRunsExpandedSteps(t *testing.T) {
+	h := newH(t)
+	h.reads("t/read@1")
+	id := h.do(`flow: looped
+version: 1.0.0
+steps:
+  - id: loop
+    repeat: 2
+    steps:
+      - id: poll
+        uses: t/read@1
+        with: { n: "{{ run.iteration }}" }
+`, nil)
+	h.wantRun(id, core.RunSucceeded, "")
+	calls := calledSteps(&h.fx.Runner.Script)
+	if len(calls) != 2 || calls[0] != "loop/1/poll#1" || calls[1] != "loop/2/poll#1" {
+		t.Errorf("calls = %v", calls)
+	}
+}

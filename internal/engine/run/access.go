@@ -93,11 +93,12 @@ func (u *unit) guard(ctx context.Context, in map[string]any) error {
 	return nil
 }
 
-// inRef is a trust class given as a placeholder over the step's inputs.
+// inRef is a placeholder over the step's inputs.
 var inRef = regexp.MustCompile(`^\s*\{\{\s*in\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*\}\}\s*$`)
 
-// trustClass resolves the trust class of a node (node.md §10.1): a literal,
-// or one `{{ in.<path> }}` placeholder. `in` is a CEL keyword, so the
+// inTemplate resolves a node-spec field that may template over the step's
+// inputs (trust.class, idempotency_key; node.md §10.1, §11): a literal, or one
+// `{{ in.<path> }}` placeholder. `in` is a CEL keyword, so the
 // expression environment cannot bind it and the lookup is done here.
 func inTemplate(class string, in map[string]any) (string, error) {
 	m := inRef.FindStringSubmatch(class)
