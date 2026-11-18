@@ -1,0 +1,27 @@
+schema_version: "1"
+story_id: flo.brief.show
+title: Read what flows found and what waits for a decision
+binary: flo
+intent: |
+  A person or agent starts the day by reading the brief: what flows
+  published since yesterday and which approvals wait, grouped by flow.
+  They narrow it to one flow, read it as JSON, then follow the hint to
+  the approval that waits.
+steps:
+  - id: brief
+    intent: |
+      Read the brief as human text: findings per flow, then what waits
+      with the command that decides it.
+    invoke: ["flo", "brief", "show"]
+    capture: [exit_code, stdout]
+  - id: since
+    intent: |
+      Read the last day of one flow as a stable JSON document with a
+      schema_version.
+    invoke: ["flo", "brief", "show", "--since", "24h", "--flow", "dependency-watch", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: waiting
+    intent: |
+      Inspect the approval the brief listed as waiting.
+    invoke: ["flo", "approval", "show", "ap_01", "--format", "json"]
+    capture: [exit_code, stdout]
