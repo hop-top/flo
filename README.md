@@ -39,7 +39,10 @@ flo run cancel <run> --yes
   reads for real and writes `record/` (`cassettes/`, `trigger.json`,
   `plans.json`). Pass: run succeeded, outputs match node specs, `check:`s pass,
   every `expect:` of `tests/*.yaml` holds. `--trigger-file`, `--var`,
-  `--version`, `--timeout`. Exit 1 when the test fails. The latest result of a
+  `--version`, `--timeout`, `--state default|current|<file>` (the flow state
+  the run starts from; `record/state.json` is kept by `--record` and reused by
+  replay; a `state:` map in a `tests/*.yaml` seeds that case), `--dry-run`
+  (plan only). Exit 1 when the test fails. The latest result of a
   version (flow hash + bundle digest) is what activation reads
   (`flow_not_tested`, exit 2). `apply` and `test --record` ask for
   confirmation (`--yes`).

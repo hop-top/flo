@@ -220,3 +220,23 @@ func TestFlowTestFlags(t *testing.T) {
 	_, _, err = r.run("flow", "test", "no-such-flow")
 	wantCode(t, err, core.CodeFlowNotFound)
 }
+
+func TestFlowTestDryRunStateAndRefusals(t *testing.T) {
+	r := newFlowRig(t)
+	if _, _, err := r.run("flow", "apply", "-f", r.bundle, "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := r.run("flow", "test", "dependency-watch", "--state", "current", "--dry-run", "--format", "json")
+	if err != nil || !strings.Contains(out, `"state_source": "current"`) || r.live.calls != 0 {
+		t.Fatalf("dry-run: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(r.bundle, "record")); err == nil {
+		t.Error("a dry-run wrote record/")
+	}
+	bad := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(bad, []byte(`{"nope":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = r.run("flow", "test", "dependency-watch", "--state", bad, "--dry-run")
+	wantCode(t, err, core.CodeUsage)
+}
