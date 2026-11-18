@@ -75,6 +75,10 @@ type Config struct {
 	// ExprConfig is the read-only `config` namespace of expressions
 	// (config.<pack>.*, config.eva.url).
 	ExprConfig map[string]any
+	// Classifier names the flo/ai.classify@1 backend (`ai.classifier`):
+	// "rules" is the deterministic one, "judge" is kit's and not yet
+	// available. Empty configures none, and a step using the node fails.
+	Classifier string
 	// PacksDir holds the installed packs (<Root>/packs when empty).
 	PacksDir string
 	// TrustDirs hold trust provider documents, besides the trusts/ of every

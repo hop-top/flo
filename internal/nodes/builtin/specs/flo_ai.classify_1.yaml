@@ -1,0 +1,31 @@
+node: flo/ai.classify@1
+kind: builtin
+description: One label per item from a closed set, with confidence and a reason.
+inputs:
+  items: { type: array, required: true, description: What to classify; each element a map. }
+  labels: { type: array, required: true, items: { type: string }, description: The closed label set. }
+  model: { type: string, required: true, description: "Model URI, e.g. anthropic://claude-haiku-5-5; ignored by the rules backend." }
+  instructions: { type: string, description: Extra guidance. }
+  pattern: { type: string, description: Named prompt pattern. }
+  strategy: { type: string, description: Named multi-call strategy. }
+  schema: { type: object, description: Extra fields per item the model must return. }
+  abstain: { type: boolean, default: false, description: Allow no label. }
+outputs:
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          required: [item, label]
+          properties:
+            item: {}
+            label: { type: [string, 'null'] }
+            confidence: { type: number }
+            why: { type: string }
+capabilities: []
+side_effect: none
+privacy: cloud
+cost: { class: low }

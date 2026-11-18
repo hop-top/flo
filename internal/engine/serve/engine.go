@@ -118,6 +118,13 @@ func (e *Engine) wire() error {
 	if err := builtin.RegisterStd(builtins, builtin.Deps{Outputs: st.Outputs, IDs: ids, Clock: cfg.Clock}); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
+	classifier, err := builtin.ClassifierFor(cfg.Classifier)
+	if err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
+	if err := builtin.RegisterClassify(builtins, classifier); err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
 	e.Nodes = newNodes(packs, builtins)
 
 	trustDirs := append([]string{filepath.Join(cfg.Root, "trusts")}, cfg.TrustDirs...)

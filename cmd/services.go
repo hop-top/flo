@@ -13,6 +13,7 @@ import (
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/serve"
+	"hop.top/flo/internal/nodes/builtin"
 	"hop.top/flo/internal/store/tenants"
 )
 
@@ -118,6 +119,7 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 			return serve.Config{}, err
 		}
 	}
+	cfg.Classifier = setting(root, builtin.EnvClassifier, "ai.classifier")
 	cfg.ExprConfig = exprConfig(root)
 	return cfg, nil
 }
