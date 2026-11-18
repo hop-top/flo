@@ -130,10 +130,14 @@ flo run cancel <run> --yes
   `mail.read` and `tasks.read`.
 - `flows/meeting-brief` is the meeting brief: a calendar trigger 30 minutes
   before each event with more than one attendee, a search of ctxt per attendee
-  (by name, else the local part of the address), the open heo conversations
-  with them, the open tlc tasks that match the title, and `flo/ai.generate@1`
+  (by name, narrowed to notes naming them, else by address), the open heo
+  conversations with them, the open tlc tasks that match the title, and `flo/ai.generate@1`
   over the prompt `meeting-brief@1` into `flo brief show`. It is `local-only`
-  with the model `ollama://gemma4:e4b`; today the `template` backend renders
+  with the model `ollama://gemma4:e4b`. A source that is down (ctxt, heo, tlc)
+  gives its section the line `source unavailable: <source>` and the brief is
+  still produced; the three retry once at most, so a brief waits seconds, not
+  minutes. The facts handed to the model are cut to the var `context_chars`
+  (default 6000; `--var context_chars=N`). Today the `template` backend renders
   the prompt (`ai.generator: template` or `FLO_AI_GENERATOR=template`). To run
   it: set `packs.ctxt.url` and `packs.calendar.url` (config file,
   `FLO_PACKS_*` or `-c`), the secret `ctxt_token` when ctxt needs one, grant
