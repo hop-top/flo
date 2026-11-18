@@ -101,17 +101,17 @@ func TestHashIsTheFileHash(t *testing.T) {
 
 func TestResolutionPrecedence(t *testing.T) {
 	bundle, packs := t.TempDir(), t.TempDir()
-	pk := write(t, packs, "inbox/prompts/p@1.yaml", "template: from-pack\n")
+	pk := write(t, packs, "inbox/prompts/p@1.yaml", "template: from-pack")
 	pk2 := write(t, packs, "other/prompts/q@2.yaml", "template: only-pack\n")
 	l := prompts.Loader{Packs: []prompts.PackFiles{{Pack: "inbox", Files: []string{pk}}, {Pack: "other", Files: []string{pk2}}}}
 
 	p, err := l.Load(bundle, "p@1")
-	if err != nil || p.Template != "from-pack\n" || p.Source != prompts.SourcePack || p.Pack != "inbox" {
+	if err != nil || p.Template != "from-pack" || p.Source != prompts.SourcePack || p.Pack != "inbox" {
 		t.Fatalf("pack: %+v %v", p, err)
 	}
-	write(t, bundle, "prompts/p@1.yaml", "template: from-bundle\n")
+	write(t, bundle, "prompts/p@1.yaml", "template: from-bundle")
 	p, err = l.Load(bundle, "p@1")
-	if err != nil || p.Template != "from-bundle\n" || p.Source != prompts.SourceBundle {
+	if err != nil || p.Template != "from-bundle" || p.Source != prompts.SourceBundle {
 		t.Fatalf("bundle must win: %+v %v", p, err)
 	}
 	if p, err = l.Load("", "q@2"); err != nil || p.Pack != "other" {
