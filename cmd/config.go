@@ -114,7 +114,7 @@ func (l *configLoader) load(root *kitcli.Root) error {
 	}
 	opts := kitconfig.OptionsForToolWithMarkers(configTool, projectMarkers)
 	opts.ExtraConfigPaths = paths
-	doc, err := loadFiles(opts)
+	doc, origin, set, err := loadFiles(opts)
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func (l *configLoader) load(root *kitcli.Root) error {
 	}
 	cSet := flatten("", overrides)
 	_, cFlows := cSet[flowsDirKey]
-	l.flowsFrom = flowsSource(merged, opts.ProjectConfigPath, cFlows)
+	l.flowsFrom = flowsSource(origin, set, cFlows)
 	if strings.HasPrefix(l.flowsFrom, "project ") {
 		resolveFlowsDir(doc, projectRoot(opts.ProjectConfigPath))
 	}

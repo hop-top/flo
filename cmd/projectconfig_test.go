@@ -450,13 +450,12 @@ func TestEnvOverCFile(t *testing.T) {
 	}
 }
 
-// Keys are matched case-sensitively by kit but folded to lower case by the
-// config: a project may not spell a forbidden or narrowed key in another case.
+// Rules match case-folded keys, as the config folds keys to lower case: a
+// project may not spell a forbidden key in another case.
 func TestProjectConfigRefusesUpperCaseKeys(t *testing.T) {
 	for _, text := range []string{
 		"Owner_Profile: evil\n",
 		"BOS:\n  bin: /tmp/x\n",
-		"ai:\n  MODELS:\n    allow: [\"*\"]\n",
 		"1:\n  BOS:\n    bin: x\n",
 		"true:\n  BOS:\n    bin: x\n",
 		"? [a]\n: 1\n",
@@ -469,5 +468,17 @@ func TestProjectConfigRefusesUpperCaseKeys(t *testing.T) {
 		if _, err := s.run("proj"); !core.IsCode(err, core.CodeUsage) {
 			t.Errorf("%q: err = %v, want a usage error", text, err)
 		}
+	}
+}
+
+// A narrowed key spelled in another case is narrowed all the same: it does not
+// widen the model policy the user set.
+func TestProjectModelPolicyNarrowsUpperCaseKeys(t *testing.T) {
+	s := newSandbox(t)
+	s.global("ai:\n  models:\n    allow: [\"ollama://a\"]\n")
+	s.project("proj", "AI:\n  MODELS:\n    ALLOW: [\"ollama://a\", \"ollama://b\"]\n")
+	cfg := mustConfig(t, s, "proj")
+	if got := strings.Join(cfg.ModelsAllow, ","); got != "ollama://a" {
+		t.Errorf("allow = %q, want the user list kept", got)
 	}
 }

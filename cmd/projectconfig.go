@@ -2,14 +2,11 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 	kitcli "hop.top/kit/go/console/cli"
 	kitconfig "hop.top/kit/go/core/config"
 
@@ -53,102 +50,31 @@ var projectRules = &kitconfig.ProjectRules{
 	},
 }
 
-// configDoc is the merged config files. Maps merge key by key at any depth (a
-// file sets one key under a section without dropping its siblings), which a
-// plain map would not: yaml replaces a nested map whole.
-type configDoc map[string]any
-
-func (d *configDoc) UnmarshalYAML(n *yaml.Node) error {
-	var in map[string]any
-	if err := n.Decode(&in); err != nil {
-		return err //nolint:wrapcheck // reported with the file by kit
-	}
-	if *d == nil {
-		*d = configDoc{}
-	}
-	mergeMaps(*d, in)
-	return nil
-}
-
-func mergeMaps(dst, src map[string]any) {
-	for k, v := range src {
-		sm, sok := v.(map[string]any)
-		dm, dok := dst[k].(map[string]any)
-		if sok && dok {
-			mergeMaps(dm, sm)
-			continue
-		}
-		dst[k] = v
-	}
-}
+// configDoc is the merged config files.
+type configDoc = map[string]any
 
 // loadFiles merges the system, user, project and -c files with kit, in that
-// order and under the project rules, into one document.
-func loadFiles(opts kitconfig.Options) (configDoc, error) {
-	var doc configDoc
+// order and under the project rules, into one document. Maps merge key by key
+// at any depth (a file sets one key under a section without dropping its
+// siblings). origin is where the winning flows.dir came from, if any file set
+// one.
+func loadFiles(opts kitconfig.Options) (doc configDoc, origin kitconfig.KeyOrigin, set bool, err error) {
 	opts.Project = projectRules
-	if err := refuseUpperKeys(opts.ProjectConfigPath); err != nil {
-		return nil, err
-	}
-	if err := kitconfig.Load(&doc, opts); err != nil {
+	opts.DeepMergeMaps = true
+	origins, err := kitconfig.LoadWithOrigins(&doc, opts, flowsDirKey)
+	if err != nil {
 		var ne *kitconfig.ErrNarrowEmpty
 		if errors.As(err, &ne) {
 			// Never "no limit": the project would permit no model the user
 			// config allows, so the project's list is the thing to fix.
-			return nil, core.Errorf(core.CodeUsage, "%v", err).
+			return nil, origin, false, core.Errorf(core.CodeUsage, "%v", err).
 				WithSuggestion("make the project's " + ne.Key + " list name at least one model the user config allows, or drop it")
 		}
-		return nil, core.Errorf(core.CodeUsage, "%v", err).
+		return nil, origin, false, core.Errorf(core.CodeUsage, "%v", err).
 			WithSuggestion("fix the file")
 	}
-	return doc, nil
-}
-
-// refuseUpperKeys refuses a project config with a key that is not lower case,
-// holds a dot, or is not a string.
-// Kit matches the rule keys case-sensitively but viper folds keys to lower
-// case, so `Owner_Profile:` or `AI: {Models: ...}` would pass the rules and
-// still set the setting. Drop this once kit matches the rules case-insensitively.
-func refuseUpperKeys(file string) error {
-	data, err := os.ReadFile(file) //nolint:gosec // the path kit found
-	if err != nil {
-		return nil //nolint:nilerr // no file, or unreadable: kit reports it
-	}
-	var doc any
-	if yaml.Unmarshal(data, &doc) != nil {
-		return nil // kit reports it
-	}
-	var walk func(v any) string
-	walk = func(v any) string {
-		switch m := v.(type) {
-		case []any:
-			for _, e := range m {
-				if k := walk(e); k != "" {
-					return k
-				}
-			}
-		case map[any]any:
-			// A non-string key: fail closed (kit refuses it too).
-			for k := range m {
-				return fmt.Sprint(k)
-			}
-		case map[string]any:
-			for k, e := range m {
-				if k != strings.ToLower(k) || strings.Contains(k, ".") {
-					return k
-				}
-				if bad := walk(e); bad != "" {
-					return bad
-				}
-			}
-		}
-		return ""
-	}
-	if k := walk(doc); k != "" {
-		return core.Errorf(core.CodeUsage, "project config %s: key %q must be lower case, without dots, and a string", file, k).
-			WithSuggestion("write nested keys as nested maps, in lower case")
-	}
-	return nil
+	origin, set = origins[flowsDirKey]
+	return doc, origin, set, nil
 }
 
 // projectRoot is the directory a project config file belongs to: the one that
@@ -173,27 +99,21 @@ func resolveFlowsDir(doc configDoc, root string) {
 }
 
 // flowsSource is where the effective flows.dir came from, highest layer
-// first: -c key=value, the environment, then the files from the last merged to
-// the first (kit's order has no per-key source to ask).
-func flowsSource(files []string, project string, cOverride bool) string {
+// first: -c key=value, the environment, then the file kit found it in.
+func flowsSource(origin kitconfig.KeyOrigin, set, cOverride bool) string {
 	if cOverride {
 		return "-c"
 	}
 	if os.Getenv(EnvPrefix+"_FLOWS_DIR") != "" {
 		return "env"
 	}
-	for i := len(files) - 1; i >= 0; i-- {
-		v := viper.New()
-		v.SetConfigFile(files[i])
-		if v.ReadInConfig() != nil || !v.IsSet(flowsDirKey) {
-			continue
-		}
-		if files[i] == project {
-			return "project " + project
-		}
-		return "file " + files[i]
+	if !set {
+		return "default"
 	}
-	return "default"
+	if origin.Layer == kitconfig.LayerProject {
+		return "project " + origin.File
+	}
+	return "file " + origin.File
 }
 
 // flowsDir is the directory flows live in, absolute, and where the setting
