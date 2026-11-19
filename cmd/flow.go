@@ -91,12 +91,14 @@ func flowRows(fs []core.FlowSummary) []flowRow {
 	return rows
 }
 
-// addFlow registers the `flo flow` noun: apply, list, show, validate, test, set.
+// addFlow registers the `flo flow` noun: apply, list, show, validate, test, set, draft.
 func addFlow(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) {
 	f := &cobra.Command{Use: "flow", Short: "flows: documents, versions, activation"}
+	kitcli.SetHierarchical(f)
 	f.AddCommand(
 		flowApplyCmd(root, svc, eng), flowListCmd(root, svc), flowShowCmd(root, svc),
 		flowValidateCmd(root, svc, eng), flowTestCmd(root, svc, eng), flowSetCmd(root, svc, eng),
+		addFlowDraft(root, eng),
 	)
 	root.Cmd.AddCommand(f)
 }

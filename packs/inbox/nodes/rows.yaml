@@ -1,0 +1,46 @@
+node: inbox/rows@1
+kind: command
+lowers_to: engine               # reads its output from a file
+description: >-
+  The messages of a run that still need a decision, headers only: sender,
+  subject, date, flags, folder and sender history, never a body. Carried
+  messages (decided in an earlier run) and those answered by hand are left out.
+# inbox-rows (wrappers/) reads the run's snapshot; it asks the script for
+# nothing and writes nothing. Its items are the cases of a classify step.
+argv: [inbox-rows, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
+inputs:
+  run_dir: { type: string, required: true, description: "The run's folder, from inbox/fetch@1." }
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [run, run_dir, decided, answered, items]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      decided: { type: boolean, description: The run already has a decisions file; nothing to ask. }
+      answered: { type: integer, description: Messages answered by hand. }
+      items:
+        type: array
+        items:
+          type: object
+          required: [n, account, sender, subject]
+          properties:
+            n: { type: integer }
+            account: { type: string }
+            sender: { type: object }
+            to_count: { type: integer }
+            subject: { type: string }
+            date: { type: [string, 'null'] }
+            flags: { type: array }
+            has_attachment: { type: boolean }
+            folder: { type: [string, 'null'] }
+            history: { type: [integer, 'null'] }
+            prior: { type: array }
+side_effect: read               # the run folder only
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

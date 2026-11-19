@@ -839,21 +839,25 @@ written against the tools as they are, not as a first draft assumed:
 
 ## 3. inbox-triage
 
-Every 15 minutes: sync headers, make typed decisions, build a plan of
-what is automatic and what needs a person, ask the person, record the
-decisions with the system that owns trust, and apply.
+Every 15 minutes: sync headers, judge each message on a model (two
+questions over the headers), turn the verdicts into decisions by the
+script's own policy, build a plan of what is automatic and what needs a
+person, ask the person, record the decisions with the system that owns
+trust, and apply.
 
 ```yaml
 flow: inbox-triage
-version: 0.1.0
+version: 0.2.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
   - manual: {}
 run_as: automation
-privacy: cloud-allowed          # `decide` sends headers only
+privacy: local-only             # mail is private: the judge is a local model
 tasks: per-run
 concurrency: { on_overlap: skip }
+vars:
+  labels: { type: list, default: [Action Required, Waiting, Finance, Legal, Customers, Sales, Marketing, Operations, Vendors, People, Projects, Travel, Subscriptions, Reference] }
 steps:
   # No lanes: fetch only reads and snapshots. The script's own state (seen
   # mail, pending locks, trust) lives between the steps, so they are ordered
@@ -861,14 +865,51 @@ steps:
   - id: fetch
     uses: inbox/fetch@1
 
-  - id: decide
-    uses: inbox/decide@1
+  # The judgment: headers only, two questions per message. The model list
+  # names Jev after the local model; under the local-only ceiling the engine
+  # skips it (node.md §6.3.1). Opting in to Jev is a decision to let the
+  # headers leave the machine: privacy: cloud-allowed on the flow and these
+  # two steps.
+  - id: rows
+    uses: inbox/rows@1
     depends_on: [fetch]
-    with: { run: "{{ results.fetch.run }}" }
+    with: { run_dir: "{{ results.fetch.run_dir }}" }
+
+  - id: label
+    uses: flo/ai.classify@1
+    privacy: local-only
+    with:
+      model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]
+      engine: auto
+      labels: "{{ vars.labels }}"
+      abstain: true             # routine filing does not clearly cover it: a person looks
+      instructions: "Best label for filing this mail in the owner's mailbox? Abstain when …"
+      items: "{{ results.rows.items }}"
+
+  - id: weigh
+    uses: flo/ai.classify@1
+    privacy: local-only
+    with:
+      model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]
+      engine: auto
+      labels: [irrelevant, low, normal, high, critical]
+      instructions: "How much does this mail matter to the owner? …"
+      items: "{{ results.rows.items }}"
+
+  # The script's decider policy over the verdicts: low confidence is Needs
+  # Review, an abstention stays in the inbox, quiet mail is also read and
+  # archived, mail from a person is never filed away. Writes decisions.json.
+  - id: decisions
+    uses: inbox/decisions@1
+    with:
+      run_dir: "{{ results.fetch.run_dir }}"
+      labels: "{{ results.label.items }}"
+      weights: "{{ results.weigh.items }}"
+      sop_labels: "{{ vars.labels }}"
 
   - id: plan
     uses: inbox/plan@1
-    depends_on: [decide]
+    depends_on: [decisions]
     with: { run: "{{ results.fetch.run }}" }
 
   # Everything apply would touch goes through the approval, so the guard of the
@@ -903,6 +944,14 @@ What this exercises:
   that coupling is not data the engine can see (flow.md §5.4). Data that
   *is* visible (`run`) flows through `with`. Paths come from pack config
   (`config.inbox.*`), so a test run points them at a temporary tree.
+- **A configurable judge behind a privacy ceiling.** The decision is not a
+  hosted service wrapped in a command: it is `flo/ai.classify@1` over kit's
+  judge, with the engine (`local`, `jev`, `auto`) as configuration
+  (`ai.judge.engine`; node.md §6.3). The mail's headers are private, so the
+  steps run `local-only` and the engine never picks Jev, however the list is
+  written; with no local model detected the step fails (`privacy_violation`)
+  rather than send mail anywhere. Choosing Jev for mail is the owner's
+  explicit act, made in the flow's `privacy`, not a runtime fallback.
 - **Honest side-effect classes.** Syncing headers is not free of effects:
   with some script settings the sync step also acts on mail on its own.
   The `fetch` node therefore requires the script's no-lanes mode; the
@@ -935,7 +984,10 @@ What this exercises:
 - **A trust provider.** `trust: inbox` names a provider declared below:
   `read` marks pending items whose actions are already trusted as `auto`;
   `decide` records the person's decisions with the script, which owns the
-  counters; `set` backs `flo trust set`.
+  counters; `set` backs `flo trust set`. Each approval item names the
+  operation it approves (`capability`, `args`; a reply is `mail.send`, the
+  rest `mail.write`), so the engine keeps it as a proposal under its
+  request digest.
 - **Parked runs.** While a run waits for an approval, the next 15-minute
   fire is skipped (`on_overlap: skip`; flow.md §7.3). The script also
   carries pending items into later runs, so a better shape is possible; it

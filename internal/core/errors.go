@@ -115,6 +115,7 @@ const (
 	CodeJobNotFound      Code = "job_not_found"
 	CodeTenantNotFound   Code = "tenant_not_found"
 	CodeOutputNotFound   Code = "output_not_found"
+	CodeDraftNotFound    Code = "draft_not_found"
 )
 
 // Conflict (exit 4).
@@ -173,7 +174,7 @@ func buildCodeTable() map[Code]codeInfo {
 		CodeUnterminated, CodeUnknownStep, CodeUnknownStateKey, CodeOutOfScope, CodeCycle)
 	set(ExitNotFound, TransiencePermanent,
 		CodeNotFound, CodeFlowNotFound, CodeRunNotFound, CodeNodeNotFound, CodeApprovalNotFound, CodeItemNotFound,
-		CodeTriggerNotFound, CodeTaskNotFound, CodeJobNotFound, CodeTenantNotFound, CodeOutputNotFound,
+		CodeTriggerNotFound, CodeTaskNotFound, CodeJobNotFound, CodeTenantNotFound, CodeOutputNotFound, CodeDraftNotFound,
 		CodeSecretNotFound, CodeScopeUnknown)
 	set(ExitConflict, TransiencePermanent,
 		CodeFlowVersionConflict, CodeDraftStale, CodeGrantProvisioned, CodeFlowNotActive, CodeDuplicate,

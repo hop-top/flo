@@ -102,6 +102,20 @@ func (e *Engine) ReplayRun(ctx context.Context, tenant core.TenantID, req Replay
 	if err != nil {
 		return ReplayResult{}, err //nolint:wrapcheck // *core.Error
 	}
+	return e.replayOn(ctx, tenant, req, run, meta, v)
+}
+
+// replayOn replays run, whose recording meta describes and whose cassettes
+// answer, on version v: the version the run executed for a replay, another one
+// (a draft, not stored) for a dry run of a change. v need not be stored; it
+// reaches only the sandbox. A step v does not have, or has with another
+// outcome, shows in Diffs.
+func (e *Engine) replayOn(ctx context.Context, tenant core.TenantID, req ReplayRequest, run core.Run, meta runrec.Meta, v core.FlowVersion) (ReplayResult, error) {
+	rs := e.Recordings
+	cassettes, err := rs.Cassettes(tenant, run.ID)
+	if err != nil {
+		return ReplayResult{}, err //nolint:wrapcheck // *core.Error
+	}
 	f, err := cel.ParseFlow(bytes.NewReader(v.Source), v.Name+".yaml")
 	if err != nil {
 		return ReplayResult{}, core.Wrap(core.CodeInvalidFlow, err)

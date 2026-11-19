@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strconv"
@@ -54,6 +55,9 @@ const (
 	// EnvLocalHosts lists hosts and CIDRs read as local by the model privacy
 	// rule (key privacy.local_hosts; comma-separated in the environment).
 	EnvLocalHosts = "FLO_PRIVACY_LOCAL_HOSTS"
+
+	// EnvBuilderModel is the model of the chat builder (key ai.builder.model).
+	EnvBuilderModel = "FLO_AI_BUILDER_MODEL"
 )
 
 // setting reads one setting of the config of root, which holds every source in
@@ -140,7 +144,26 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 	cfg.Classifier = setting(root, builtin.EnvClassifier, "ai.classifier")
 	cfg.JudgeEngine = setting(root, builtin.EnvJudgeEngine, "ai.judge.engine")
 	cfg.Jev = builtin.KitJev
+	cfg.ModelsAllow = listSetting(root, builtin.EnvModelsAllow, "ai.models.allow")
+	cfg.ModelsDeny = listSetting(root, builtin.EnvModelsDeny, "ai.models.deny")
+	for _, l := range []struct {
+		key      string
+		list     []string
+		validate func([]string) error
+	}{
+		{"ai.models.allow", cfg.ModelsAllow, builtin.ValidateModelPatterns},
+		{"ai.models.deny", cfg.ModelsDeny, builtin.ValidateDenyPatterns},
+	} {
+		if err := l.validate(l.list); err != nil {
+			var ce *core.Error
+			if errors.As(err, &ce) {
+				return serve.Config{}, core.Errorf(core.CodeUsage, "%s: %s", l.key, ce.Message).WithSuggestion(ce.Suggestion)
+			}
+			return serve.Config{}, err
+		}
+	}
 	cfg.Generator = setting(root, builtin.EnvGenerator, "ai.generator")
+	cfg.BuilderModel = setting(root, EnvBuilderModel, "ai.builder.model")
 	cfg.LocalHosts = listSetting(root, EnvLocalHosts, "privacy.local_hosts")
 	if _, err := node.NewLocalHosts(cfg.LocalHosts); err != nil {
 		return serve.Config{}, core.Errorf(core.CodeUsage, "privacy.local_hosts: %v", err).

@@ -41,7 +41,7 @@ func TestDependencyWatchCommittedRecording(t *testing.T) {
 		}
 	}
 
-	e := newEnv(t, "FLO_AI_CLASSIFIER=judge") // no shims, no model: a call that is not answered from the recording fails
+	e := newEnv(t, "FLO_AI_CLASSIFIER=judge", "FLO_AI_MODELS_ALLOW=ollama://qwen3*") // no shims, no model: a call that is not answered from the recording fails
 	e.installRepoPack("github")
 	e.ok("grant", "set", "automation", "vcs.read", "--yes")
 	bundle := filepath.Join(t.TempDir(), depWatch)
@@ -53,19 +53,25 @@ func TestDependencyWatchCommittedRecording(t *testing.T) {
 	if r.Exit != 0 || !res.Passed || res.Mode != flowtest.ModeReplay || res.Expected == 0 || res.Held != res.Expected || res.Replayed == 0 || res.Replayed != res.Calls {
 		t.Fatalf("replay of the committed recording: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
-	for _, p := range []string{"cassettes"} {
-		files, _ := filepath.Glob(filepath.Join(src, p, "http-*.req.yaml"))
-		if len(files) == 0 {
-			t.Errorf("no model call in the recording")
+	// The model calls on the tape: the daemon's model list (the judge asks
+	// for it even for one model), then the chat.
+	files, _ := filepath.Glob(filepath.Join(src, "cassettes", "http-*.req.yaml"))
+	var tags, chats int
+	for _, f := range files {
+		b, err := os.ReadFile(f) //nolint:gosec // a file of this repository
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, f := range files {
-			b, err := os.ReadFile(f) //nolint:gosec // a file of this repository
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(string(b), "/api/chat") {
-				t.Errorf("%s is not a model call", f)
-			}
+		switch {
+		case strings.Contains(string(b), "/api/tags"):
+			tags++
+		case strings.Contains(string(b), "/api/chat"):
+			chats++
+		default:
+			t.Errorf("%s is not a model call", f)
 		}
+	}
+	if tags == 0 || chats == 0 {
+		t.Errorf("the recording holds %d model-list and %d chat calls, want both", tags, chats)
 	}
 }

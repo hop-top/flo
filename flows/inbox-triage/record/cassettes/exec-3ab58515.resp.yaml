@@ -1,8 +1,8 @@
 xrr: "1"
 adapter: exec
 fingerprint: 3ab58515
-recorded_at: "2026-11-18T21:23:15Z"
+recorded_at: "2026-11-19T05:18:06Z"
 payload:
+    exit_code: 0
     stdout: |
         {"schema_version":1,"command":"fetch","exit":0,"ok":true,"run":"20261118-090001","run_dir":"/tmp/flo-inbox-record/inbox/runs/20261118-090001","accounts":{"acme":{"status":"ok","count":3},"beta":{"status":"ok","count":1}},"failed_accounts":[],"rows":4,"new":4,"carried":0,"locked":0,"seen":0,"muted":0,"files":["/tmp/flo-inbox-record/inbox/runs/20261118-090001/snapshot.json"]}
-    exit_code: 0

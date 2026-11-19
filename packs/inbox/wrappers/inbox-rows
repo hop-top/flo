@@ -1,0 +1,45 @@
+#!/bin/sh
+# inbox-rows --out FILE RUN_DIR
+#
+# The messages of a run that still need a decision, headers only: what a
+# decider may see (sender, subject, date, flags, folder, sender history), never
+# a body. Rows carried over from an earlier run already have a decision and are
+# left out, as are rows answered by hand (they need none).
+#
+# Writes {run, run_dir, decided, answered, items} to FILE. `decided` is true
+# when the run already has a decisions file (nothing to ask again); `answered`
+# counts the messages answered by hand; `items` are the rows to classify, each
+# with its item number `n`.
+command -v jq >/dev/null 2>&1 || { echo "inbox-rows: jq is required" >&2; exit 69; }
+
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "inbox-rows: unknown flag $1" >&2; exit 64 ;;
+    *) break ;;
+  esac
+done
+[ -n "$out" ] && [ $# -eq 1 ] || { echo "usage: inbox-rows --out FILE RUN_DIR" >&2; exit 64; }
+rd=$1
+[ -f "$rd/snapshot.json" ] || { echo "inbox-rows: no snapshot at $rd/snapshot.json" >&2; exit 66; }
+
+decided=false
+[ -f "$rd/decisions.json" ] && decided=true
+carried=/dev/null
+[ -f "$rd/carried.json" ] && carried="$rd/carried.json"
+
+jq --argjson decided "$decided" --arg rd "$rd" --slurpfile c "$carried" '
+  (($c[0] // []) | if type == "object" then (.decisions // []) else . end | map(.n)) as $cn
+  | { run: .run, run_dir: $rd, decided: $decided,
+      answered: ([.rows[] | select(.manual_reply != null)] | length),
+      items: [ .rows[] | select(.manual_reply == null) | select(.n | IN($cn[]) | not)
+               | { n, account,
+                   sender: { address: (.from.email // ""), name: (.from.name // ""),
+                             domain: ((.from.email // "") | split("@") | last) },
+                   to_count: ((.to // []) | length), subject, date,
+                   flags: (.flags // []), has_attachment: (.has_attachment // false),
+                   folder, history: (.history // null),
+                   prior: [ (.prior // [])[] | .verdict ] } ] }
+' "$rd/snapshot.json" > "$out" || { echo "inbox-rows: cannot read $rd/snapshot.json" >&2; exit 70; }

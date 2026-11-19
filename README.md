@@ -19,6 +19,9 @@ flo flow apply -f flows/dependency-watch --yes # new version only when content c
 flo flow test dependency-watch --record --yes --allow-live  # reads run once for real, cassettes in record/
 flo flow test dependency-watch                 # replay: offline, writes only planned
 flo flow set dependency-watch --state active --yes   # needs a passing test of this version
+flo flow draft create dependency-watch "also watch cli/cli releases"   # a model proposes the next version
+flo flow draft show <draft>                    # proposal, attempts, dry run on the last recording
+flo flow draft apply <draft> --yes             # next version, unless the flow moved: draft_stale
 flo trigger list                               # next fire of each trigger
 flo engine serve &                             # SIGTERM drains running steps
 flo run create --flow dependency-watch --wait  # 0 done, 7 awaiting approval
@@ -50,6 +53,25 @@ flo run cancel <run> --yes
   version (flow hash + bundle digest) is what activation reads
   (`flow_not_tested`, exit 2). `apply` and `test --record` ask for
   confirmation (`--yes`).
+- `flow draft`: the chat builder. `create <flow> <instruction>` (or `-`, the
+  instruction on standard input) gives a model the flow's active version (else
+  the newest) and the nodes it may use, and gets the full next version back.
+  Validation errors go back to the model up to three times, then the command
+  fails with `invalid_flow` and the last errors. The call is flo's own model
+  path: `ai.models.allow` and `deny` apply, a cloud model's key is read from the
+  secret store as the calling profile, and the flow's `privacy` ceiling holds (a `local-only` flow is
+  sent to a local model only; nothing is sent when refused). The model is
+  `--model`, else `ai.builder.model` (env `FLO_AI_BUILDER_MODEL`), else
+  `ollama://gemma4:e4b`. A valid proposal is replayed offline on the flow's
+  last recording and the outcome differences are stored with the draft (none
+  when the flow has no recording). A draft is not a version: `show`, `list`,
+  `discard` read and delete it, `apply` stores it as the next version (a draft
+  version; test and activate it as usual) only if the flow's base and newest
+  versions are those the draft was made on, else `draft_stale` (exit 4) and the
+  draft is kept. Drafts live in `<tenant dir>/drafts/<id>.json`. The recorded
+  test of a build on a local model (`internal/engine/serve`,
+  `TestDraftOnALocalModelTape`) is re-recorded with `FLO_BUILDER_RECORD=1` on a
+  host that runs ollama.
 - Identity: `FLO_PROFILE`, else `owner_profile` of the config, else `$USER`;
   tenant `FLO_TENANT`, else `tenant`, else `default`. The owner profile
   (`owner_profile`, else `$USER`) holds the wildcard grant; the engine's
@@ -81,7 +103,7 @@ flo run cancel <run> --yes
     claim_ttl: 2m
     shutdown_grace: 30s
     approval_poll: 1m
-  ai: { classifier: rules, generator: template, judge: { engine: auto } }  # FLO_AI_*
+  ai: { classifier: rules, generator: template, judge: { engine: auto }, builder: { model: "ollama://gemma4:e4b" } }  # FLO_AI_*
   eva: { url: http://127.0.0.1:9000 }             # FLO_EVA_URL
   packs:                        # config.<pack>.<key> in node specs and triggers
     ctxt: { url: http://127.0.0.1:8080 }          # FLO_PACKS_CTXT_URL
@@ -100,14 +122,55 @@ flo run cancel <run> --yes
   with `engine_feature`: no backend stands in for another.
 - Judge engine: `ai.judge.engine` (env `FLO_AI_JUDGE_ENGINE`; `local`, `jev`
   or `auto`, default `auto`) picks what answers the `judge` classifier; a
-  classify step's `engine:` overrides it. `local` is the step's model. `jev`
-  is TypeSafe's Jev through OpenRouter: cloud, key from the secret
-  `openrouter_api_key` of the flow's profile (sent to Jev's endpoint only),
-  refused under `local-only`. `auto` is `local` when the step's `ollama://`
-  model is local and the daemon lists it (`GET /api/tags`), else `jev` (never
-  under `local-only`: `privacy_violation`). The step output's `engine` says which
-  judged. A flow whose recording holds local model calls only pins
-  `engine: local`.
+  classify step's `engine:` overrides it. `local` is the step's non-Jev
+  models. `jev` is TypeSafe's Jev through OpenRouter: cloud, key from the
+  secret `openrouter_api_key` of the flow's profile (sent to Jev's endpoint
+  only), refused under `local-only`. `auto` runs the step's models as listed;
+  a single `ollama://` model that is local and listed by the daemon
+  (`GET /api/tags`) answers, else `jev` (never under `local-only`:
+  `privacy_violation`). An explicit cloud model runs as named, never swapped
+  for Jev. The step output's `engine` and `model` say which judged. A flow
+  whose recording holds local model calls only pins `engine: local`.
+- Model lists: a step's `model:` is a string or an ordered list, for
+  `flo/ai.classify@1` and `flo/ai.generate@1`:
+  `model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]`. The first usable
+  model answers: permitted by the allow and deny lists, allowed by the step's privacy ceiling, and
+  available (a local ollama model the daemon lists, even a lone one: a missing
+  model fails as not detected, `ollama pull <model>`; a cloud model or `jev`
+  with its key stored). Only unavailability falls through; a call that fails on the
+  chosen model is reported, not retried on the next. `jev` is the default Jev
+  model (`jev://typesafe/jev-1.14`) and is classify only; `engine:` filters the
+  list. Jev takes a step's `pattern` text first in its instructions and ignores
+  `strategy`, with a `notes` entry in the step output (the value is not
+  validated there: even a malformed one is only noted). When none is usable the error lists each model and why.
+- Model allow and deny lists: `ai.models.allow` and `ai.models.deny` (env
+  `FLO_AI_MODELS_ALLOW`, `FLO_AI_MODELS_DENY`, comma-separated) say which
+  models flows may run, cloud or local, on every engine. Deny wins. Neither
+  set: every model. Only allow: the listed ones. Only deny: all but the
+  denied. Both: allowed and not denied. A refused model fails with
+  `privacy_violation` before any request or secret read. Entries: `*` (any
+  model), `jev`, or a model URI whose model name may be a glob (`*`, `?`,
+  `[...]`): `ollama://qwen3*`, `ollama://qwen3:*-instruct-*`,
+  `jev://typesafe/*`, `ollama://localhost:11434/*`. Entries are matched as
+  parsed URIs: scheme, host and `base_url` must equal the model's, and a glob
+  covers the model name only, never a host or a query; a glob in the scheme,
+  host or params is refused at load. Deny is looser on purpose: it matches the
+  model name at any endpoint and scheme (`qwen3*` or `ollama://qwen3*` also
+  denies `ollama://otherhost:11434/qwen3:4b` and `?base_url=…`), so a model
+  cannot be moved out of it; entries may be bare names (`qwen3*`). Deny fails
+  safe: odd names (`/` segments, `@`, `..`) over-deny rather than slip through.
+
+  ```yaml
+  ai:
+    classifier: judge
+    models:
+      allow:
+        - ollama://qwen3*
+        - ollama://gemma4:e4b
+        - jev
+      deny:
+        - ollama://*-base-*
+  ```
 - Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
   `flo/ai.generate@1`: `template` (renders the prompt's template over the
   context: no model, no cost) or `llm` (calls the step's model through kit's
@@ -119,7 +182,8 @@ flo run cancel <run> --yes
   profile (`anthropic_api_key`); it is sent only to the scheme's default
   endpoint, never to a host or `base_url` the model URI names. This build
   links the `ollama` scheme only. Unset configures none and a step using the
-  node fails with `engine_feature`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
+  node fails with `engine_feature`. The `llm` backend runs only models the
+  allow and deny lists permit. A prompt `name@N` is `prompts/name@N.yaml` in the flow
   bundle, else in an installed pack: YAML with `system:` and `template:` (Go
   text/template; funcs `join`, `trunc`, `default`; a missing key is an
   error). The ceiling of the step (`privacy`) refuses a cloud model with
@@ -136,22 +200,68 @@ flo run cancel <run> --yes
   wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.
   The flow labels new releases with the `judge` classifier on the local model
-  `ollama://qwen3:4b-instruct-2507-q4_K_M` (set `FLO_AI_CLASSIFIER=judge`;
+  `ollama://qwen3:4b-instruct-2507-q4_K_M` (set `FLO_AI_CLASSIFIER=judge` and
+  `FLO_AI_MODELS_ALLOW=ollama://qwen3*`;
   Gemma 4 E4B is the target once ollama serves structured output for it).
   `flows/dependency-watch/record/` holds a recording, model calls included:
   `flo flow test dependency-watch` replays it offline. Re-record with
   `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestDependencyWatchCommittedRecording`
-  on a host whose ollama has the model.
+  on a host whose ollama has the model. `tests/watch.yaml` pins the judge's
+  engine, model and per-release labels from the tape: a re-recording that
+  labels differently fails the replay until the pin is updated with it.
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
-  wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`; they
-  need `jq`) as the flow's profile, so both go on that profile's `PATH`,
-  with the script's credentials, `INBOX_HOME` and `INBOX_RUNS`. The trust
-  provider runs on the engine's own `PATH` and environment, which must name
-  the same directories. `inbox/lanes@1` acts on mail outside the plan and is
-  not used by the flow. Re-record the flow's `record/` with
-  `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` after a
-  change to the flow, its tests or its nodes.
+  wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`,
+  `inbox-rows`, `inbox-decisions`; they need `jq`) as the flow's profile, so
+  both go on that profile's `PATH`, with the script's credentials,
+  `INBOX_HOME` and `INBOX_RUNS`. The trust provider runs on the engine's own
+  `PATH` and environment, which must name the same directories.
+  `inbox/lanes@1` acts on mail outside the plan and is not used by the flow;
+  `inbox/decide@1` is the script's own hosted decider, which the flow no longer
+  uses. Re-record the flow's `record/` with
+  `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` on a host
+  whose ollama has `qwen3:4b-instruct-2507-q4_K_M`, after a change to the flow,
+  its tests or its nodes.
+- `flows/inbox-triage` is the mail triage, every 15 minutes: `inbox/fetch@1`,
+  then the judgment, then the script's plan, an approval with the script's
+  trust, and `inbox/apply@1`. The judgment is two `flo/ai.classify@1` steps
+  over the headers of each undecided message (`inbox/rows@1`: sender, subject,
+  date, flags, folder, sender history; never a body): `label` files it under
+  one of the labels (var `labels`, the script's SOP labels; it may abstain),
+  `weigh` says how much it matters (irrelevant to critical).
+  `inbox/decisions@1` turns both into the script's decisions file by the
+  script's own policy: a label under 0.9 confidence is Needs Review, an
+  abstention stays in the inbox for a person, a message that matters little is
+  also read and archived, mail from what looks like a person is never filed
+  away, nothing is ever trashed, replied to or unsubscribed. Setup: set
+  `FLO_AI_CLASSIFIER=judge` and `FLO_AI_MODELS_ALLOW=ollama://qwen3*`; the
+  engine (`ai.judge.engine`, default `auto`) is configuration. **Privacy:** the
+  flow and both steps are `local-only`; the model list is
+  `[ollama://qwen3:4b-instruct-2507-q4_K_M, jev]`, and under that ceiling the
+  engine skips Jev. With no local model detected the step fails
+  (`privacy_violation`); mail is never sent to Jev unless the owner opts in:
+  set `privacy: cloud-allowed` on the flow and on `label` and `weigh`, put the
+  secret `openrouter_api_key` on the profile, and allow `jev` in
+  `ai.models.allow`. Each approval item names the operation (`capability`
+  `mail.write`, or `mail.send` for a reply, and its `args`), so the engine
+  keeps a proposal under a request digest; trust is the script's, read and
+  recorded through the `inbox` provider, never written by flo. Left for the
+  script: `fetch`, `plan`, `apply` (the executor, with its ledger), the trust
+  counters, sender lanes, contacts, mutes and the check that a label exists in
+  an account (a missing one is an invalid plan item). Tests replay the
+  committed recording offline (synthetic mail, answers of the local model);
+  the live scenarios run against a fake model.
+- Choosing a judge for mail: `go run ./cmd/judge-eval` compares judges on a
+  recorded day over kit's `judge/eval`. `import --step label|weigh --out SET
+  RUN_DIR...` turns run folders of the script into a case set whose references
+  are the verdicts its hosted decider (Jev) recorded: no model is called, and
+  the set must be written outside any git work tree (it is real mail; the tool
+  refuses otherwise). `run --cases SET --model ollama://[host:port/]<model>`
+  replays it through a local candidate and prints the report and a gate
+  (`--min-agreement`, `--min-coverage`, `--at-confidence`, `--min-n`,
+  `--max-ece`; exit 3 on FAIL). `--jev --allow-cloud` makes Jev the candidate
+  (key in `OPENROUTER_API_KEY`) and sends the set to it. `record` writes a
+  candidate's answers as the references, to replay another judge against them.
 - `packs/ctxt`, `packs/heo` and `packs/tlc` hold the read nodes of the meeting
   brief. `ctxt/find@1` posts to `{config.ctxt.url}/api/v1/find`: the server
   `ctxt find` uses (`server.url` or the first `server.urls` entry of the ctxt
@@ -172,7 +282,7 @@ flo run cancel <run> --yes
   still produced; the three retry once at most, so a brief waits seconds, not
   minutes. The facts handed to the model are cut to the var `context_chars`
   (default 6000; `--var context_chars=N`). The `template` backend renders the prompt
-  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it on
+  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it (on a model the allow and deny lists permit) on
   the model. To run
   it: set `packs.ctxt.url` and `packs.calendar.url` (config file,
   `FLO_PACKS_*` or `-c`), the secret `ctxt_token` when ctxt needs one, grant

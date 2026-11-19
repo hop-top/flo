@@ -53,6 +53,9 @@ var settingCases = []struct {
 	{"engine.approval_poll", EnvApprovalPoll, "1s", "2s", "3s", func(c serve.Config) string { return c.ApprovalPoll.String() }},
 	{"ai.classifier", "FLO_AI_CLASSIFIER", "cfile", "cenv", "cflag", func(c serve.Config) string { return c.Classifier }},
 	{"ai.generator", "FLO_AI_GENERATOR", "gfile", "genv", "gflag", func(c serve.Config) string { return c.Generator }},
+	{"ai.builder.model", "FLO_AI_BUILDER_MODEL", "bfile", "benv", "bflag", func(c serve.Config) string { return c.BuilderModel }},
+	{"ai.models.allow", "FLO_AI_MODELS_ALLOW", "ollama://file*", "ollama://env*,jev", "ollama://flag*", func(c serve.Config) string { return strings.Join(c.ModelsAllow, ",") }},
+	{"ai.models.deny", "FLO_AI_MODELS_DENY", "ollama://dfile*", "ollama://denv*,jev", "ollama://dflag*", func(c serve.Config) string { return strings.Join(c.ModelsDeny, ",") }},
 	{"privacy.local_hosts", EnvLocalHosts, "file.example", "env.example,env2.example", "flag.example", func(c serve.Config) string { return strings.Join(c.LocalHosts, ",") }},
 	{"bos.scope", EnvBosScope, "sfile", "senv", "sflag", func(c serve.Config) string {
 		if c.Bos == nil {
@@ -237,4 +240,20 @@ func mapKeys(m map[string]any) []string {
 		ks = append(ks, k)
 	}
 	return ks
+}
+
+// A malformed allow or deny entry (a glob in the host, not a model URI) is a
+// usage error at load, naming the setting and the entry.
+func TestConfigModelListsRefuseBadEntries(t *testing.T) {
+	for _, c := range []struct{ key, env, val, want string }{
+		{"ai.models.allow", "FLO_AI_MODELS_ALLOW", "ollama://*:11434/m", "host"},
+		{"ai.models.deny", "FLO_AI_MODELS_DENY", "ollama://ok*,ollama://*:11434/m", "host"},
+		{"ai.models.allow", "FLO_AI_MODELS_ALLOW", "qwen3", "not a model URI"},
+		{"ai.models.deny", "FLO_AI_MODELS_DENY", "*://m", "scheme"},
+	} {
+		_, err := loaded(t, "", map[string]string{c.env: c.val})
+		if !core.IsCode(err, core.CodeUsage) || !strings.Contains(err.Error(), c.key) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s=%s: %v", c.key, c.val, err)
+		}
+	}
 }

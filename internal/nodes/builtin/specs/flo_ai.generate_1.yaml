@@ -4,7 +4,7 @@ description: Text from a versioned prompt and a context.
 inputs:
   prompt: { type: string, required: true, description: "Prompt reference name@N: prompts/name@N.yaml in the flow bundle or an installed pack." }
   context: { type: object, description: Variables of the prompt template. }
-  model: { type: string, required: true, description: "Model URI, e.g. anthropic://claude-sonnet-5-5; ignored by the template backend." }
+  model: { type: [string, array], items: { type: string }, required: true, description: "Model URI, e.g. ollama://gemma4:e4b, or an ordered list of them (the first usable one answers). Every model must pass ai.models.allow and ai.models.deny. Ignored by the template backend." }
   schema: { type: object, description: Optional output schema for data. }
 outputs:
   schema:
@@ -13,6 +13,7 @@ outputs:
     properties:
       text: { type: string }
       data: { type: object }
+      model: { type: string, description: "The model that answered, as a URI without secrets (llm backend only)." }
       prompt:
         type: object
         required: [name, version, hash]

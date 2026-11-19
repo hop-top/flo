@@ -1,9 +1,7 @@
 [
   {
-    "step": "approve",
     "node": "flo/approval@1",
     "plan": {
-      "capability": "flo/approval@1",
       "args": {
         "context": {
           "run": "20261118-090001",
@@ -18,6 +16,17 @@
               },
               "archive"
             ],
+            "args": {
+              "account": "acme",
+              "actions": [
+                {
+                  "label": "Finance"
+                },
+                "archive"
+              ],
+              "n": 2
+            },
+            "capability": "mail.write",
             "class": [
               "label:Finance",
               "archive"
@@ -41,6 +50,21 @@
                 }
               }
             ],
+            "args": {
+              "account": "acme",
+              "actions": [
+                {
+                  "reply": {
+                    "body": "Friday works.",
+                    "cc": [],
+                    "mode": "draft",
+                    "reply_all": false
+                  }
+                }
+              ],
+              "n": 3
+            },
+            "capability": "mail.send",
             "class": [
               "reply:draft"
             ],
@@ -56,6 +80,14 @@
             "actions": [
               "archive"
             ],
+            "args": {
+              "account": "beta",
+              "actions": [
+                "archive"
+              ],
+              "n": 4
+            },
+            "capability": "mail.write",
             "class": [],
             "from": "legal@example.org",
             "guard": "folder rule: approval always",
@@ -70,6 +102,15 @@
               "read",
               "archive"
             ],
+            "args": {
+              "account": "acme",
+              "actions": [
+                "read",
+                "archive"
+              ],
+              "n": 1
+            },
+            "capability": "mail.write",
             "class": [
               "read",
               "archive"
@@ -89,7 +130,8 @@
           "reject"
         ]
       },
-      "idempotency_key": "run_01m7r8nqyfefmrf7enxnzmj5bv/approve",
+      "capability": "flo/approval@1",
+      "idempotency_key": "run_01m7s3v7c1eyta6hyyk4bvd74v/approve",
       "rendered": {
         "builtin": "flo/approval@1",
         "in": {
@@ -106,6 +148,17 @@
                 },
                 "archive"
               ],
+              "args": {
+                "account": "acme",
+                "actions": [
+                  {
+                    "label": "Finance"
+                  },
+                  "archive"
+                ],
+                "n": 2
+              },
+              "capability": "mail.write",
               "class": [
                 "label:Finance",
                 "archive"
@@ -129,6 +182,21 @@
                   }
                 }
               ],
+              "args": {
+                "account": "acme",
+                "actions": [
+                  {
+                    "reply": {
+                      "body": "Friday works.",
+                      "cc": [],
+                      "mode": "draft",
+                      "reply_all": false
+                    }
+                  }
+                ],
+                "n": 3
+              },
+              "capability": "mail.send",
               "class": [
                 "reply:draft"
               ],
@@ -144,6 +212,14 @@
               "actions": [
                 "archive"
               ],
+              "args": {
+                "account": "beta",
+                "actions": [
+                  "archive"
+                ],
+                "n": 4
+              },
+              "capability": "mail.write",
               "class": [],
               "from": "legal@example.org",
               "guard": "folder rule: approval always",
@@ -158,6 +234,15 @@
                 "read",
                 "archive"
               ],
+              "args": {
+                "account": "acme",
+                "actions": [
+                  "read",
+                  "archive"
+                ],
+                "n": 1
+              },
+              "capability": "mail.write",
               "class": [
                 "read",
                 "archive"
@@ -178,17 +263,17 @@
           ]
         }
       }
-    }
+    },
+    "step": "approve"
   },
   {
-    "step": "apply",
     "node": "inbox/apply@1",
     "plan": {
-      "capability": "inbox/apply@1",
       "args": {
         "run": "20261118-090001"
       },
-      "idempotency_key": "run_01m7r8nqyfefmrf7enxnzmj5bv/apply",
+      "capability": "inbox/apply@1",
+      "idempotency_key": "run_01m7s3v7c1eyta6hyyk4bvd74v/apply",
       "rendered": {
         "argv": [
           "inbox",
@@ -198,10 +283,11 @@
           "--json"
         ],
         "env": {
-          "FLO_IDEMPOTENCY_KEY": "run_01m7r8nqyfefmrf7enxnzmj5bv/apply"
+          "FLO_IDEMPOTENCY_KEY": "run_01m7s3v7c1eyta6hyyk4bvd74v/apply"
         },
         "profile": "automation"
       }
-    }
+    },
+    "step": "apply"
   }
 ]

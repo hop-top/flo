@@ -88,11 +88,19 @@ type Config struct {
 	JudgeEngine string
 	// Jev builds the Jev judge of the judge classifier; nil is a build without it.
 	Jev builtin.JevFactory
+	// ModelsAllow and ModelsDeny are the model allow-list (`ai.models.allow`)
+	// and deny-list (`ai.models.deny`): model patterns, a glob in the model
+	// name only. Deny wins; neither set allows every model; only allow, the
+	// listed ones.
+	ModelsAllow, ModelsDeny []string
 	// Generator names the flo/ai.generate@1 backend (`ai.generator`):
 	// "template" is the deterministic one, "llm" calls the step's model
 	// through kit's client. Empty configures none, and a step using the node
 	// fails.
 	Generator string
+	// BuilderModel is the model of the chat builder (`ai.builder.model`); empty
+	// is DefaultBuilderModel, local through ollama.
+	BuilderModel string
 	// LocalHosts are the hosts and CIDRs treated as local when a model URI
 	// is read (`privacy.local_hosts`); empty lists none.
 	LocalHosts []string

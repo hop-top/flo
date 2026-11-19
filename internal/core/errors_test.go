@@ -18,7 +18,7 @@ func TestCodeTablePinned(t *testing.T) {
 		CodeEngineFeature: 2, CodeReservedKey: 2, CodeUnguardedIrreversible: 2, CodePrivacyViolation: 2,
 		CodeCapabilityMismatch: 2, CodeUnknownFunction: 2, CodeSyntaxError: 2, CodeCycle: 2, CodeInvalidNode: 2,
 		// 3 not found
-		CodeFlowNotFound: 3, CodeRunNotFound: 3, CodeNodeNotFound: 3, CodeApprovalNotFound: 3, CodeSecretNotFound: 3,
+		CodeFlowNotFound: 3, CodeRunNotFound: 3, CodeNodeNotFound: 3, CodeApprovalNotFound: 3, CodeSecretNotFound: 3, CodeDraftNotFound: 3,
 		// 4 conflict
 		CodeFlowVersionConflict: 4, CodeDraftStale: 4, CodeGrantProvisioned: 4, CodeRunStateConflict: 4, CodeApprovalConflict: 4,
 		// 5 permission

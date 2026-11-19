@@ -1,0 +1,86 @@
+xrr: "1"
+adapter: exec
+fingerprint: 765db2dc
+recorded_at: "2026-11-19T05:18:06Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "run": "20261118-090001",
+              "run_dir": "/tmp/flo-inbox-record/inbox/runs/20261118-090001",
+              "decided": false,
+              "answered": 0,
+              "items": [
+                {
+                  "n": 1,
+                  "account": "acme",
+                  "sender": {
+                    "address": "news@example.org",
+                    "name": "Weekly",
+                    "domain": "example.org"
+                  },
+                  "to_count": 1,
+                  "subject": "Weekly digest",
+                  "date": "2026-11-18T08:40:00-05:00",
+                  "flags": [],
+                  "has_attachment": false,
+                  "folder": "newsletters",
+                  "history": 12,
+                  "prior": []
+                },
+                {
+                  "n": 2,
+                  "account": "acme",
+                  "sender": {
+                    "address": "billing@example.org",
+                    "name": "Billing",
+                    "domain": "example.org"
+                  },
+                  "to_count": 1,
+                  "subject": "Invoice 2291",
+                  "date": "2026-11-18T08:41:00-05:00",
+                  "flags": [],
+                  "has_attachment": true,
+                  "folder": "finance",
+                  "history": 3,
+                  "prior": []
+                },
+                {
+                  "n": 3,
+                  "account": "acme",
+                  "sender": {
+                    "address": "sam@example.org",
+                    "name": "Sam",
+                    "domain": "example.org"
+                  },
+                  "to_count": 1,
+                  "subject": "Lunch on Friday?",
+                  "date": "2026-11-18T08:42:00-05:00",
+                  "flags": [],
+                  "has_attachment": false,
+                  "folder": "people",
+                  "history": 1,
+                  "prior": []
+                },
+                {
+                  "n": 4,
+                  "account": "beta",
+                  "sender": {
+                    "address": "legal@example.org",
+                    "name": "Legal",
+                    "domain": "example.org"
+                  },
+                  "to_count": 1,
+                  "subject": "Contract renewal",
+                  "date": "2026-11-18T08:43:00-05:00",
+                  "flags": [],
+                  "has_attachment": true,
+                  "folder": "legal",
+                  "history": 2,
+                  "prior": []
+                }
+              ]
+            }
+          path: out.json
+    stdout: ""

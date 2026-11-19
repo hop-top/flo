@@ -123,14 +123,22 @@ func (c *checker) privacy(st *spec.Step, n *node.Spec) {
 	eff := n.Privacy
 	how := "declared " + string(n.Privacy)
 	if _, takesModel := n.Inputs["model"]; takesModel {
-		if m, ok := st.With["model"].(string); ok && !strings.Contains(m, "{{") {
-			p, err := node.ModelPrivacy(m, c.opts.LocalHosts)
-			switch {
-			case errors.Is(err, node.ErrNotRunnable):
-				c.err("V19", CodePrivacyViolation, st.ID, "with.model", "%s: %v", n.Node, err)
-				return
-			case err == nil:
-				eff, how = p, "its model "+m+" is "+string(p)
+		if models, ok := literalModels(st.With["model"]); ok {
+			// A list is local when any model of it is, cloud when every one
+			// is: under a local-only ceiling the engine skips the cloud ones.
+			found := false
+			for _, m := range models {
+				p, err := node.ModelPrivacy(m, c.opts.LocalHosts)
+				if errors.Is(err, node.ErrNotRunnable) {
+					c.err("V19", CodePrivacyViolation, st.ID, "with.model", "%s: %v", n.Node, err)
+					return
+				}
+				if err != nil || (found && eff == node.PrivacyLocal) {
+					continue
+				}
+				if !found || p == node.PrivacyLocal {
+					eff, how, found = p, "its model "+m+" is "+string(p), true
+				}
 			}
 		}
 	}
@@ -205,4 +213,24 @@ func sortedKeys(m map[string]any) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// literalModels is the models of a `model` input written as literals: a
+// string, or a list of strings, none with a placeholder.
+func literalModels(v any) ([]string, bool) {
+	switch t := v.(type) {
+	case string:
+		return []string{t}, t != "" && !strings.Contains(t, "{{")
+	case []any:
+		var out []string
+		for _, e := range t {
+			s, ok := e.(string)
+			if !ok || s == "" || strings.Contains(s, "{{") {
+				return nil, false
+			}
+			out = append(out, s)
+		}
+		return out, len(out) > 0
+	}
+	return nil, false
 }

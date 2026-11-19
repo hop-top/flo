@@ -1,6 +1,9 @@
 # The recorded run: three repositories, the advisories and releases the fake
 # gh served, the releases labelled by the judge model over the recorded
 # answers. Nothing was seen before, so every item is new.
+#
+# The judge output is pinned: engine, model and each release's label, in
+# order. A replay whose labels drift from the recording fails here.
 expect:
   - step: deps
   - step: advisories
@@ -8,4 +11,17 @@ expect:
   - step: releases
   - step: fresh
   - step: judge
+    output:
+      engine: local
+      model: ollama://qwen3:4b-instruct-2507-q4_K_M
+      items:
+        - { item: { package: github.com/cli/cli/v2, version: 2.105.0 }, label: routine }
+        - { item: { package: github.com/cli/cli/v2, version: 2.104.0 }, label: routine }
+        - { item: { package: github.com/example-org/oldlib, version: 3.0.0 }, label: breaking }
+        - { item: { package: github.com/example-org/oldlib, version: 2.9.0 }, label: routine }
+        - { item: { package: github.com/hop-top/poly-kit/kit, version: 0.5.0-beta.14 }, label: routine }
+        - { item: { package: github.com/hop-top/poly-kit/kit, version: 0.5.0-beta.13 }, label: routine }
+        - { item: { package: golang.org/x/net, version: 0.63.0 }, label: routine }
+        - { item: { package: golang.org/x/net, version: 0.62.0 }, label: routine }
+        - { item: { package: golang.org/x/net, version: 0.61.0 }, label: routine }
   - step: findings

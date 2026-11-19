@@ -29,16 +29,22 @@ func NewLLMGenerator(d LLMDeps) (*LLMGenerator, error) {
 
 // Generate implements Generator.
 func (g *LLMGenerator) Generate(ctx context.Context, req GenerateRequest) (Generation, core.Cost, error) {
-	uri, err := llm.ParseURI(req.Model)
+	models := req.Models
+	if len(models) == 0 {
+		models = []string{req.Model}
+	}
+	p, err := g.m.pick(ctx, pickIn{
+		models: models, localOnly: req.LocalOnly, run: req.RunID, tenant: req.Tenant, profile: req.Profile,
+	})
 	if err != nil {
-		return Generation{}, core.Cost{}, core.Errorf(core.CodeInputInvalid, "model %q is not a model URI", llm.RedactURI(req.Model)).
-			WithSuggestion("write scheme://<model>, e.g. ollama://gemma4:e4b")
+		return Generation{}, core.Cost{}, err
 	}
 	msgs, err := messagesOf(req)
 	if err != nil {
 		return Generation{}, core.Cost{}, err
 	}
-	client, err := g.m.open(ctx, req.Model, uri, req.Level, req.LocalOnly, req.Tenant, req.Profile)
+	uri := p.ref.uri
+	client, err := g.m.open(ctx, p.ref.model, uri, p.ref.level, req.LocalOnly, req.Tenant, req.Profile)
 	if err != nil {
 		return Generation{}, core.Cost{}, err
 	}
@@ -60,11 +66,11 @@ func (g *LLMGenerator) Generate(ctx context.Context, req GenerateRequest) (Gener
 		got, err = client.Complete(ctx, llmReq)
 		usage = got.Usage
 	}
-	cost := g.m.costOf(ctx, req.Level, uri, usage)
+	cost := g.m.costOf(ctx, p.ref.level, uri, usage)
 	if err != nil {
 		return Generation{}, cost, upstreamErr(err)
 	}
-	out := Generation{Text: got.Content}
+	out := Generation{Text: got.Content, Model: llm.RedactURI(p.ref.model)}
 	if data != nil {
 		if err := json.Unmarshal(data, &out.Data); err != nil {
 			return Generation{}, cost, core.Errorf(core.CodeOutputInvalid, "model data is not an object: %v", err)

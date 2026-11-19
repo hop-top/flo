@@ -1,13 +1,11 @@
 xrr: "1"
 adapter: exec
 fingerprint: 847c03cf
-recorded_at: "2026-11-18T21:23:15Z"
+recorded_at: "2026-11-19T05:18:17Z"
 payload:
-    stdout: ""
     exit_code: 0
     files:
-        - path: out.json
-          content: |
+        - content: |
             {
               "schema_version": 1,
               "run": "20261118-090001",
@@ -124,3 +122,5 @@ payload:
                 }
               ]
             }
+          path: out.json
+    stdout: ""

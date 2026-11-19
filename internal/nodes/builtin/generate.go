@@ -17,8 +17,12 @@ import (
 type GenerateRequest struct {
 	Prompt  *prompts.Prompt
 	Context map[string]any
-	Model   string
-	Schema  map[string]any
+	// Model is the step's model when it gave a string, Models its models
+	// when it gave a list, in order; at most one is set. The llm backend
+	// tries them in order; the template backend ignores both.
+	Model  string
+	Models []string
+	Schema map[string]any
 	// LocalOnly is set when the step runs under a local-only ceiling. The
 	// node has already refused a cloud model; a backend that picks its own
 	// endpoint must stay local too.
@@ -30,12 +34,18 @@ type GenerateRequest struct {
 	// tenant and the aps profile the step acts as.
 	Tenant  core.TenantID
 	Profile string
+	// RunID scopes what a backend remembers for one run (the llm backend's
+	// detection of a local model). Empty remembers nothing.
+	RunID string
 }
 
 // Generation is a backend answer. Data is set when the request had a Schema.
+// Model is the model that answered, as a URI without secrets; empty when the
+// backend has none.
 type Generation struct {
-	Text string
-	Data map[string]any
+	Text  string
+	Data  map[string]any
+	Model string
 }
 
 // Generator is the seam behind flo/ai.generate@1. LLMGenerator (kit's model
@@ -71,7 +81,13 @@ func generate(ctx context.Context, g Generator, src PromptSource, local *node.Lo
 	if ref == "" {
 		return pureFail(core.Errorf(core.CodeInputInvalid, "prompt is empty")), nil
 	}
-	model := asString(inv.In["model"])
+	models, listed, merr := modelsOf(inv.In["model"])
+	if merr == nil && len(models) == 0 {
+		merr = core.New(core.CodeInputInvalid, "model is empty")
+	}
+	if merr != nil {
+		return pureFail(merr), nil
+	}
 	var ctxIn map[string]any
 	if v, present := inv.In["context"]; present && v != nil {
 		var ok bool
@@ -80,15 +96,35 @@ func generate(ctx context.Context, g Generator, src PromptSource, local *node.Lo
 		}
 	}
 	// The ceiling comes before any backend: a refused call sends nothing.
-	// An invocation that carries no ceiling is read as the strictest.
+	// An invocation that carries no ceiling is read as the strictest. A list
+	// is refused here only when no model of it can pass; the backend skips
+	// the ones that cannot.
 	localOnly := inv.Privacy != specrun.PrivacyCloudAllowed
-	lvl, perr := node.ModelPrivacy(model, local)
-	if errors.Is(perr, node.ErrNotRunnable) {
-		return pureFail(core.Errorf(core.CodePrivacyViolation, "model %q: %v", model, perr).
-			WithSuggestion("write ollama://<model> for the local daemon or scheme://host:port/<model>")), nil
+	var lvl node.Privacy
+	refused := 0
+	for _, model := range models {
+		if strings.HasPrefix(canonModel(model), jevPrefix) {
+			return pureFail(core.Errorf(core.CodeInputInvalid, "model %q is a judge model: only flo/ai.classify@1 runs it", model).
+				WithSuggestion("name a model of the llm backend, e.g. ollama://gemma4:e4b")), nil
+		}
+		l, perr := node.ModelPrivacy(model, local)
+		if errors.Is(perr, node.ErrNotRunnable) {
+			return pureFail(core.Errorf(core.CodePrivacyViolation, "model %q: %v", model, perr).
+				WithSuggestion("write ollama://<model> for the local daemon or scheme://host:port/<model>")), nil
+		}
+		if lvl == "" {
+			lvl = l
+		}
+		if localOnly && (perr != nil || l == node.PrivacyCloud) {
+			refused++
+		}
 	}
-	if localOnly && (perr != nil || lvl == node.PrivacyCloud) {
-		return pureFail(core.Errorf(core.CodePrivacyViolation, "model %q is not local under a local-only ceiling", model).
+	if refused == len(models) {
+		what := fmt.Sprintf("model %q is not local", models[0])
+		if listed {
+			what = "no model of the list is local"
+		}
+		return pureFail(core.Errorf(core.CodePrivacyViolation, "%s under a local-only ceiling", what).
 			WithSuggestion("name a local model (ollama://<model>, a local scheme://host:port/<model>), list the host in privacy.local_hosts, or set privacy: cloud-allowed")), nil
 	}
 	if g == nil {
@@ -103,8 +139,13 @@ func generate(ctx context.Context, g Generator, src PromptSource, local *node.Lo
 		return failOf(err, core.Cost{})
 	}
 	req := GenerateRequest{
-		Prompt: p, Context: ctxIn, Model: model, LocalOnly: localOnly,
-		Level: lvl, Tenant: inv.Tenant, Profile: inv.RunAs,
+		Prompt: p, Context: ctxIn, LocalOnly: localOnly,
+		Level: lvl, Tenant: inv.Tenant, Profile: inv.RunAs, RunID: string(inv.Run.ID),
+	}
+	if listed {
+		req.Models = models
+	} else {
+		req.Model = models[0]
 	}
 	req.Schema, _ = inv.In["schema"].(map[string]any)
 
@@ -126,6 +167,9 @@ func generate(ctx context.Context, g Generator, src PromptSource, local *node.Lo
 				Err: core.Errorf(core.CodeOutputInvalid, "a schema was given and the generator returned no data")}, nil
 		}
 		out["data"] = got.Data
+	}
+	if got.Model != "" {
+		out["model"] = got.Model
 	}
 	res := pureOK(out)
 	res.Cost = cost

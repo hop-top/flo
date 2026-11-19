@@ -30,7 +30,24 @@ import (
 
 // triageEnv is an env with the inbox pack installed, its wrappers and the fake
 // inbox on the PATH of the fakes, and the grants of the flow's profile.
+//
+// The judge is a fake model: an httptest server that speaks ollama's API and
+// answers by the subject of the message (fakeTriageModel). The flow's model is
+// pointed at it in the copy of the bundle that the test activates; nothing
+// reaches a real model.
 func triageEnv(t *testing.T, extra ...string) *env {
+	t.Helper()
+	srv := fakeTriageModel(t)
+	// jev is allowed on purpose: only the local-only ceiling keeps mail from it
+	extra = append([]string{"FLO_AI_CLASSIFIER=judge", "FLO_AI_MODELS_ALLOW=ollama://" + srv.host + "/qwen3*,jev"}, extra...)
+	e := triageEnvWith(t, extra...)
+	e.model = srv
+	return e
+}
+
+// triageEnvWith is triageEnv without the fake model: the judge is whatever the
+// extra settings name (the recording of the shipped flow asks a real model).
+func triageEnvWith(t *testing.T, extra ...string) *env {
 	t.Helper()
 	needJQ(t)
 	e := newEnv(t, extra...)
@@ -87,6 +104,30 @@ func triageBundle(t *testing.T) string {
 // activation gate wants a passing test of that version) and activates it.
 func (e *env) triageActive() {
 	e.t.Helper()
+	if e.model != nil {
+		// the model is the fake one: record a passing test of this copy
+		// (the committed recording holds a real model's answers and is
+		// bound to the committed bundle)
+		// on the default scenario: what the test set up (flags, trust) is put
+		// back after
+		held := filepath.Join(e.t.TempDir(), "inbox")
+		state := filepath.Join(e.scratch, "inbox")
+		if exists(state) {
+			if err := os.Rename(state, held); err != nil {
+				e.t.Fatal(err)
+			}
+		}
+		bundle := e.model.bundle(e.t)
+		e.ok("flow", "apply", "-f", bundle, "--yes")
+		e.recordTest("inbox-triage")
+		if exists(held) {
+			if err := os.Rename(held, state); err != nil {
+				e.t.Fatal(err)
+			}
+		}
+		e.ok("flow", "set", "inbox-triage", "--state", "active", "--yes")
+		return
+	}
 	e.ok("flow", "apply", "-f", triageBundle(e.t), "--yes")
 	if res, r := e.flowTest("inbox-triage"); r.Exit != 0 || !res.Passed {
 		e.t.Fatalf("replay of the recording: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
@@ -179,6 +220,9 @@ type triageApproval struct {
 		Class   []string `json:"class"`
 		Verdict string   `json:"verdict"`
 		By      string   `json:"by"`
+		// the operation a person approves, and its request digest
+		Capability string `json:"capability"`
+		Digest     string `json:"digest"`
 	} `json:"items"`
 }
 
@@ -251,11 +295,13 @@ func TestInboxPackDeclaresHonestEffects(t *testing.T) {
 		byType[n.Node] = n
 	}
 	want := map[string]node.SideEffect{
-		"inbox/fetch@1":  node.SideEffectWriteLocal,
-		"inbox/decide@1": node.SideEffectWriteLocal,
-		"inbox/plan@1":   node.SideEffectWriteLocal,
-		"inbox/apply@1":  node.SideEffectIrreversible,
-		"inbox/lanes@1":  node.SideEffectIrreversible,
+		"inbox/fetch@1":     node.SideEffectWriteLocal,
+		"inbox/decide@1":    node.SideEffectWriteLocal,
+		"inbox/rows@1":      node.SideEffectRead,
+		"inbox/decisions@1": node.SideEffectWriteLocal,
+		"inbox/plan@1":      node.SideEffectWriteLocal,
+		"inbox/apply@1":     node.SideEffectIrreversible,
+		"inbox/lanes@1":     node.SideEffectIrreversible,
 	}
 	for ref, se := range want {
 		n := byType[ref]
@@ -287,7 +333,8 @@ func TestInboxPackDeclaresHonestEffects(t *testing.T) {
 // without the script, its wrappers or a process of any kind, and the version
 // can be activated.
 func TestInboxTriageReplaysOffline(t *testing.T) {
-	e := newEnv(t)
+	// the judge's answers are in the cassettes: no model on the machine
+	e := newEnv(t, "FLO_AI_CLASSIFIER=judge", "FLO_AI_MODELS_ALLOW=ollama://qwen3*")
 	e.installRepoPack("inbox")
 	e.grantMail()
 	// the harness's toy inbox is the only inbox on the PATH: take it away too
@@ -300,10 +347,13 @@ func TestInboxTriageReplaysOffline(t *testing.T) {
 	if r.Exit != 0 || !res.Passed {
 		t.Fatalf("replay: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
-	if res.Mode != "replay" || res.Calls != 3 || res.Replayed != 3 {
+	// 4 script calls (fetch, rows, decisions, plan), the daemon's model list
+	// (asked once per classify step: the two run side by side and may both
+	// ask) and 8 model answers: two questions for each of four messages
+	if res.Mode != "replay" || res.Calls < 13 || res.Calls > 14 || res.Replayed != res.Calls {
 		t.Errorf("replay made %d calls, %d from cassettes (mode %s)", res.Calls, res.Replayed, res.Mode)
 	}
-	if res.Expected != 5 || res.Held != res.Expected {
+	if res.Expected != 8 || res.Held != res.Expected {
 		t.Errorf("expectations held %d of %d", res.Held, res.Expected)
 	}
 	planned := map[string]bool{}
@@ -337,8 +387,9 @@ func TestInboxTriageParksAndApplies(t *testing.T) {
 	defer eng.stop()
 
 	c, av := e.startTriage()
-	// fetch, decide and plan ran; nothing was applied, no lane ran
-	if got := []int{len(e.inboxCalls("fetch")), len(e.inboxCalls("decide")), len(e.inboxCalls("plan"))}; !slices.Equal(got, []int{1, 1, 1}) {
+	// fetch and plan ran, the script's own decider did not (the judge is a
+	// step of the flow); nothing was applied, no lane ran
+	if got := []int{len(e.inboxCalls("fetch")), len(e.inboxCalls("decide")), len(e.inboxCalls("plan"))}; !slices.Equal(got, []int{1, 0, 1}) {
 		t.Fatalf("fetch, decide, plan calls: %v\n%v", got, e.inboxLog())
 	}
 	if len(e.inboxCalls("apply"))+len(e.inboxCalls("lanes"))+len(e.inboxCalls("approve")) != 0 || len(e.applied()) != 0 {
@@ -352,6 +403,24 @@ func TestInboxTriageParksAndApplies(t *testing.T) {
 	}
 	if a := e.inboxCalls("plan"); len(a) != 1 {
 		t.Errorf("plan calls: %v", a)
+	}
+
+	// every item names the operation it approves (a reply is mail.send, the
+	// rest mail.write), so the engine holds a proposal with a request digest
+	// for it; the digests differ per message
+	digests := map[string]bool{}
+	for _, it := range av.Items {
+		want := "mail.write"
+		if it.ID == m3 {
+			want = "mail.send"
+		}
+		if it.Capability != want || it.Digest == "" {
+			t.Errorf("item %s: capability %q, digest %q, want %s and a digest", it.ID, it.Capability, it.Digest, want)
+		}
+		digests[it.Digest] = true
+	}
+	if len(digests) != len(av.Items) {
+		t.Errorf("two items share a request digest: %+v", av.Items)
 	}
 
 	// the approval holds every item apply would touch; trust decided the
@@ -571,7 +640,7 @@ func TestInboxTriagePartialExit3(t *testing.T) {
 		if st, _ := v.step("fetch"); st != "failed" {
 			t.Errorf("fetch is %s", st)
 		}
-		for _, s := range []string{"decide", "plan", "approve", "apply"} {
+		for _, s := range []string{"rows", "label", "weigh", "decisions", "plan", "approve", "apply"} {
 			if st, reason := v.step(s); st != "skipped" || reason != "upstream_failed" {
 				t.Errorf("%s: %s %s", s, st, reason)
 			}
@@ -784,7 +853,7 @@ func TestRecordInboxTriage(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(fixed) })
-	e := triageEnv(t, "FLO_E2E_DIR="+fixed)
+	e := triageEnvWith(t, "FLO_E2E_DIR="+fixed, "FLO_AI_CLASSIFIER=judge", "FLO_AI_MODELS_ALLOW=ollama://qwen3*")
 	bundle := triageBundle(t)
 	if err := os.RemoveAll(filepath.Join(bundle, "record")); err != nil {
 		t.Fatal(err)

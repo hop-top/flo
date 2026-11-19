@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 413772b1
+recorded_at: "2026-11-19T04:24:08Z"
+payload:
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T04:24:08.854626Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.9, \"value\": \"routine\", \"why\": \"The release contains only bug fixes, such as correcting table cell positioning and column ellipsis behavior, which are typical maintenance updates without introducing breaking changes or security vulnerabilities.\"}}"},"done":true,"done_reason":"stop","total_duration":4417273000,"load_duration":1986291,"prompt_eval_count":425,"prompt_eval_cached_count":293,"prompt_eval_duration":151640000,"eval_count":55,"eval_duration":1053715999}'
+    headers:
+        Content-Type: application/json; charset=utf-8
+    status: 200

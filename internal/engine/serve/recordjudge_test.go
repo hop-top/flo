@@ -53,7 +53,7 @@ func judgeRun(t *testing.T, net *judgeNet, engine string) (*rig, core.Run) {
 	t.Helper()
 	root := t.TempDir()
 	e, err := serve.Open(bg, serve.Config{
-		Root: root, Owner: "jad", NoSync: true, HTTP: net, Classifier: "judge", JudgeEngine: engine, Jev: fakeJev, Secrets: echoStore{},
+		Root: root, Owner: "jad", NoSync: true, HTTP: net, Classifier: "judge", JudgeEngine: engine, Jev: fakeJev, Secrets: echoStore{}, ModelsAllow: []string{"*"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestARecordedJudgeRunReplaysFromItsTape(t *testing.T) {
 
 // fakeJev stands in for kit's Jev judge: it posts the case to Jev's endpoint
 // with the key and reads the System One reply for the question "label".
-func fakeJev(key string, rt http.RoundTripper) (judge.Judge, error) {
+func fakeJev(key, _ string, rt http.RoundTripper) (judge.Judge, error) {
 	return fakeJevJudge{key, rt}, nil
 }
 

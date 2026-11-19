@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 795e6dda
+recorded_at: "2026-11-19T04:24:09Z"
+payload:
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T04:24:09.990304Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"routine\", \"why\": \"The release contains only bug fixes, such as fixing how boolean flags are emitted, which does not introduce breaking changes or security vulnerabilities. This is a typical routine update for a stable beta version.\"}}"},"done":true,"done_reason":"stop","total_duration":4512918250,"load_duration":908000,"prompt_eval_count":425,"prompt_eval_cached_count":293,"prompt_eval_duration":179492000,"eval_count":62,"eval_duration":921057000}'
+    headers:
+        Content-Type: application/json; charset=utf-8
+    status: 200

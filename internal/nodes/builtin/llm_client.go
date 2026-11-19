@@ -44,14 +44,19 @@ type LLMDeps struct {
 	JudgeEngine string
 	// Jev builds the Jev judge (kit go/ai/judge/jev) from the OpenRouter key
 	// and the transport of the invocation; the key is for Jev's default
-	// endpoint only. Nil is a build without Jev: engine jev fails
-	// engine_feature and auto never falls back to it.
+	// endpoint only. Nil is a build without Jev: a Jev model is unusable
+	// (engine_feature) and auto never falls back to it.
 	Jev JevFactory
+	// Allow is the model allow-list (`ai.models.allow`) and Deny the deny-list
+	// (`ai.models.deny`): model patterns (see ModelPermitted). Deny wins; with
+	// neither set every model is permitted, with only Allow the listed ones.
+	Allow, Deny []string
 }
 
-// JevFactory builds a Jev judge that sends key to Jev's own endpoint over rt
-// (nil is the process default transport) and reads no environment or file.
-type JevFactory func(key string, rt http.RoundTripper) (judge.Judge, error)
+// JevFactory builds a Jev judge of the named model (empty is the default one)
+// that sends key to Jev's own endpoint over rt (nil is the process default
+// transport) and reads no environment or file.
+type JevFactory func(key, model string, rt http.RoundTripper) (judge.Judge, error)
 
 // SecretNameOf is the secret that holds the API key of a model scheme, read
 // from the secret store as the profile the step acts as: anthropic_api_key
@@ -61,7 +66,12 @@ func SecretNameOf(scheme string) string { return scheme + "_api_key" }
 // modelClients builds the model client of one invocation. The client is
 // hermetic (no environment variable, no llm.yaml), runs over the engine's
 // HTTP seam and, under a local-only ceiling, is local-only as well.
-type modelClients struct{ d LLMDeps }
+type modelClients struct {
+	d     LLMDeps
+	local *node.LocalHosts
+	// probes remembers what the local daemon listed, per run.
+	probes probeCache
+}
 
 // newModelClients checks d. A privacy.local_hosts entry kit cannot read is a
 // usage error here, not at the first call.
@@ -72,7 +82,17 @@ func newModelClients(d LLMDeps) (*modelClients, error) {
 	if _, err := llm.Resolve("ollama://probe", llm.Hermetic(), llm.LocalOnly(llm.AllowHosts(d.LocalHosts...))); err != nil {
 		return nil, core.Errorf(core.CodeUsage, "privacy.local_hosts: %v", err)
 	}
-	return &modelClients{d}, nil
+	if err := ValidateModelPatterns(d.Allow); err != nil {
+		return nil, prefixed("ai.models.allow", err)
+	}
+	if err := ValidateDenyPatterns(d.Deny); err != nil {
+		return nil, prefixed("ai.models.deny", err)
+	}
+	local, err := node.NewLocalHosts(d.LocalHosts)
+	if err != nil {
+		return nil, core.Wrap(core.CodeUsage, err)
+	}
+	return &modelClients{d: d, local: local}, nil
 }
 
 // open resolves the client of model. level is the model's privacy level as
@@ -225,4 +245,13 @@ func upstreamErr(err error) error {
 		e = e.WithTransience(core.TransienceTransient)
 	}
 	return e
+}
+
+// prefixed puts the setting a malformed list came from before its error.
+func prefixed(setting string, err error) error {
+	var ce *core.Error
+	if errors.As(err, &ce) {
+		return core.Errorf(core.CodeUsage, "%s: %s", setting, ce.Message).WithSuggestion(ce.Suggestion)
+	}
+	return err
 }

@@ -1,0 +1,186 @@
+{
+ "run": "20261118-090001",
+ "rows": [
+  {
+   "n": 1,
+   "account": "acme",
+   "id": "101",
+   "message_id": "<s1@example.org>",
+   "date": "2026-11-18T08:41:00-05:00",
+   "from": {
+    "name": "Weekly",
+    "email": "news@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Weekly digest",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "newsletters",
+   "history": 12,
+   "prior": []
+  },
+  {
+   "n": 2,
+   "account": "acme",
+   "id": "102",
+   "message_id": "<s2@example.org>",
+   "date": "2026-11-18T08:42:00-05:00",
+   "from": {
+    "name": "Billing",
+    "email": "billing@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Invoice 2291",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "finance",
+   "history": 3,
+   "prior": []
+  },
+  {
+   "n": 3,
+   "account": "acme",
+   "id": "103",
+   "message_id": "<s3@example.org>",
+   "date": "2026-11-18T08:43:00-05:00",
+   "from": {
+    "name": "Sam",
+    "email": "sam@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Lunch on Friday?",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "people",
+   "history": 1,
+   "prior": []
+  },
+  {
+   "n": 4,
+   "account": "acme",
+   "id": "104",
+   "message_id": "<s4@example.org>",
+   "date": "2026-11-18T08:44:00-05:00",
+   "from": {
+    "name": "Legal",
+    "email": "legal@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Contract renewal",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "legal",
+   "history": 2,
+   "prior": []
+  },
+  {
+   "n": 5,
+   "account": "acme",
+   "id": "105",
+   "message_id": "<s5@example.org>",
+   "date": "2026-11-18T08:45:00-05:00",
+   "from": {
+    "name": "Shop",
+    "email": "orders@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Your order has shipped",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "shopping",
+   "history": 5,
+   "prior": []
+  },
+  {
+   "n": 6,
+   "account": "acme",
+   "id": "106",
+   "message_id": "<s6@example.org>",
+   "date": "2026-11-18T08:46:00-05:00",
+   "from": {
+    "name": "Alerts",
+    "email": "alerts@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Security alert",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "notifications",
+   "history": 40,
+   "prior": []
+  },
+  {
+   "n": 7,
+   "account": "acme",
+   "id": "107",
+   "message_id": "<s7@example.org>",
+   "date": "2026-11-18T08:47:00-05:00",
+   "from": {
+    "name": "Finance Team",
+    "email": "fin@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Quarterly numbers",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "finance",
+   "history": 7,
+   "prior": []
+  },
+  {
+   "n": 8,
+   "account": "acme",
+   "id": "108",
+   "message_id": "<s8@example.org>",
+   "date": "2026-11-18T08:48:00-05:00",
+   "from": {
+    "name": "Pat",
+    "email": "pat@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Re: kickoff",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "projects",
+   "history": 9,
+   "prior": []
+  },
+  {
+   "n": 9,
+   "account": "acme",
+   "id": "109",
+   "message_id": "<s9@example.org>",
+   "date": "2026-11-18T08:49:00-05:00",
+   "from": {
+    "name": "Kim",
+    "email": "kim@example.org"
+   },
+   "to": [
+    "me@example.org"
+   ],
+   "subject": "Answered already",
+   "flags": [],
+   "has_attachment": false,
+   "folder": "people",
+   "history": 4,
+   "prior": [],
+   "manual_reply": "2026-11-18T08:00:00-05:00"
+  }
+ ]
+}

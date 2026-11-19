@@ -1,0 +1,61 @@
+{
+ "version": 1,
+ "decisions": [
+  {
+   "n": 1,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label Subscriptions conf 0.97, importance 0.10, noul 0.05"
+  },
+  {
+   "n": 2,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label Finance conf 0.95, importance 0.78, noul 0.20"
+  },
+  {
+   "n": 3,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label People conf 0.93, importance 0.55, noul 0.30"
+  },
+  {
+   "n": 4,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: needs_jad noul 0.80, importance 0.85"
+  },
+  {
+   "n": 5,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label Reference conf 0.91, importance 0.20, noul 0.10"
+  },
+  {
+   "n": 6,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label Needs Review conf 0.40, importance 0.30, noul 0.20"
+  },
+  {
+   "n": 7,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label Finance conf 0.92, importance 0.70, noul 0.25"
+  },
+  {
+   "n": 8,
+   "actions": [
+    "archive"
+   ],
+   "why": "Jev: label Projects conf 0.94, importance 0.65, noul 0.30"
+  }
+ ]
+}

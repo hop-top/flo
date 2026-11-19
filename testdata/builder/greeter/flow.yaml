@@ -1,0 +1,12 @@
+flow: greeter
+version: 0.1.0
+description: Publish one greeting.
+privacy: local-only
+tasks: none
+steps:
+  - id: hello
+    uses: flo/output@1
+    with:
+      kind: findings
+      title: hello
+      items: []

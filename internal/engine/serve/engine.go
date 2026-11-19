@@ -16,6 +16,7 @@ import (
 	"hop.top/flo/internal/approvals"
 	"hop.top/flo/internal/bos"
 	"hop.top/flo/internal/brief"
+	"hop.top/flo/internal/builder"
 	"hop.top/flo/internal/check/eva"
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/run"
@@ -59,10 +60,14 @@ type Engine struct {
 	TestResults *flowtest.Store
 	// Recordings keeps the recordings of runs started with --record.
 	Recordings *runrec.Store
+	// Drafts keeps the drafts of the chat builder.
+	DraftStore *builder.Store
 
-	dispDeps dispatch.Deps // what a recording dispatcher is rebuilt from
-	liveExec sideeffect.Exec
-	liveHTTP sideeffect.HTTP
+	builderGen builtin.Generator // the llm backend the chat builder calls
+	localHosts *node.LocalHosts
+	dispDeps   dispatch.Deps // what a recording dispatcher is rebuilt from
+	liveExec   sideeffect.Exec
+	liveHTTP   sideeffect.HTTP
 	// secretLog remembers the secrets nodes resolved, for a recording to scrub.
 	secretLog *secretLog
 }
@@ -139,7 +144,7 @@ func (e *Engine) wire() error {
 	if err := builtin.RegisterStd(builtins, builtin.Deps{Outputs: st.Outputs, IDs: ids, Clock: cfg.Clock}); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
-	modelDeps := builtin.LLMDeps{HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts, JudgeEngine: cfg.JudgeEngine, Jev: cfg.Jev}
+	modelDeps := builtin.LLMDeps{HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts, JudgeEngine: cfg.JudgeEngine, Jev: cfg.Jev, Allow: cfg.ModelsAllow, Deny: cfg.ModelsDeny}
 	classifier, err := builtin.ClassifierFor(cfg.Classifier, modelDeps)
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error
@@ -155,6 +160,11 @@ func (e *Engine) wire() error {
 	if err != nil {
 		return core.Wrap(core.CodeUsage, err)
 	}
+	// The chat builder always calls the llm backend, whatever ai.generator says.
+	if e.builderGen, err = builtin.NewLLMGenerator(modelDeps); err != nil {
+		return err //nolint:wrapcheck // *core.Error
+	}
+	e.localHosts = localHosts
 	if err := builtin.RegisterGenerate(builtins, generator, packs.Prompts(), localHosts); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
@@ -210,6 +220,7 @@ func (e *Engine) wire() error {
 
 	e.TestResults = flowtest.NewStore(e.Store.Registry().Dir)
 	e.Recordings = runrec.NewStore(e.Store.Registry().RunsDir)
+	e.DraftStore = builder.NewStore(e.Store.Registry().Dir)
 	gate := &testedGate{results: e.TestResults}
 	e.Services = &core.Services{
 		Clock: cfg.Clock, IDs: ids,

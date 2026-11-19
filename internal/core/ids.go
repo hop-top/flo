@@ -34,6 +34,7 @@ const (
 	PrefixOutput   = "out"
 	PrefixTrigger  = "trg"
 	PrefixJob      = "job"
+	PrefixDraft    = "drf"
 )
 
 // IDs mints identifiers. It is a port so tests get deterministic ones.

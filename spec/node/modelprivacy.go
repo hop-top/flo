@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// ModelJev is the shorthand of a model list for TypeSafe's default Jev model
+// (jev://typesafe/jev-1.14): a hosted judge model, so cloud.
+const ModelJev = "jev"
+
 // ErrNotModelURI is returned for a string that is not scheme://....
 var ErrNotModelURI = errors.New("not a model URI")
 
@@ -35,8 +39,12 @@ const runnableHint = "write ollama://<model> for the local daemon or scheme://ho
 // an empty authority (ollama:///x), a unix socket, a portless host
 // (ollama://localhost/x reads there as the model "localhost/x" on the
 // scheme's default endpoint), and a non-numeric port. A string without
-// scheme:// returns ErrNotModelURI. A nil local lists nothing.
+// scheme:// returns ErrNotModelURI, except the shorthand `jev` (cloud). A nil
+// local lists nothing.
 func ModelPrivacy(model string, local *LocalHosts) (Privacy, error) {
+	if model == ModelJev {
+		return PrivacyCloud, nil
+	}
 	scheme, rest, ok := strings.Cut(model, "://")
 	if !ok || scheme == "" {
 		return "", ErrNotModelURI

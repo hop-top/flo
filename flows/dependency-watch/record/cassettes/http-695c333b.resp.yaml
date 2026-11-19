@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 695c333b
+recorded_at: "2026-11-19T04:24:10Z"
+payload:
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T04:24:10.991688Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"routine\", \"why\": \"The release is a version update without any indication of breaking changes or security vulnerabilities, and it is part of a regular update cycle used by multiple teams.\"}}"},"done":true,"done_reason":"stop","total_duration":4447120334,"load_duration":1866209,"prompt_eval_count":322,"prompt_eval_cached_count":198,"prompt_eval_duration":112726000,"eval_count":54,"eval_duration":863270000}'
+    headers:
+        Content-Type: application/json; charset=utf-8
+    status: 200

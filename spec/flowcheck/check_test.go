@@ -34,8 +34,10 @@ kind: builtin
 inputs:
   items: { type: array, required: true }
   labels: { type: array, required: true }
-  model: { type: string, required: true }
+  model: { type: [string, array], items: { type: string } }
   instructions: { type: string }
+  abstain: { type: boolean }
+  engine: { type: string, enum: [local, jev, auto] }
 outputs: { schema: { type: object } }
 capabilities: []
 side_effect: none
@@ -46,7 +48,7 @@ kind: builtin
 inputs:
   prompt: { type: string, required: true }
   context: { type: object }
-  model: { type: string, required: true }
+  model: { type: [string, array], items: { type: string }, required: true }
 outputs: { schema: { type: object } }
 capabilities: []
 side_effect: none
@@ -153,11 +155,50 @@ func opts(t *testing.T) Options {
 	return Options{Nodes: testLocator(t, nil), AllowAgent: true, AllowSubFlow: true}
 }
 
+// The nodes of inbox-triage's judgment (packs/inbox/nodes/rows.yaml and
+// decisions.yaml, reduced to what the flow check reads).
+var inboxJudgeNodes = map[string]string{
+	"inbox_rows_1.yaml": `node: inbox/rows@1
+kind: command
+lowers_to: engine
+argv: [inbox-rows, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
+inputs: { run_dir: { type: string, required: true } }
+outputs: { from: "file:out.json", format: json, schema: { type: object } }
+side_effect: read
+privacy: local
+capabilities: [mail.read]
+timeout: 60s
+`,
+	"inbox_decisions_1.yaml": `node: inbox/decisions@1
+kind: command
+lowers_to: engine
+argv: [inbox-decisions, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
+stdin: { json: "{{ in.labels }}" }
+inputs:
+  run_dir: { type: string, required: true }
+  labels: { type: array, required: true }
+  weights: { type: array, required: true }
+  sop_labels: { type: array, required: true }
+  engine: { type: [string, 'null'], default: null }
+  model: { type: [string, 'null'], default: null }
+outputs: { from: "file:out.json", format: json, schema: { type: object } }
+side_effect: write-local
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 60s
+`,
+}
+
 // The three worked flows agree with their node specs.
 func TestExampleFlowsClean(t *testing.T) {
 	for _, name := range []string{"dependency-watch", "meeting-brief", "inbox-triage"} {
 		t.Run(name, func(t *testing.T) {
-			if r := Check(exampleFlow(t, name), opts(t)); len(r) > 0 {
+			o := opts(t)
+			if name == "inbox-triage" {
+				o.Nodes = testLocator(t, inboxJudgeNodes)
+			}
+			if r := Check(exampleFlow(t, name), o); len(r) > 0 {
 				t.Errorf("%v", r)
 			}
 		})
@@ -197,6 +238,14 @@ func TestRules(t *testing.T) {
 			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://localhost/llama3.1' } }\n", false, "scheme://host:port/<model>"},
 		{"V19 unix socket is not runnable, even under cloud-allowed", "V19", CodePrivacyViolation,
 			head + "privacy: cloud-allowed\nsteps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://unix:/run/ollama.sock' } }\n", false, "unix socket"},
+		{"V19 a list of hosted models under local-only", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: ['anthropic://claude', 'openai://gpt-5'] } }\n", false, "is cloud"},
+		{"V19 jev alone under local-only", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: c, uses: flo/ai.classify@1, with: { items: [], labels: [a, b], model: [jev] } }\n", false, "is cloud"},
+		{"V19 a list with an entry that is not runnable", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: ['ollama://gemma', 'ollama:///x'] } }\n", false, "ollama://<model>"},
+		{"V11 a list of non-strings", "V11", CodeInvalidFlow,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: [1, 2] } }\n", false, "want string"},
 		{"V20 irreversible, no approval", "V20", CodeUnguardedIrreversible,
 			head + "privacy: local-only\nsteps:\n  - { id: f, uses: inbox/fetch@1 }\n  - { id: a, uses: inbox/apply@1, depends_on: [f], with: { run: x } }\n", false, ""},
 		{"V20 an exec step does not guard", "V20", CodeUnguardedIrreversible,
@@ -247,15 +296,17 @@ func TestLegalVariants(t *testing.T) {
 		"guard through results edge": head + "steps:\n" +
 			"  - { id: ap, uses: flo/approval@1, with: { items: [] } }\n" +
 			"  - { id: a, uses: inbox/apply@1, with: { run: \"{{ results.ap.approved }}\" } }\n",
-		"local model under local-only":        head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma' } }\n",
-		"ollama on a private host":            head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://10.0.0.4:11434/gemma' } }\n",
-		"ollama default daemon, tagged model": head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma4:e4b' } }\n",
-		"ollama dotted model":                 head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://llama3.1' } }\n",
-		"lmstudio default is localhost":       head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'lmstudio://qwen' } }\n",
-		"base_url to localhost":               head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://m?base_url=http://localhost:8000/v1' } }\n",
-		"private-network openai":              head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://192.168.1.5:8080/m' } }\n",
-		"retry on an idempotent node":         head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, retry: { max_attempts: 3 } }\n",
-		"narrowing step privacy":              head + "privacy: cloud-allowed\nsteps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, privacy: local-only }\n",
+		"local model under local-only":               head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma' } }\n",
+		"ollama on a private host":                   head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://10.0.0.4:11434/gemma' } }\n",
+		"ollama default daemon, tagged model":        head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma4:e4b' } }\n",
+		"ollama dotted model":                        head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://llama3.1' } }\n",
+		"a list with a local model under local-only": head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: ['anthropic://claude', 'ollama://gemma'] } }\n",
+		"local then jev under local-only":            head + "steps:\n  - { id: c, uses: flo/ai.classify@1, with: { items: [], labels: [a, b], model: ['ollama://gemma', jev] } }\n",
+		"lmstudio default is localhost":              head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'lmstudio://qwen' } }\n",
+		"base_url to localhost":                      head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://m?base_url=http://localhost:8000/v1' } }\n",
+		"private-network openai":                     head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://192.168.1.5:8080/m' } }\n",
+		"retry on an idempotent node":                head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, retry: { max_attempts: 3 } }\n",
+		"narrowing step privacy":                     head + "privacy: cloud-allowed\nsteps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, privacy: local-only }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {

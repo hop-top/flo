@@ -1,17 +1,21 @@
 pack: inbox
 version: 0.1.0
-description: "Mail triage through the inbox script: fetch, decide, plan, apply, and the trust it keeps."
+description: "Mail triage through the inbox script: fetch, rows, decisions, plan, apply, and the trust it keeps."
 requires: { flo: ">=0.1" }
 # The nodes run `inbox` (and the wrappers in wrappers/) as
 # `aps run <profile> -- <argv>`: put `inbox` and that directory on the PATH of
 # the profile, and give the profile the script's credentials and its home and
 # run directories (INBOX_HOME, INBOX_RUNS). The trust provider runs on the
 # engine's own PATH and environment, which must name the same directories.
-# The wrappers need jq.
+# The wrappers need jq. inbox/rows@1 and inbox/decisions@1 only read and write
+# a run's files and ask no model: the judgment between them is a step of the
+# flow (flo/ai.classify@1); inbox/decide@1 is the script's own hosted decider.
 nodes:
   - nodes/fetch.yaml
+  - nodes/rows.yaml
   - nodes/lanes.yaml
   - nodes/decide.yaml
+  - nodes/decisions.yaml
   - nodes/plan.yaml
   - nodes/apply.yaml
 trusts: [trusts/inbox.yaml]
