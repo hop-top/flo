@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"time"
 
 	"hop.top/flo/internal/core"
 )
@@ -24,3 +25,11 @@ func ClaimAs(q *Queue, worker string) error {
 
 // PruneOnce runs one prune pass of w.
 func PruneOnce(w *Worker) { w.pruneOnce(context.Background()) }
+
+// ManualHeartbeat replaces the worker's heartbeat ticker with a channel the
+// test drives, and returns it.
+func ManualHeartbeat(w *Worker) chan<- time.Time {
+	c := make(chan time.Time)
+	w.beat = func(time.Duration) (<-chan time.Time, func()) { return c, func() {} }
+	return c
+}

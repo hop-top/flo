@@ -50,6 +50,9 @@ type Worker struct {
 
 	mu       sync.Mutex
 	handlers map[core.JobType]core.JobHandler
+
+	// beat makes the heartbeat tick source; tests swap it for a manual one.
+	beat func(every time.Duration) (ticks <-chan time.Time, stop func())
 }
 
 var _ core.JobWorker = (*Worker)(nil)
@@ -78,7 +81,7 @@ func NewWorker(q *Queue, opts WorkerOptions) *Worker {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	return &Worker{q: q, opts: opts, handlers: map[core.JobType]core.JobHandler{}}
+	return &Worker{q: q, opts: opts, handlers: map[core.JobType]core.JobHandler{}, beat: realBeat}
 }
 
 // Handle implements core.JobWorker. Register handlers before Serve.
@@ -225,6 +228,11 @@ func (w *Worker) wrap(hctx context.Context, h core.JobHandler) func(context.Cont
 	}
 }
 
+func realBeat(every time.Duration) (<-chan time.Time, func()) {
+	t := time.NewTicker(every)
+	return t.C, t.Stop
+}
+
 func (w *Worker) heartbeat(id string) (stop func()) {
 	every := w.q.ClaimTTL() / 3
 	if every <= 0 {
@@ -234,13 +242,13 @@ func (w *Worker) heartbeat(id string) (stop func()) {
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		t := time.NewTicker(every)
-		defer t.Stop()
+		ticks, stopTicks := w.beat(every)
+		defer stopTicks()
 		for {
 			select {
 			case <-done:
 				return
-			case <-t.C:
+			case <-ticks:
 				if err := w.q.eng.Heartbeat(context.Background(), id); err != nil {
 					w.opts.Logger.Warn("job heartbeat", "job", id, "error", err)
 				}

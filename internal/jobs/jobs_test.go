@@ -248,11 +248,17 @@ func TestPollersOwnWorkerIDs(t *testing.T) {
 	<-s.done
 }
 
+// The claim outlives its TTL only because the worker heartbeats: time is the
+// fake clock and the heartbeat ticks are driven by hand, so no scheduler
+// stall can move either.
 func TestLongHandlerKeepsItsClaim(t *testing.T) {
-	q := openQueue(t, filepath.Join(t.TempDir(), "jobs.db"), core.SystemClock{}, 150*time.Millisecond)
+	clock := coretest.NewClock(time.Time{})
+	const ttl = time.Minute
+	q := openQueue(t, filepath.Join(t.TempDir(), "jobs.db"), clock, ttl)
 	started, finish := make(chan struct{}), make(chan struct{})
 	var runs atomic.Int32
 	w := fastWorker(q, 2)
+	tick := jobs.ManualHeartbeat(w)
 	w.Handle(core.JobRunAdvance, func(context.Context, core.Job) error {
 		runs.Add(1)
 		close(started)
@@ -265,12 +271,15 @@ func TestLongHandlerKeepsItsClaim(t *testing.T) {
 	release := func() { once.Do(func() { close(finish) }) }
 	t.Cleanup(release) // runs before serve's, so a failed test cannot hang the drain
 	<-started
-	deadline := time.Now().Add(700 * time.Millisecond) // > 4 claim TTLs
-	for time.Now().Before(deadline) {
+	for i := 0; i < 5; i++ { // 5 * 2/3 TTL: far past the claim's first expiry
+		clock.Advance(ttl * 2 / 3)
+		// The loop takes a tick only when the previous heartbeat is done, so
+		// two sends mean the first one has landed.
+		tick <- clock.Now()
+		tick <- clock.Now()
 		if n, err := q.ReleaseStaleClaims(bg); err != nil || n != 0 {
 			t.Fatalf("claim was released while the handler ran: %d %v", n, err)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 	if i, _ := q.Get(bg, id); i.Status != core.JobActive {
 		t.Fatalf("status = %s", i.Status)
