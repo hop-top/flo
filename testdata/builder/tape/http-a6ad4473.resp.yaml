@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: a6ad4473
+recorded_at: "2026-11-19T07:29:08Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json; charset=utf-8
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T07:29:08.894454Z","message":{"role":"assistant","content":"```yaml\nflow: greeter\nversion: 0.1.1\ndescription: Publish one greeting.\nprivacy: local-only\ntasks: none\nsteps:\n  - id: hello\n    uses: flo/output@1\n    with:\n      kind: findings\n      title: greetings\n      items: []\n```"},"done":true,"done_reason":"stop","total_duration":1023476208,"load_duration":747625,"prompt_eval_count":1603,"prompt_eval_cached_count":1083,"prompt_eval_duration":420980000,"eval_count":67,"eval_duration":592945000}'

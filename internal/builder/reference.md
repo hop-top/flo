@@ -13,8 +13,8 @@ Rules
 - Every step has a unique `id` (lower case letters, digits, `-`).
 - A step that reads `results.<id>` must `depends_on` that step, or come after
   it.
-- A step that cannot be undone needs an approval step before it; keep the
-  guards the flow already has.
+- A step that cannot be undone needs a `flo/approval@1` step before it; keep
+  the guards the flow already has.
 
 Top-level keys
 - flow (string, required), version (string, required), description
@@ -36,6 +36,58 @@ Expressions
 - `"{{ expr }}"` is CEL. A string that is exactly one placeholder keeps its type.
 - Namespaces: vars.x, state.x, trigger.x, results.<step-id>, item, index, result (in outputs).
 - Example: `items: "{{ results.fetch.items }}"`, `when: "{{ size(results.a.items) > 0 }}"`.
+
+Approvals: a step that parks the run until a person decides
+- Whole step, one yes/no (a release, a sign-off): `kind: human`. Optional
+  `title`, `human: { assignee: "@lead", timeout: 48h, on_timeout: reject }`.
+  Output `results.<id>.decision` is `approved` or `rejected`.
+  Later steps `depends_on` it.
+- Per item (each message, change or record to approve): `uses: flo/approval@1`.
+  `items` (required) is a list of `{id, action, why}` maps, `id` stable. Optional
+  `title`, `surface: tlc|none`, `verdicts`, `timeout`. Output lists
+  `results.<id>.approved`, `.rejected`, `.corrected`, `.auto`: act only on
+  `approved` and `auto`.
+- Use `flo/approval@1` before an irreversible step; `kind: human` does not guard it.
+```yaml
+  - id: signoff
+    kind: human
+    title: Approve the release
+    depends_on: [build]
+  - id: approve
+    uses: flo/approval@1
+    with:
+      title: Approve archiving
+      items: "{{ results.list.messages.map(m, {'id': m.id, 'action': 'archive ' + m.subject, 'why': m.from}) }}"
+  - id: report
+    uses: flo/output@1
+    with:
+      kind: findings
+      title: archived
+      items: "{{ results.approve.approved }}"
+```
+
+Classify: `uses: flo/ai.classify@1`, one label per item
+- `items` (required): list of maps, e.g. `"{{ results.keep.items }}"`; `labels`
+  (required): the closed list of label strings. Optional `instructions` (guidance),
+  `abstain`. `model: ollama://<name>` keeps it local; without one it is a cloud
+  call, invalid under `privacy: local-only` (the default).
+- Output `results.<id>.items`: one `{item, label, confidence, why}` per input,
+  in order. Read the label as `r.label` and the original as `r.item`.
+```yaml
+  - id: rate
+    uses: flo/ai.classify@1
+    depends_on: [keep]
+    with:
+      items: "{{ results.keep.items }}"
+      labels: [must-read, skip]
+      model: ollama://qwen3:4b-instruct-2507-q4_K_M
+      instructions: Must-read means it affects our work.
+  - id: picks
+    uses: flo/filter@1
+    with:
+      items: "{{ results.rate.items }}"
+      where: "{{ item.label == 'must-read' }}"
+```
 
 Example
 ```yaml
