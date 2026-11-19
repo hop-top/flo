@@ -1,0 +1,60 @@
+node: inbox/decisions@1
+kind: command
+lowers_to: engine               # needs stdin
+description: >-
+  Write the run's decisions file from a model's verdicts: the script's own
+  decider policy (a label under the confidence floor is Needs Review, an
+  abstention stays in the inbox for a person, quiet mail is also read and
+  archived), without asking any model. Never trashes, replies or unsubscribes.
+# The policy is the script's decider (`inbox decide`), applied to verdicts the
+# flow got from flo/ai.classify@1 instead of from the script's hosted decider.
+# inbox-decisions (wrappers/) writes decisions.json, the input of `inbox plan`,
+# and keeps one that exists. A message from what looks like a person is never
+# filed away, whatever the verdict; that check sees the address only (role names
+# and sending domains), not the script's contact cards, mutes or ruled-out
+# senders, so it can only err towards leaving mail for a person.
+argv: [inbox-decisions, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
+stdin:
+  json: >-
+    {{ {'labels': in.labels, 'weights': in.weights, 'sop_labels': in.sop_labels,
+        'hold_labels': in.hold_labels, 'quiet_weights': in.quiet_weights,
+        'min_confidence': in.min_confidence, 'engine': in.engine, 'model': in.model} }}
+inputs:
+  run_dir: { type: string, required: true }
+  labels:
+    type: array
+    required: true
+    description: "One {item, label, confidence, why} per row: the filing label (null: the judge abstained)."
+  weights:
+    type: array
+    required: true
+    description: "One {item, label} per row: how much the message matters to its owner."
+  sop_labels:  { type: array, items: { type: string }, required: true, description: The labels a row may be filed under. }
+  hold_labels: { type: array, items: { type: string }, default: [Action Required, Waiting], description: Labels that are never also archived. }
+  quiet_weights: { type: array, items: { type: string }, default: [irrelevant, low], description: Weights at which a filed message is also read and archived. }
+  min_confidence: { type: number, default: 0.9, description: A label under it is Needs Review. }
+  engine: { type: [string, 'null'], default: null, description: Which engine judged (local or jev); recorded in the why of each decision. }
+  model: { type: [string, 'null'], default: null }
+exit_codes: { ok: [0] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [run, rows, asked, answered, attention, needs_review, already_decided]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      engine: { type: [string, 'null'] }
+      model: { type: [string, 'null'] }
+      already_decided: { type: boolean }
+      rows: { type: integer }
+      asked: { type: integer }
+      answered: { type: integer }
+      attention: { type: integer }
+      needs_review: { type: integer }
+side_effect: write-local        # the run's decisions file
+idempotent: true                # an existing decisions file is kept
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

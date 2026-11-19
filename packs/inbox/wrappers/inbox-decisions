@@ -1,0 +1,102 @@
+#!/bin/sh
+# inbox-decisions --out FILE RUN_DIR < judged.json
+#
+# Turns the judge's verdicts into the run's decisions file (decisions.json),
+# the input of `inbox plan`. stdin:
+#   { labels:  [{item, label, confidence, why}],   one per row; label null = abstained
+#     weights: [{item, label}],                    how much each row matters
+#     sop_labels: [...], hold_labels: [...], quiet_weights: [...],
+#     min_confidence, engine, model }
+# The policy is the script's own decider: a label under min_confidence is
+# `Needs Review`, an abstention is left in the inbox for the owner, a row that
+# matters little (quiet_weights) and is not held (hold_labels, Needs Review)
+# is also marked read and archived. Nothing is ever trashed, replied to or
+# unsubscribed here. Mail from what looks like a person is never filed away:
+# it is left in the inbox for the owner, whatever the verdict. That check reads
+# the address alone (role names and sending domains, as the script does); the
+# script's contact cards, mutes and ruled-out senders are not visible here.
+#
+# An existing decisions file is kept, never rewritten. Writes {run, run_dir,
+# engine, model, already_decided, rows, asked, answered, attention,
+# needs_review} to FILE. Rows answered by hand (a reply in Sent) are decided
+# as read and archive, as the script does.
+command -v jq >/dev/null 2>&1 || { echo "inbox-decisions: jq is required" >&2; exit 69; }
+
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "inbox-decisions: unknown flag $1" >&2; exit 64 ;;
+    *) break ;;
+  esac
+done
+[ -n "$out" ] && [ $# -eq 1 ] || { echo "usage: inbox-decisions --out FILE RUN_DIR < judged.json" >&2; exit 64; }
+rd=$1
+[ -f "$rd/snapshot.json" ] || { echo "inbox-decisions: no snapshot at $rd/snapshot.json" >&2; exit 66; }
+
+judged=$(cat)
+printf '%s' "$judged" | jq -e 'type == "object" and (.labels | type == "array") and (.weights | type == "array")' >/dev/null \
+  || { echo "inbox-decisions: stdin is not {labels, weights, ...}" >&2; exit 64; }
+
+run=$(jq -r '.run' "$rd/snapshot.json")
+if [ -f "$rd/decisions.json" ]; then
+  jq -n --arg run "$run" --arg rd "$rd" --argjson n "$(jq '.decisions | length' "$rd/decisions.json")" \
+    '{run: $run, run_dir: $rd, engine: null, model: null, already_decided: true, rows: $n, asked: 0, answered: 0, attention: 0, needs_review: 0}' > "$out"
+  exit 0
+fi
+carried=/dev/null
+[ -f "$rd/carried.json" ] && carried="$rd/carried.json"
+
+built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile snap "$rd/snapshot.json" --slurpfile c "$carried" '
+  def role: "(^|[._+-])(no-?reply|do-?not-?reply|donotreply|ne-?pas-?repondre|nepasrepondre|notifications?|notify|alerts?|alerting|mailer-daemon|postmaster|bounces?|support|help|billing|invoices?|receipts?|news|newsletters?|marketing|mktg|promo|offers?|updates?|hello|hi|team|info|contact|sales|accounts?|admin|services?|security|community|digest|feedback|orders?|shipping|reply|automated|system|devops|renewals|ship|store|shop|careers|events?|webmaster|editor|staff|members?|customer|customerservice|care|rewards|announcements?|emails?|plurimail|recommendations|tracking|shipment|health|ibanking)([._+-]|$|\\d)";
+  def sending: "^(e|em|email|emails|mail|mailer|mailing|news|newsletter|notify|notifyemail|notifications?|updates|marketing|communications|creators|calendar|user|discover|info|go|reply|ib)\\.|luma-mail\\.|newsletter\\.";
+  def person($a):
+    ($a | ascii_downcase | split("@")) as $p
+    | ($p | length) == 2 and (($p[0] | test(role; "i")) | not) and (($p[1] | test(sending; "i")) | not);
+  def score: {irrelevant: 0, low: 0.25, normal: 0.5, high: 0.75, critical: 1};
+  . as $in
+  | ($in.min_confidence // 0.9) as $min
+  | ($in.sop_labels // []) as $sop
+  | ($in.hold_labels // ["Action Required", "Waiting"]) as $hold
+  | ($in.quiet_weights // ["irrelevant", "low"]) as $quiet
+  | ($in.engine // "model") as $eng
+  | ([ $in.weights[] | {key: (.item.n | tostring), value: .label} ] | from_entries) as $w
+  | ([ $in.labels[] | . as $l | $l.item as $it
+       | ($w[$it.n | tostring] // "normal") as $wt
+       | ($l.confidence // 0) as $conf
+       | (score[$wt] // 0.5) as $imp
+       | (if $l.label == null then "needs_you"
+          elif ($l.label | IN($sop[])) and $conf >= $min then "label"
+          else "needs_review" end) as $rule
+       | (if $rule == "label" then $l.label else "Needs Review" end) as $lab
+       | ([ {rule: {kind: "decider", name: $rule, text: (if $rule == "needs_you" then "the judge abstained: routine handling is not certain" elif $rule == "needs_review" then "label confidence \($conf) under \($min)" else "label \($l.label)" end)},
+             evidence: [ {kind: "model", name: "label", value: $l.label, confidence: $conf}, {kind: "model", name: "importance", score: $imp} ],
+             score: $imp} ][0]) as $fields
+       | if $rule == "needs_you" then
+           {kind: "attention", n: $it.n, actions: [ {attention: "importance \($wt); the judge could not settle routine handling, needs your judgment; left in INBOX"} ],
+            why: "Judge (\($eng)): needs_you, importance \($wt)", why_fields: $fields}
+         elif person($it.sender.address // "") then
+           {kind: "attention", n: $it.n, actions: [ {attention: "from a person, not ruled out: \($rule) \($l.label) conf \($conf), importance \($wt); left in INBOX"} ],
+            why: "Judge (\($eng)): from a person, not ruled out",
+            why_fields: ($fields | .rule = {kind: "person", name: "from a person, not ruled out", text: "a person you have not ruled out: left in INBOX for you"})}
+         else
+           {kind: $rule, n: $it.n,
+            actions: ([ {label: $lab} ] + (if ($quiet | index($wt)) != null and (($hold + ["Needs Review"]) | index($lab)) == null then ["read", "archive"] else [] end)),
+            why: ("Judge (\($eng)): \($rule) \($lab) conf \($conf), importance \($wt)" + (if ($l.why // "") != "" then " - " + $l.why else "" end)),
+            why_fields: $fields}
+         end ]) as $asked
+  | (($c[0] // []) | if type == "object" then (.decisions // []) else . end | map(select(.manual_reply != null))) as $cans
+  | ([ ($cans + [ $snap[0].rows[] | select(.manual_reply != null) ]) | unique_by(.n)[]
+       | {n, actions: ["read", "archive"], why: "answered by hand (reply in Sent \(.manual_reply | tostring | .[0:64]))"} ]) as $answered
+  | { file: { version: 1, decisions: ($answered + [ $asked[] | del(.kind) ]) },
+      summary: { run: $run, run_dir: $rd, engine: $eng, model: ($in.model // null), already_decided: false,
+                 rows: ($asked | length), asked: ($asked | length), answered: ($answered | length),
+                 attention: ([ $asked[] | select(.kind == "attention") ] | length),
+                 needs_review: ([ $asked[] | select(.kind == "needs_review") ] | length) } }
+') || { echo "inbox-decisions: cannot build the decisions" >&2; exit 70; }
+
+tmp=$(mktemp "$rd/decisions.XXXXXX") || { echo "inbox-decisions: cannot write in $rd" >&2; exit 73; }
+trap 'rm -f "$tmp"' EXIT
+printf '%s' "$built" | jq '.file' > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$rd/decisions.json" || { echo "inbox-decisions: cannot write $rd/decisions.json" >&2; exit 73; }
+printf '%s' "$built" | jq '.summary' > "$out"

@@ -18,17 +18,24 @@ outputs:
   # An approval item: its id is the message id, stable across runs (the item
   # number is only unique within one). A decision held back by a guard (a rule
   # that always asks, a reply with extra recipients) has no trust class, so
-  # trust can never approve it.
+  # trust can never approve it. Each item names the operation a person approves
+  # (`capability`, `args`: the account, item number and actions), so the engine
+  # keeps it as a proposal with a request digest; a reply or send is mail.send,
+  # everything else mail.write.
   map: >-
     {{ {'run': out.run, 'run_dir': out.run_dir, 'counts': out.counts,
         'invalid': out.items.filter(i, i.status == 'invalid'),
         'auto': out.items.filter(i, i.status == 'auto' && i.executed == null).map(i,
           {'id': i.message_id, 'n': i.n, 'action': i.keys.join(', '), 'why': i.why,
-           'class': i.keys, 'from': i.from, 'subject': i.subject, 'actions': i.actions}),
+           'class': i.keys, 'from': i.from, 'subject': i.subject, 'actions': i.actions,
+           'capability': i.keys.exists(k, k.startsWith('reply') || k.startsWith('send')) ? 'mail.send' : 'mail.write',
+           'args': {'account': i.account, 'n': i.n, 'actions': i.actions}}),
         'pending': out.items.filter(i, i.status == 'pending' && i.verdict == null).map(i,
           {'id': i.message_id, 'n': i.n, 'action': i.keys.join(', '), 'why': i.why,
            'class': i.guard == null ? i.keys : [], 'from': i.from, 'subject': i.subject,
-           'actions': i.actions, 'guard': i.guard})} }}
+           'actions': i.actions, 'guard': i.guard,
+           'capability': i.keys.exists(k, k.startsWith('reply') || k.startsWith('send')) ? 'mail.send' : 'mail.write',
+           'args': {'account': i.account, 'n': i.n, 'actions': i.actions}})} }}
   schema:
     type: object
     required: [run, run_dir, auto, invalid, pending]
