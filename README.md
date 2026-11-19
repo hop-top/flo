@@ -19,6 +19,9 @@ flo flow apply -f flows/dependency-watch --yes # new version only when content c
 flo flow test dependency-watch --record --yes --allow-live  # reads run once for real, cassettes in record/
 flo flow test dependency-watch                 # replay: offline, writes only planned
 flo flow set dependency-watch --state active --yes   # needs a passing test of this version
+flo flow draft create dependency-watch "also watch cli/cli releases"   # a model proposes the next version
+flo flow draft show <draft>                    # proposal, attempts, dry run on the last recording
+flo flow draft apply <draft> --yes             # next version, unless the flow moved: draft_stale
 flo trigger list                               # next fire of each trigger
 flo engine serve &                             # SIGTERM drains running steps
 flo run create --flow dependency-watch --wait  # 0 done, 7 awaiting approval
@@ -50,6 +53,25 @@ flo run cancel <run> --yes
   version (flow hash + bundle digest) is what activation reads
   (`flow_not_tested`, exit 2). `apply` and `test --record` ask for
   confirmation (`--yes`).
+- `flow draft`: the chat builder. `create <flow> <instruction>` (or `-`, the
+  instruction on standard input) gives a model the flow's active version (else
+  the newest) and the nodes it may use, and gets the full next version back.
+  Validation errors go back to the model up to three times, then the command
+  fails with `invalid_flow` and the last errors. The call is flo's own model
+  path: `ai.models.allow` and `deny` apply, a cloud model's key is read from the
+  secret store as the calling profile, and the flow's `privacy` ceiling holds (a `local-only` flow is
+  sent to a local model only; nothing is sent when refused). The model is
+  `--model`, else `ai.builder.model` (env `FLO_AI_BUILDER_MODEL`), else
+  `ollama://gemma4:e4b`. A valid proposal is replayed offline on the flow's
+  last recording and the outcome differences are stored with the draft (none
+  when the flow has no recording). A draft is not a version: `show`, `list`,
+  `discard` read and delete it, `apply` stores it as the next version (a draft
+  version; test and activate it as usual) only if the flow's base and newest
+  versions are those the draft was made on, else `draft_stale` (exit 4) and the
+  draft is kept. Drafts live in `<tenant dir>/drafts/<id>.json`. The recorded
+  test of a build on a local model (`internal/engine/serve`,
+  `TestDraftOnALocalModelTape`) is re-recorded with `FLO_BUILDER_RECORD=1` on a
+  host that runs ollama.
 - Identity: `FLO_PROFILE`, else `owner_profile` of the config, else `$USER`;
   tenant `FLO_TENANT`, else `tenant`, else `default`. The owner profile
   (`owner_profile`, else `$USER`) holds the wildcard grant; the engine's
@@ -81,7 +103,7 @@ flo run cancel <run> --yes
     claim_ttl: 2m
     shutdown_grace: 30s
     approval_poll: 1m
-  ai: { classifier: rules, generator: template, judge: { engine: auto } }  # FLO_AI_*
+  ai: { classifier: rules, generator: template, judge: { engine: auto }, builder: { model: "ollama://gemma4:e4b" } }  # FLO_AI_*
   eva: { url: http://127.0.0.1:9000 }             # FLO_EVA_URL
   packs:                        # config.<pack>.<key> in node specs and triggers
     ctxt: { url: http://127.0.0.1:8080 }          # FLO_PACKS_CTXT_URL

@@ -691,6 +691,41 @@ made. A recording of a flow that no longer exists keeps the default.
 Copies of a recording made into a bundle (`flo flow test --from-run`) are
 the bundle's files and are never pruned.
 
+### 7.11 Drafts (the chat builder)
+
+A **draft** is a proposed full next version of a flow: not a flow version,
+and not stored where versions are. A model makes it from a person's
+instruction and the flow's **base**, the version `flo flow show` would show
+(the active one, else the newest). Rules:
+
+- **Full document.** The model returns the whole next document, not a
+  patch. It keeps `flow:` and changes `version:`; a proposal that does
+  either wrong is refused like any other invalid one.
+- **Validation loop.** The proposal goes through the validation of §8. Its
+  errors go back to the model, up to three times (so at most four model
+  calls); then the build fails with `invalid_flow` carrying the last
+  errors and nothing is kept.
+- **The model call is a node call.** It goes through the same client as
+  `flo/ai.generate@1`: the model allow and deny lists apply, keys come from
+  the secret store, and the flow's `privacy` ceiling holds, because the
+  document is sent to the model: a `local-only` flow is only ever sent to a
+  local model. A refused call sends nothing. The default model is local.
+- **Dry run.** A valid proposal is replayed offline, as `flo run replay`
+  does, on the flow's last recording (§7.1), and the report lists where the
+  outcome differs from the recorded run: a step on one side only, another
+  status, another output, and the calls that have no recording. No
+  recording is not an error; the report says so.
+- **Apply and `draft_stale`.** Applying stores the draft's document as the
+  next version (a draft version, exactly as `flo flow apply` stores it:
+  validated again, grants checked, tested and activated as any version) only
+  if the base has not moved: neither the base version nor the newest stored
+  version is another one than at the time of the draft. Otherwise the apply
+  fails with `draft_stale` (exit 4) and the draft is kept to be read. An
+  applied draft is spent.
+
+Drafts are run data of the tenant: `<tenant dir>/drafts/<id>.json`, readable
+by the owner only.
+
 ---
 
 ## 8. Validation rules
