@@ -43,7 +43,7 @@ inputs:
     type: array
     default: []
     description: "One sender-facts row per message, from inbox/senders@1 (its rows): is_contact, person, muted, ruled_out, customer_vendor, auth, spoof_suspect, auth_class, auth_route. A row without facts falls back to the address."
-  security_label: { type: [string, 'null'], default: null, description: "Label for unrequested auth mail (login code, reset, magic link) from an authenticated customer vendor, which is then archived. Null: every auth mail stays in the inbox, flagged. The label must exist in the account; it is never created." }
+  security_label: { type: [string, 'null'], default: null, description: "Label for unrequested auth mail (login code, reset, magic link) from an authenticated customer vendor, which is then archived. Null: every auth mail stays in the inbox, flagged. The script creates the `security` label at apply when an account lacks it; any other name must already exist." }
   min_confidence: { type: number, default: 0.9, description: A label under it is Needs Review. }
   engine: { type: [string, 'null'], default: null, description: Which engine judged (local or jev); recorded in the why of each decision. }
   model: { type: [string, 'null'], default: null }

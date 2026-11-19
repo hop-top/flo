@@ -21,8 +21,8 @@ tasks: per-run
 concurrency: { on_overlap: skip }
 vars:
   # The labels a message may be filed under (the script's SOP labels). A label
-  # that does not exist in an account makes the plan item invalid; labels are
-  # never created.
+  # that does not exist in an account makes the plan item invalid; the only
+  # label the script creates is `security` (see security_label).
   labels:
     type: list
     default:
@@ -111,9 +111,9 @@ steps:
       sop_labels: "{{ vars.labels }}"
       senders: "{{ results.senders.rows }}"
       # Label for unrequested auth mail (login code, reset, magic link) from an
-      # authenticated customer vendor, which is then archived. It must exist in
-      # the account (labels are never created). Null keeps every auth mail in
-      # the inbox, flagged.
+      # authenticated customer vendor, which is then archived. The script
+      # creates `security` at apply when an account lacks it; any other name
+      # must already exist. Null keeps every auth mail in the inbox, flagged.
       security_label: security
       engine: "{{ has(results.label.engine) ? results.label.engine : '' }}"
       model: "{{ has(results.label.model) ? results.label.model : '' }}"
