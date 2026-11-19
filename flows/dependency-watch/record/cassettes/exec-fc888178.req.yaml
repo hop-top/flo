@@ -1,0 +1,29 @@
+xrr: "1"
+adapter: exec
+fingerprint: fc888178
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    argv:
+        - aps
+        - run
+        - automation
+        - --
+        - gh-releases
+        - --out
+        - <step_dir>/out.json
+        - --repo
+        - example-org/oldlib
+        - --package
+        - github.com/example-org/oldlib
+        - --version
+        - 2.8.0
+        - --tag-prefix
+        - ""
+        - --prerelease
+        - match
+        - --since
+        - ""
+        - --lookback
+        - 14d
+    env:
+        FLO_IDEMPOTENCY_KEY: ""

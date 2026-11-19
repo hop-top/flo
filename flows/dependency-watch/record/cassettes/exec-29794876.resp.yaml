@@ -1,0 +1,39 @@
+xrr: "1"
+adapter: exec
+fingerprint: "29794876"
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "source": "tags",
+              "releases": [
+                {
+                  "version": "0.63.0",
+                  "tag": "v0.63.0",
+                  "notes": "",
+                  "url": "https://github.com/golang/net/releases/tag/v0.63.0",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                },
+                {
+                  "version": "0.62.0",
+                  "tag": "v0.62.0",
+                  "notes": "",
+                  "url": "https://github.com/golang/net/releases/tag/v0.62.0",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                },
+                {
+                  "version": "0.61.0",
+                  "tag": "v0.61.0",
+                  "notes": "",
+                  "url": "https://github.com/golang/net/releases/tag/v0.61.0",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                }
+              ]
+            }
+          path: out.json
+    stdout: ""

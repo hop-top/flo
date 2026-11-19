@@ -34,6 +34,7 @@ fresh() { sed -E "s/20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z/$now/g"; }
 case $path in
   /repos/example-org/api/dependency-graph/sbom) cat "$w_td/sbom_api.json" ;;
   /repos/example-org/web/dependency-graph/sbom) cat "$w_td/sbom_web.json" ;;
+  /repos/example-org/worker/dependency-graph/sbom) cat "$w_td/sbom_api.json" ;;
   /repos/example-org/off/dependency-graph/sbom) cat "$gh_td/sbom_404.json"; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   /repos/example-org/off) echo '{"name":"off"}' ;;
   /repos/example-org/gone/dependency-graph/sbom) cat "$gh_td/sbom_404.json"; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;

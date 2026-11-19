@@ -1,0 +1,31 @@
+xrr: "1"
+adapter: exec
+fingerprint: 7c7ccae5
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "source": "releases",
+              "releases": [
+                {
+                  "version": "2.105.0",
+                  "tag": "v2.105.0",
+                  "notes": "## What's Changed\r\n\r\n## Subscribe to GitHub Event Streams with `gh event` (preview)\r\n\r\nThe new `gh event` command set lets agents, integrations, and scripts wait for pull request changes instead of po",
+                  "url": "https://api.github.com/repos/cli/cli/releases/449359903",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                },
+                {
+                  "version": "2.104.0",
+                  "tag": "v2.104.0",
+                  "notes": "## Protect private forks when deleting repositories\r\n\r\n`gh repo delete` now warns when deleting a private or internal repository will also delete its forks. The additional confirmation is required eve",
+                  "url": "https://api.github.com/repos/cli/cli/releases/443387629",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                }
+              ]
+            }
+          path: out.json
+    stdout: ""

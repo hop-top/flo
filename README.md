@@ -122,9 +122,16 @@ flo run cancel <run> --yes
   Model URIs: `ollama://<model>`, `scheme://host:port/<model>`, `?base_url=`
   (which wins over the host); `ollama:///x`, `ollama://localhost/x` and unix
   sockets are refused (node.md §9).
-- `packs/github` holds the GitHub nodes of `flows/dependency-watch.yaml`. Its
+- `packs/github` holds the GitHub nodes of `flows/dependency-watch/`. Its
   wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.
+  The flow labels new releases with the `judge` classifier on the local model
+  `ollama://qwen3:4b-instruct-2507-q4_K_M` (set `FLO_AI_CLASSIFIER=judge`;
+  Gemma 4 E4B is the target once ollama serves structured output for it).
+  `flows/dependency-watch/record/` holds a recording, model calls included:
+  `flo flow test dependency-watch` replays it offline. Re-record with
+  `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestDependencyWatchCommittedRecording`
+  on a host whose ollama has the model.
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
   wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`; they

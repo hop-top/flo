@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 7420ad0e
+recorded_at: "2026-11-19T01:47:01Z"
+payload:
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T01:47:01.77944Z","message":{"role":"assistant","content":"{\n  \"label\": {\n    \"confidence\": 0.95,\n    \"value\": \"routine\",\n    \"why\": \"The release is a version increment (2.8.0 to 2.9.0) with only ''fixes'' noted in the release notes, indicating it is a routine update without introducing breaking changes or security vulnerabilities.\"\n  }\n}"},"done":true,"done_reason":"stop","total_duration":2372049250,"load_duration":2177042,"prompt_eval_count":239,"prompt_eval_cached_count":75,"prompt_eval_duration":132217000,"eval_count":82,"eval_duration":720690000}'
+    headers:
+        Content-Type: application/json; charset=utf-8
+    status: 200

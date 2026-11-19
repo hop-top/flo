@@ -10,7 +10,7 @@ vars:
     type: list
   lookback: { default: 14d, type: duration }
 run_as: automation
-privacy: cloud-allowed          # only public package data leaves the machine
+privacy: cloud-allowed          # only public package data leaves the machine; the judge model is local
 budget: { usd: 0.50 }
 tasks: none
 state:
@@ -68,13 +68,15 @@ steps:
         cursor: "{{ run.started_at }}"
 
   # The classifier backend is configuration (ai.classifier / FLO_AI_CLASSIFIER):
-  # `rules` labels without a model; `model` is used by the judge backend only.
+  # `judge` asks `model` one question per release, on this machine; `rules`
+  # labels without a model and ignores it. Gemma 4 E4B is the target model once
+  # ollama serves structured output for it; Qwen3 4B Instruct runs until then.
   # The judge sees every item given, so only releases go in: advisories are
   # already `security` above.
   - id: judge
     uses: flo/ai.classify@1
     with:
-      model: anthropic://claude-haiku-5-5
+      model: ollama://qwen3:4b-instruct-2507-q4_K_M
       labels: [security, breaking, routine, noise]
       instructions: "Label each release by what it means for a team that depends on it."
       items: "{{ results.fresh.items }}"

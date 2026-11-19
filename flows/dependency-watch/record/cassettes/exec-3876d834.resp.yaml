@@ -1,0 +1,64 @@
+xrr: "1"
+adapter: exec
+fingerprint: 3876d834
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "packages": [
+                {
+                  "name": "github.com/cli/cli/v2",
+                  "ecosystem": "go",
+                  "version": "2.103.3",
+                  "used_by": [
+                    "example-org/api",
+                    "example-org/worker"
+                  ],
+                  "source_repo": "cli/cli"
+                },
+                {
+                  "name": "github.com/example-org/oldlib",
+                  "ecosystem": "go",
+                  "version": "2.8.0",
+                  "used_by": [
+                    "example-org/web"
+                  ],
+                  "source_repo": "example-org/oldlib"
+                },
+                {
+                  "name": "github.com/hop-top/poly-kit/kit",
+                  "ecosystem": "go",
+                  "version": "0.5.0-beta.12",
+                  "used_by": [
+                    "example-org/api",
+                    "example-org/worker"
+                  ],
+                  "source_repo": "hop-top/poly-kit",
+                  "tag_prefix": "kit/"
+                },
+                {
+                  "name": "golang.org/x/net",
+                  "ecosystem": "go",
+                  "version": "0.17.0",
+                  "used_by": [
+                    "example-org/api",
+                    "example-org/web",
+                    "example-org/worker"
+                  ],
+                  "source_repo": "golang/net"
+                },
+                {
+                  "name": "left-pad",
+                  "ecosystem": "npm",
+                  "version": "1.3.0",
+                  "used_by": [
+                    "example-org/web"
+                  ]
+                }
+              ],
+              "skipped": []
+            }
+          path: out.json
+    stdout: ""

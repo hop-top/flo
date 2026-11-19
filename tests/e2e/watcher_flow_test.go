@@ -29,10 +29,13 @@ func needJQ(t *testing.T) {
 
 // watcherEnv is an env with the github pack installed, its wrappers and the
 // fake gh on the PATH of the fakes, and the rules classifier configured.
-func watcherEnv(t *testing.T) *env {
+func watcherEnv(t *testing.T) *env { return watcherEnvWith(t, "rules") }
+
+// watcherEnvWith is watcherEnv with the named classifier backend.
+func watcherEnvWith(t *testing.T, classifier string) *env {
 	t.Helper()
 	needJQ(t)
-	e := newEnv(t, "FLO_AI_CLASSIFIER=rules")
+	e := newEnv(t, "FLO_AI_CLASSIFIER="+classifier)
 	pack := filepath.Join(repoRoot, "packs", "github")
 	if err := os.MkdirAll(filepath.Join(e.root(), "packs"), 0o750); err != nil {
 		t.Fatal(err)
@@ -82,7 +85,7 @@ func watchFlow(t *testing.T) string {
 		t.Fatal(err)
 	}
 	dst := filepath.Join(dir, "flow.yaml")
-	b, err := os.ReadFile(filepath.Join(repoRoot, "flows", "dependency-watch.yaml")) //nolint:gosec // a file of this repository
+	b, err := os.ReadFile(filepath.Join(repoRoot, "flows", "dependency-watch", "flow.yaml")) //nolint:gosec // a file of this repository
 	if err != nil {
 		t.Fatal(err)
 	}

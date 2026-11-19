@@ -1,0 +1,31 @@
+xrr: "1"
+adapter: exec
+fingerprint: fc888178
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "source": "releases",
+              "releases": [
+                {
+                  "version": "3.0.0",
+                  "tag": "v3.0.0",
+                  "notes": "BREAKING: new API",
+                  "url": "https://github.com/example-org/oldlib/releases/tag/v3.0.0",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                },
+                {
+                  "version": "2.9.0",
+                  "tag": "v2.9.0",
+                  "notes": "fixes",
+                  "url": "https://github.com/example-org/oldlib/releases/tag/v2.9.0",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": false
+                }
+              ]
+            }
+          path: out.json
+    stdout: ""

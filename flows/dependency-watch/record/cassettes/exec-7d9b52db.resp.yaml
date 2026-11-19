@@ -1,0 +1,31 @@
+xrr: "1"
+adapter: exec
+fingerprint: 7d9b52db
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "source": "releases",
+              "releases": [
+                {
+                  "version": "0.5.0-beta.14",
+                  "tag": "kit/v0.5.0-beta.14",
+                  "notes": "## [0.5.0-beta.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.13...kit/v0.5.0-beta.14) (2026-11-16)\n\n\n### Bug Fixes\n\n* **output:** whole table cells off-tty; id columns never ellipsiz",
+                  "url": "https://api.github.com/repos/hop-top/poly-kit/releases/447422558",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": true
+                },
+                {
+                  "version": "0.5.0-beta.13",
+                  "tag": "kit/v0.5.0-beta.13",
+                  "notes": "## [0.5.0-beta.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.12...kit/v0.5.0-beta.13) (2026-11-16)\n\n\n### Bug Fixes\n\n* **cmdsurface:** emit --flag=false for caller-set false bools ([7",
+                  "url": "https://api.github.com/repos/hop-top/poly-kit/releases/446851320",
+                  "published_at": "2026-11-19T01:46:59Z",
+                  "prerelease": true
+                }
+              ]
+            }
+          path: out.json
+    stdout: ""

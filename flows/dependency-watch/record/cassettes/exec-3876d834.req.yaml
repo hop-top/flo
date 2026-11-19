@@ -1,0 +1,23 @@
+xrr: "1"
+adapter: exec
+fingerprint: 3876d834
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    argv:
+        - aps
+        - run
+        - automation
+        - --
+        - gh-deps
+        - --mode
+        - sbom
+        - --include-actions
+        - "false"
+        - --out
+        - <step_dir>/out.json
+        - --
+        - example-org/api
+        - example-org/web
+        - example-org/worker
+    env:
+        FLO_IDEMPOTENCY_KEY: ""

@@ -1,0 +1,11 @@
+# The recorded run: three repositories, the advisories and releases the fake
+# gh served, the releases labelled by the judge model over the recorded
+# answers. Nothing was seen before, so every item is new.
+expect:
+  - step: deps
+  - step: advisories
+  - step: newadv
+  - step: releases
+  - step: fresh
+  - step: judge
+  - step: findings

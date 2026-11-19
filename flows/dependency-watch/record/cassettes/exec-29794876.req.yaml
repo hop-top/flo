@@ -1,0 +1,29 @@
+xrr: "1"
+adapter: exec
+fingerprint: "29794876"
+recorded_at: "2026-11-19T01:46:59Z"
+payload:
+    argv:
+        - aps
+        - run
+        - automation
+        - --
+        - gh-releases
+        - --out
+        - <step_dir>/out.json
+        - --repo
+        - golang/net
+        - --package
+        - golang.org/x/net
+        - --version
+        - 0.17.0
+        - --tag-prefix
+        - ""
+        - --prerelease
+        - match
+        - --since
+        - ""
+        - --lookback
+        - 14d
+    env:
+        FLO_IDEMPOTENCY_KEY: ""
