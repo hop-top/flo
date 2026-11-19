@@ -41,13 +41,10 @@ type modelPattern struct {
 	name         string
 }
 
-// parsePattern reads one entry: `*`, `jev`, or a model URI whose model name
+// parseEntry reads one entry: `*`, `jev`, or a model URI whose model name
 // may be a glob. Entries and models are read by kit's llm.ParseURI, the parser
-// the client uses, never compared as strings.
-func parsePattern(entry string) (modelPattern, error) { return parseEntry(entry, false) }
-
-// parseEntry reads one entry. With bare, an entry that is not a model URI is a
-// model name (glob), as `ai.models.deny` takes: `qwen3*`.
+// the client uses, never compared as strings. With bare, an entry that is not
+// a model URI is a model name (glob), as `ai.models.deny` takes: `qwen3*`.
 func parseEntry(entry string, bare bool) (modelPattern, error) {
 	e := canonModel(entry)
 	if e == "*" {
