@@ -18,7 +18,10 @@ import (
 // The configuration of flo is kit's: a viper on the root, filled once per
 // process before a command runs, in the order the tlc and aps CLIs use.
 //
-//	-c key=value  >  flag  >  FLO_* environment  >  files  >  default
+//	-c key=value  >  flag  >  project config  >  FLO_* environment  >  files  >  default
+//
+// The project config is the nearest .flo/config.yaml (or .flo.yaml) in the
+// working directory or an ancestor, below $HOME; see projectconfig.go.
 //
 // Files merge system, user, then each -c <path> in argument order, later over
 // earlier: /etc/flo/config.yaml, $XDG_CONFIG_HOME/flo/config.yaml. A system or
@@ -50,6 +53,22 @@ var envBinds = []kitconfig.EnvBind{
 type configLoader struct {
 	mu    sync.Mutex
 	files []string
+	// projectFile is the project config read (empty when none), projectRoot the
+	// directory it belongs to, projectKeys the keys it set, cOverride the keys
+	// -c key=value set.
+	projectFile, projectRoot string
+	projectKeys              map[string]bool
+	cOverride                map[string]bool
+}
+
+// loaders maps a root to its loader, for the readers of the config that
+// report where a value came from.
+var loaders sync.Map
+
+func loaderOf(root *kitcli.Root) *configLoader {
+	l, _ := loaders.Load(root)
+	cl, _ := l.(*configLoader)
+	return cl
 }
 
 // bindEnv makes the environment a source of every key of root.Viper.
@@ -108,8 +127,15 @@ func (l *configLoader) load(root *kitcli.Root) error {
 			return err
 		}
 	}
-	for k, v := range overrides {
+	if err := l.loadProject(root); err != nil {
+		return err
+	}
+	l.cOverride = map[string]bool{}
+	// Each leaf is set alone: a nested override ("ai": {...}) would replace
+	// the whole subtree, the project's keys under it included.
+	for k, v := range flatten("", overrides) {
 		root.Viper.Set(k, v)
+		l.cOverride[strings.ToLower(k)] = true
 	}
 	bindPackEnv(root)
 	return nil
@@ -151,14 +177,37 @@ func (l *configLoader) registerStatus(root *kitcli.Root) {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		opts := kitconfig.OptionsForTool(configTool)
+		dir, src := flowsDir(root)
 		return kitcli.StatusSection{
 			Title: "config", Status: kitcli.StatusOK, Priority: 450,
 			Data: map[string]any{
-				"files":      append([]string{}, l.files...),
-				"user_file":  opts.UserConfigPath,
-				"env_prefix": EnvPrefix + "_",
-				"precedence": "-c key=value > flag > environment > files > default",
+				"files":          append([]string{}, l.files...),
+				"user_file":      opts.UserConfigPath,
+				"project_file":   l.projectFile,
+				"env_prefix":     EnvPrefix + "_",
+				"precedence":     "-c key=value > flag > project config > environment > files > default",
+				"flows_dir":      dir,
+				"flows_dir_from": src,
 			},
 		}, nil
 	})
+}
+
+// flatten turns nested maps into dotted leaf keys.
+func flatten(prefix string, m map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range m {
+		key := k
+		if prefix != "" {
+			key = prefix + "." + k
+		}
+		if sub, ok := v.(map[string]any); ok && len(sub) > 0 {
+			for kk, vv := range flatten(key, sub) {
+				out[kk] = vv
+			}
+			continue
+		}
+		out[key] = v
+	}
+	return out
 }

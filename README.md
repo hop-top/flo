@@ -78,7 +78,7 @@ flo run cancel <run> --yes
   `create --new <name> <instruction>` drafts a flow that does not exist yet
   (free name; no recording, so no dry run; the model call is local-only unless
   `--privacy cloud-allowed`; `apply --write` makes `<dir>/<name>/flow.yaml`,
-  `--dir` default `flows`, refused if it exists). `create --from <draft>
+  `--dir`, else the `flows.dir` setting, default `flows`; refused if it exists). `create --from <draft>
   <instruction>` refines a draft: the model gets the original base, the draft
   and the instructions so far; the base stays the original version (so
   `draft_stale` as before), the new draft links to its `parent`, and the
@@ -93,7 +93,7 @@ flo run cancel <run> --yes
   declare. Packs are read when a process starts.
 - Config: one loader for every command and `flo engine serve`, kit's `-c`
   convention (as tlc and aps). Precedence, highest first: `-c key=value`,
-  `FLO_*` environment, config files, default. Files merge in order
+  project config (below), `FLO_*` environment, config files, default. Files merge in order
   `/etc/flo/config.yaml`, `$XDG_CONFIG_HOME/flo/config.yaml` (kit's xdg
   default when unset: `~/.config/flo` on Linux, `~/Library/Application
   Support/flo` on macOS), then each `-c <path>` (later over earlier; a missing `-c` path is an error, a missing
@@ -104,9 +104,29 @@ flo run cancel <run> --yes
   the merged values (`effective-config`) and the files read (`config`).
   Secrets are never read from a config file or this loader: they stay in the
   secret store (`FLO_SECRET_<TENANT>_<PROFILE>_<NAME>`).
+- Project config: the nearest `.flo/config.yaml` (else `.flo.yaml`) in the
+  working directory or an ancestor. Only the nearest file is read; a farther
+  one is ignored. The walk stops at the filesystem root or at `$HOME`: a
+  config in `$HOME` or above it is never read. A key it sets wins over the
+  global files and the `FLO_*` environment, and loses to `-c key=value` (and a
+  command's own flag, such as `--dir`). It can set any key but these, which
+  fail the load: a key with `secret`, `token`, `passw`, `credential`,
+  `api_key`, `private_key` or `access_key` in a segment; `owner_profile`,
+  `engine_profile`, `privacy.local_hosts` and `bos.*` (user config, environment
+  or `-c` only). The model policy only narrows: `ai.models.deny` is the union
+  of the global and project lists; `ai.models.allow` keeps the entries both
+  lists allow (with no global list, the project's stands; disjoint lists deny
+  every model). `flo status` shows the file read (`project_file`).
+- Flows directory: `flows.dir` (`FLO_FLOWS_DIR`), default `flows`: where
+  `flow draft apply --write` puts a new flow's bundle (`<dir>/<name>/`), unless
+  `--dir`. A relative value is relative to the directory holding the project
+  config (`.flo/` or `.flo.yaml`'s parent) when the project config sets it,
+  else to the working directory. `flo status` shows the effective directory
+  and its source (`flows_dir`, `flows_dir_from`).
 
   ```yaml
-  # $XDG_CONFIG_HOME/flo/config.yaml
+  # $XDG_CONFIG_HOME/flo/config.yaml (and the project's .flo/config.yaml)
+  flows: { dir: flows }                         # FLO_FLOWS_DIR
   tenant: default
   owner_profile: jad            # FLO_OWNER_PROFILE
   engine_profile: flo           # FLO_ENGINE_PROFILE

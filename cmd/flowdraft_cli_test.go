@@ -262,6 +262,45 @@ func TestDraftCreateNewApplyWrite(t *testing.T) {
 	}
 }
 
+// A new flow's bundle goes to the flows.dir of the nearest project config,
+// from any directory below it; --dir beats it.
+func TestDraftApplyWriteUsesTheProjectFlowsDir(t *testing.T) {
+	d := newDraftRig(t)
+	sb := newSandbox(t)
+	proj := sb.project("proj", "flows:\n  dir: wf\n")
+	t.Chdir(proj)
+	if err := os.MkdirAll(filepath.Join(proj, "a", "b"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(proj, "a", "b"))
+	d.model.replies = []string{fence(newDoc), fence(strings.Replace(newDoc, "flow: greeter", "flow: other", 1))}
+	var ids []string
+	for _, name := range []string{"greeter", "other"} {
+		out, _, err := d.run("flow", "draft", "create", "--new", name, "say", "hello", "--format", "json")
+		if err != nil {
+			t.Fatalf("create --new: %v", err)
+		}
+		var got struct{ ID string }
+		if err := json.Unmarshal([]byte(out), &got); err != nil || got.ID == "" {
+			t.Fatalf("output: %v\n%s", err, out)
+		}
+		ids = append(ids, got.ID)
+	}
+	if _, _, err := d.run("flow", "draft", "apply", ids[0], "--yes", "--write"); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, "wf", "greeter", "flow.yaml")); err != nil {
+		t.Fatalf("not in the project's flows dir: %v", err)
+	}
+	other := t.TempDir()
+	if _, _, err := d.run("flow", "draft", "apply", ids[1], "--yes", "--write", "--dir", other); err != nil {
+		t.Fatalf("apply --dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(other, "other", "flow.yaml")); err != nil {
+		t.Fatalf("--dir not used: %v", err)
+	}
+}
+
 func TestDraftCreateFromRefines(t *testing.T) {
 	d := newDraftRig(t)
 	id := d.create(t, "0.1.1")

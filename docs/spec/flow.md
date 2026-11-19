@@ -751,8 +751,10 @@ instruction and the flow's **base**, the version `flo flow show` would show
   unless the person gives `--privacy cloud-allowed`; the ceiling is stored
   on the draft, and the document's own `privacy` is validated as for any
   flow. Applying stores the first version. With `--write` a new bundle
-  `<dir>/<name>/flow.yaml` is written (`--dir`, default `flows`, the
-  directory flows are kept in); an existing `<dir>/<name>` is refused
+  `<dir>/<name>/flow.yaml` is written (`--dir`, else the `flows.dir` setting
+  of the config, default `flows`, the directory flows are kept in; a project
+  config's relative value is relative to its own directory, any other to the
+  working directory); an existing `<dir>/<name>` is refused
   (`duplicate`) and nothing is stored.
 - **Refining (`--from <draft>`).** A new draft made from an earlier one,
   for several turns. The model gets the original base document, the

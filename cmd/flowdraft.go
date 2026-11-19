@@ -282,7 +282,7 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 			"reports, and a flow with no recording has nothing to compare, so it applies (the report says why). " +
 			"--write also rewrites the bundle's flow.yaml with the draft's document, atomically and keeping its " +
 			"mode, and refuses with draft_stale when the file is not the one the draft was made on; a new " +
-			"flow's bundle is written to <dir>/<name>/flow.yaml, which must not exist (--dir, default flows). " +
+			"flow's bundle is written to <dir>/<name>/flow.yaml, which must not exist (--dir, else the flows.dir setting, default flows). " +
 			"Without --yes it asks for confirmation at " +
 			"a terminal, and fails with confirmation_required without one. The draft is spent. Test the version " +
 			"with `flo flow test`, then activate it with `flo flow set`.",
@@ -291,7 +291,7 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 	yes := c.Flags().Bool("yes", false, "confirm without asking")
 	force := c.Flags().Bool("force", false, "apply although the dry run shows a step that failed or ended differently, or a call with no recording")
 	write := c.Flags().Bool("write", false, "also write the document to the bundle's flow.yaml (a new flow: <dir>/<name>/flow.yaml); refused when the file changed since the draft")
-	dir := c.Flags().String("dir", "flows", "with --write on a new flow, the directory its bundle goes in")
+	dir := c.Flags().String("dir", "", "with --write on a new flow, the directory its bundle goes in (default: flows.dir of the config, else flows)")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		id, err := draftArg(args)
 		if err != nil {
@@ -307,11 +307,15 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		}
 		opts := serve.ApplyDraftOptions{Force: *force, Write: *write}
 		if *write {
-			abs, aerr := filepath.Abs(*dir)
-			if aerr != nil {
-				return core.Wrap(core.CodeUsage, aerr)
+			if *dir != "" {
+				abs, aerr := filepath.Abs(*dir)
+				if aerr != nil {
+					return core.Wrap(core.CodeUsage, aerr)
+				}
+				opts.Dir = abs
+			} else {
+				opts.Dir, _ = flowsDir(root)
 			}
-			opts.Dir = abs
 		}
 		caller, err := accessCaller(root)
 		if err != nil {

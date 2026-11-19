@@ -38,6 +38,7 @@ func NewRootOver(open EngineFunc) *kitcli.Root {
 func build(svc ServicesFunc, eng EngineFunc, real bool) *kitcli.Root {
 	var root *kitcli.Root
 	cfg := &configLoader{}
+	defer func() { loaders.Store(root, cfg) }()
 	root = kitcli.New(
 		kitcli.Config{
 			Name:    "flo",
