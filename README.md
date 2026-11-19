@@ -256,7 +256,7 @@ flo run cancel <run> --yes
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
   wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`,
-  `inbox-rows`, `inbox-decisions`; they need `jq`; `inbox/senders@1` runs
+  `inbox-rows`, `inbox-decisions`, `inbox-ingest`; they need `jq`; `inbox/senders@1` runs
   `inbox senders RUN --json`) as the flow's profile, so
   both go on that profile's `PATH`, with the script's credentials,
   `INBOX_HOME` and `INBOX_RUNS`. The trust provider runs on the engine's own
@@ -266,8 +266,12 @@ flo run cancel <run> --yes
   `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` on a host
   whose ollama has `qwen3:4b-instruct-2507-q4_K_M`, after a change to the flow,
   its tests or its nodes.
-- `flows/inbox-triage` is the mail triage, every 15 minutes: `inbox/fetch@1`,
-  then the judgment, then the script's plan, an approval with the script's
+- `flows/inbox-triage` is the mail triage, every 15 minutes: one run per cycle
+  from `inbox/ingest@1` (var `heo_accounts`, default none: each account listed
+  there is listed by heo, read only, by `heo/inbox.list@1`; the script
+  snapshots those listings and fetches every other selected account, var
+  `accounts`, through its own backend, into the same run; with none listed it
+  is a plain fetch; the `heo` pack must be installed beside `inbox`), then the judgment, then the script's plan, an approval with the script's
   trust, and `inbox/apply@1`. The judgment is two `flo/ai.classify@1` steps
   over the headers of each undecided message (`inbox/rows@1`: sender, subject,
   date, flags, folder, sender history; never a body): `label` files it under

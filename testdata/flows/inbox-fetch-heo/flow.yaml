@@ -17,4 +17,5 @@ steps:
   - id: ingest
     uses: inbox/ingest@1
     with:
-      envelopes: "{{ results.list }}"
+      listings: ["{{ results.list }}"]
+      accounts: [acme]

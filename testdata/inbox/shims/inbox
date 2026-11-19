@@ -48,21 +48,31 @@ case $cmd in
     run=$(printf '20261118-0900%02d' $n)
     rd=$(rundir "$run"); mkdir -p "$rd"
     case " $* " in *" --envelopes - "*)
-      # the offline seam: the envelopes on stdin are the whole listing; no backend, no fixtures
+      # the seam: the accounts in the document use only their envelopes (no fixture, no backend); every other
+      # selected account (--account, else every fixture account) is "fetched" from the fixtures, into the same
+      # run. An empty document is the plain fetch below.
       cat > "$st/envelopes.json"
-      jq -n --arg run "$run" --slurpfile d "$st/envelopes.json" '
-        [ $d[0].accounts | to_entries[] ] as $a
-        | {run: $run, created: "2026-11-18T09:00:00-05:00", limit: 200, since: null, locked: 0, seen: 0, muted: 0, invites: 0, carried: 0,
-           accounts: ($a | map({key, value: (if .value.error then {status: "error", error: .value.error} else {status: "ok", count: (.value.envelopes | length)} end)}) | from_entries),
-           rows: [ $a[] | select(.value.envelopes) | .key as $acct | .value.envelopes[]
-                   | {account: $acct, id: .id, message_id: ."message-id", date: .date, from: .from, to: [.to[]?.email], subject: .subject,
-                      flags: [.flags[]?.iana], has_attachment: ."has-attachment"} ]
-                 | to_entries | map({n: (.key + 1)} + .value)}' > "$rd/snapshot.json"
-      failed=$(jq -c '[.accounts | to_entries[] | select(.value.status != "ok") | .key] | sort' "$rd/snapshot.json")
-      rc=0; [ "$failed" != '[]' ] && rc=3
-      emit fetch $rc "$(jq -c --arg rd "$rd" --argjson failed "$failed" \
-        '{run: .run, run_dir: $rd, accounts: .accounts, failed_accounts: $failed, rows: (.rows | length), new: (.rows | length), carried: 0, locked: 0, seen: 0, muted: 0, files: [$rd + "/snapshot.json"]}' "$rd/snapshot.json")"
-      exit $rc ;;
+      if [ "$(jq '.accounts | length' "$st/envelopes.json")" != 0 ]; then
+        sel='[]'; prev=
+        for a in "$@"; do [ "$prev" = --account ] && sel=$(printf '%s' "$sel" | jq -c --arg a "$a" '. + [$a]'); prev=$a; done
+        jq -n --arg run "$run" --argjson sel "$sel" --slurpfile d "$st/envelopes.json" --slurpfile fx "$td/rows.json" '
+          ($d[0].accounts | to_entries | map(select(($sel | length) == 0 or (.key | IN($sel[]))))) as $doc
+          | ($fx[0] | group_by(.account) | map({key: .[0].account, value: .}) | from_entries) as $fix
+          | ([ $fix | keys[] | select((($sel | length) == 0 or IN($sel[])) and (IN($doc[].key) | not)) ]) as $rest
+          | {run: $run, created: "2026-11-18T09:00:00-05:00", limit: 200, since: null, locked: 0, seen: 0, muted: 0, invites: 0, carried: 0,
+             accounts: (($doc | map({key, value: (if .value.error then {status: "error", error: .value.error} else {status: "ok", count: (.value.envelopes | length)} end)}) | from_entries)
+                        + ($rest | map({key: ., value: {status: "ok", count: ($fix[.] | length)}}) | from_entries)),
+             rows: ( [ $doc[] | select(.value.envelopes) | .key as $acct | .value.envelopes[]
+                       | {account: $acct, id: .id, message_id: ."message-id", date: .date, from: .from, to: [.to[]?.email], subject: .subject,
+                          flags: [.flags[]?.iana], has_attachment: ."has-attachment"} ]
+                     + [ $rest[] as $r | $fix[$r][] ] )
+                   | to_entries | map({n: (.key + 1)} + (.value | del(.n)))}' > "$rd/snapshot.json"
+        failed=$(jq -c '[.accounts | to_entries[] | select(.value.status != "ok") | .key] | sort' "$rd/snapshot.json")
+        rc=0; [ "$failed" != '[]' ] && rc=3
+        emit fetch $rc "$(jq -c --arg rd "$rd" --argjson failed "$failed" \
+          '{run: .run, run_dir: $rd, accounts: .accounts, failed_accounts: $failed, rows: (.rows | length), new: (.rows | length), carried: 0, locked: 0, seen: 0, muted: 0, files: [$rd + "/snapshot.json"]}' "$rd/snapshot.json")"
+        exit $rc
+      fi ;;
     esac
     if flag no-rows; then rows='[]'; else rows=$(cat "$td/rows.json"); fi
     flag no-guard && rows=$(printf '%s' "$rows" | jq -c 'map(select(.message_id != "<m5@example.org>"))')

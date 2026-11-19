@@ -10,7 +10,9 @@ requires: { flo: ">=0.1" }
 # The wrappers need jq. inbox/rows@1 and inbox/decisions@1 only read and write
 # a run's files and ask no model; inbox/senders@1 asks the script for sender
 # facts from its local store (headers, no network, no model): the judgment between them is a step of the
-# flow (flo/ai.classify@1), local only. The script's hosted (cloud) decider is
+# flow (flo/ai.classify@1), local only. inbox/ingest@1 (wrappers/inbox-ingest)
+# is the flow's fetch: it takes the listings of heo/inbox.list@1 (pack heo,
+# installed beside this one) and fetches the other accounts itself. The script's hosted (cloud) decider is
 # deliberately not a node: mail headers stay on the host.
 nodes:
   - nodes/fetch.yaml

@@ -249,8 +249,8 @@ func TestInboxFetchThroughHeo(t *testing.T) {
 	if acme, _ := accts["acme"].(map[string]any); acme["status"] != "ok" || num(acme["count"]) != 2 {
 		t.Errorf("accounts: %v", accts)
 	}
-	if lines := e.inboxCalls("fetch"); len(lines) != 1 || lines[0] != "fetch --json --envelopes -" {
-		t.Errorf("the script was called %v: the seam is `fetch --json --envelopes -`, no backend arguments", lines)
+	if lines := e.inboxCalls("fetch"); len(lines) != 1 || lines[0] != "fetch --json --envelopes - --account acme" {
+		t.Errorf("the script was called %v: the seam is `fetch --json --envelopes - --account acme`", lines)
 	}
 	// what the script read on stdin is what heo/inbox.list@1 produced
 	b, err := os.ReadFile(filepath.Join(e.scratch, "inbox", "envelopes.json")) //nolint:gosec // the fake's state
@@ -305,4 +305,96 @@ func TestInboxFetchThroughHeo(t *testing.T) {
 		!strings.Contains(string(b), `"error":"heo conversation list failed: CONFLICT: inbox is being rebuilt"`) {
 		t.Errorf("stdin of the script: %s %v", b, err)
 	}
+}
+
+// TestInboxTriageHeoAccounts: inbox-triage with heo-listed accounts makes ONE
+// run per cycle. Each account in var heo_accounts is listed by heo (read
+// only); inbox/ingest@1 hands the merged listings to the script, which
+// fetches every other account through its own backend into the same run; the
+// steps below see that one run. With heo_accounts empty the script gets an
+// empty document, which it treats as a plain fetch.
+func TestInboxTriageHeoAccounts(t *testing.T) {
+	t.Run("a heo account and a backend account: one run", func(t *testing.T) {
+		e := triageEnv(t)
+		e.triageActive()
+		eng := e.startEngine()
+		defer eng.stop()
+
+		var c created
+		r := e.jsonOf(&c, "run", "create", "--flow", "inbox-triage", "--wait", "--var",
+			`heo_accounts=[{"account":"acme","inbox":"ib-acme","email":"me@acme.example"}]`)
+		if r.Exit != core.ExitAwaiting {
+			t.Fatalf("run: exit %d, %+v\n%s", r.Exit, c, r.Stderr)
+		}
+		_, list := e.stepOf(c.Run, "heo-list")
+		if list != nil {
+			t.Errorf("the for_each parent has no output of its own: %v", list)
+		}
+		_, fetch := e.stepOf(c.Run, "fetch")
+		accts, _ := fetch["accounts"].(map[string]any)
+		acme, _ := accts["acme"].(map[string]any)
+		beta, _ := accts["beta"].(map[string]any)
+		if len(accts) != 2 || acme["status"] != "ok" || num(acme["count"]) != 2 || beta["status"] != "ok" || num(beta["count"]) != 1 ||
+			num(fetch["rows"]) != 3 || fetch["run"] == "" {
+			t.Fatalf("one run holds both accounts (acme from heo, beta from the script's backend): %v", fetch)
+		}
+		// everything after the fetch works on that run
+		_, rows := e.stepOf(c.Run, "rows")
+		_, senders := e.stepOf(c.Run, "senders")
+		_, plan := e.stepOf(c.Run, "plan")
+		for name, out := range map[string]map[string]any{"rows": rows, "senders": senders, "plan": plan} {
+			if out["run"] != fetch["run"] {
+				t.Errorf("%s works on run %v, the fetch made %v", name, out["run"], fetch["run"])
+			}
+		}
+		if got := e.inboxCalls("fetch"); len(got) != 1 || got[0] != "fetch --json --envelopes -" {
+			t.Errorf("one fetch call, no listing by the script: %v", got)
+		}
+		// the script was handed only the heo account's envelopes
+		b, err := os.ReadFile(filepath.Join(e.scratch, "inbox", "envelopes.json")) //nolint:gosec // the fake's state
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Accounts map[string]struct {
+				Envelopes []struct{ ID string } `json:"envelopes"`
+			} `json:"accounts"`
+		}
+		if err := json.Unmarshal(b, &doc); err != nil || len(doc.Accounts) != 1 || len(doc.Accounts["acme"].Envelopes) != 2 {
+			t.Errorf("stdin of the script: %s %v", b, err)
+		}
+		if n := len(logOf(e, "heo.log")); n != 4 {
+			t.Errorf("heo was listed %d times, want 4 (two pages of two listings): %v", n, logOf(e, "heo.log"))
+		}
+		for _, l := range logOf(e, "heo.log") {
+			if !strings.HasPrefix(l, "heo conversation list ") && !strings.HasPrefix(l, "heo message list ") {
+				t.Errorf("heo was asked for more than a listing: %s", l)
+			}
+		}
+	})
+
+	t.Run("no heo account: a plain fetch", func(t *testing.T) {
+		e := triageEnv(t)
+		e.triageActive()
+		eng := e.startEngine()
+		defer eng.stop()
+
+		c, _ := e.startTriage()
+		_, fetch := e.stepOf(c.Run, "fetch")
+		accts, _ := fetch["accounts"].(map[string]any)
+		if len(accts) != 2 || num(fetch["rows"]) != 4 || num(fetch["new"]) != 4 {
+			t.Errorf("the default scenario of the script, four messages: %v", fetch)
+		}
+		if got := e.inboxCalls("fetch"); len(got) != 1 || got[0] != "fetch --json --envelopes -" {
+			t.Errorf("fetch calls: %v", got)
+		}
+		// an empty document: the script's plain fetch, no heo at all
+		b, err := os.ReadFile(filepath.Join(e.scratch, "inbox", "envelopes.json")) //nolint:gosec // the fake's state
+		if err != nil || strings.TrimSpace(string(b)) != `{"accounts":{}}` {
+			t.Errorf("stdin of the script: %s %v", b, err)
+		}
+		if n := len(logOf(e, "heo.log")); n != 0 {
+			t.Errorf("heo was called with no heo account: %v", logOf(e, "heo.log"))
+		}
+	})
 }

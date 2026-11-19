@@ -1,15 +1,14 @@
 xrr: "1"
 adapter: exec
-fingerprint: 3ab58515
-recorded_at: "2026-11-19T07:36:18Z"
+fingerprint: 026ada0f
+recorded_at: "2026-11-19T23:52:38Z"
 payload:
     argv:
         - aps
         - run
         - automation
         - --
-        - inbox
-        - fetch
-        - --json
+        - inbox-ingest
     env:
         FLO_IDEMPOTENCY_KEY: ""
+    stdin: '{"envelopes":{},"listings":[]}'

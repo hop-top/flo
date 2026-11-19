@@ -52,7 +52,11 @@ func triageEnvWith(t *testing.T, extra ...string) *env {
 	needJQ(t)
 	e := newEnv(t, extra...)
 	e.installRepoPack("inbox")
-	for _, dir := range []string{filepath.Join(repoRoot, "packs", "inbox", "wrappers"), testdata("inbox", "shims")} {
+	e.installRepoPack("heo") // the flow lists heo accounts (none by default)
+	for _, dir := range []string{
+		filepath.Join(repoRoot, "packs", "inbox", "wrappers"), testdata("inbox", "shims"),
+		filepath.Join(repoRoot, "packs", "heo", "wrappers"), testdata("inbox", "heoshims"),
+	} {
 		ents, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)
@@ -296,6 +300,7 @@ func TestInboxPackDeclaresHonestEffects(t *testing.T) {
 	}
 	want := map[string]node.SideEffect{
 		"inbox/fetch@1":     node.SideEffectWriteLocal,
+		"inbox/ingest@1":    node.SideEffectWriteLocal,
 		"inbox/rows@1":      node.SideEffectRead,
 		"inbox/senders@1":   node.SideEffectRead,
 		"inbox/decisions@1": node.SideEffectWriteLocal,
@@ -340,6 +345,7 @@ func TestInboxTriageReplaysOffline(t *testing.T) {
 	// the judge's answers are in the cassettes: no model on the machine
 	e := newEnv(t, "FLO_AI_CLASSIFIER=judge", "FLO_AI_MODELS_ALLOW=ollama://qwen3*")
 	e.installRepoPack("inbox")
+	e.installRepoPack("heo")
 	e.grantMail()
 	// the harness's toy inbox is the only inbox on the PATH: take it away too
 	if err := os.Remove(filepath.Join(e.shims, "inbox")); err != nil {

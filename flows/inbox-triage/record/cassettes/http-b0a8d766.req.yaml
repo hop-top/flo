@@ -1,7 +1,7 @@
 xrr: "1"
 adapter: http
 fingerprint: b0a8d766
-recorded_at: "2026-11-19T07:36:18Z"
+recorded_at: "2026-11-19T23:52:38Z"
 payload:
     method: GET
     url: http://localhost:11434/api/tags

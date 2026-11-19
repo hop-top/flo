@@ -1,5 +1,5 @@
 flow: inbox-triage
-version: 0.2.0
+version: 0.3.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
@@ -40,12 +40,42 @@ vars:
       - Travel
       - Subscriptions
       - Reference
+  # The accounts selected for the run, by the script's names; none is every
+  # configured account (and every one in heo_accounts).
+  accounts:
+    type: list
+    default: []
+  # Accounts whose inbox is listed through heo (read only) instead of the
+  # script's own backend, as {account, inbox, email}: `account` is the script's
+  # name for it, `inbox` the heo inbox id (default: the account name), `email`
+  # the account's own address (To of its messages; default: left out). Empty:
+  # every account is fetched by the script, as before. A listed account must
+  # also be in `accounts` when that is set.
+  heo_accounts:
+    type: list
+    default: []
 steps:
-  # No lanes: fetch only reads and snapshots. The script's own state (seen
-  # mail, pending locks, trust) lives between the steps, so they are ordered
-  # with depends_on; the run id is the data they share.
+  # One run per cycle, whatever the backends. Each heo account is listed by
+  # heo (a step per element, none when heo_accounts is empty); the script then
+  # snapshots the listings and fetches every other selected account through its
+  # own backend (direct IMAP, himalaya, heo backend) into the same run, so the
+  # steps below see one run. No lanes: fetch only reads and snapshots. The
+  # script's own state (seen mail, pending locks, trust) lives between the
+  # steps, so they are ordered with depends_on; the run id is the data they
+  # share.
+  - id: heo-list
+    uses: heo/inbox.list@1
+    for_each: "{{ vars.heo_accounts }}"
+    with:
+      account: "{{ item.account }}"
+      inbox: "{{ has(item.inbox) ? item.inbox : '' }}"
+      email: "{{ has(item.email) ? item.email : '' }}"
+
   - id: fetch
-    uses: inbox/fetch@1
+    uses: inbox/ingest@1
+    with:
+      listings: "{{ results['heo-list'] }}"
+      accounts: "{{ vars.accounts }}"
 
   # The judgment: two questions per message over its headers (the snapshot
   # holds no body), asked of flo/ai.classify@1. `rows` lists the messages that

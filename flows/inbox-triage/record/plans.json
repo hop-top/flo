@@ -131,7 +131,7 @@
         ]
       },
       "capability": "flo/approval@1",
-      "idempotency_key": "run_01m7sbr8k8ens9pbbee1zkphhb/approve",
+      "idempotency_key": "run_01m7v3kzk3exhvwyq5rf404xjd/approve",
       "rendered": {
         "builtin": "flo/approval@1",
         "in": {
@@ -273,7 +273,7 @@
         "run": "20261118-090001"
       },
       "capability": "inbox/apply@1",
-      "idempotency_key": "run_01m7sbr8k8ens9pbbee1zkphhb/apply",
+      "idempotency_key": "run_01m7v3kzk3exhvwyq5rf404xjd/apply",
       "rendered": {
         "argv": [
           "inbox",
@@ -283,7 +283,7 @@
           "--json"
         ],
         "env": {
-          "FLO_IDEMPOTENCY_KEY": "run_01m7sbr8k8ens9pbbee1zkphhb/apply"
+          "FLO_IDEMPOTENCY_KEY": "run_01m7v3kzk3exhvwyq5rf404xjd/apply"
         },
         "profile": "automation"
       }

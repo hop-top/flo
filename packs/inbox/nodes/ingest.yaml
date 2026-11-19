@@ -2,26 +2,26 @@ node: inbox/ingest@1
 kind: command
 lowers_to: engine               # needs stdin
 description: >-
-  Snapshot envelopes a step listed (heo/inbox.list@1) into a new run, as
-  inbox/fetch@1 does for the accounts it reads itself. No network, no mail
-  server.
-# `inbox fetch --envelopes -` reads the envelopes from stdin and builds the run
-# exactly as a fetch does (snapshot, carried decisions, locks, seen, mutes,
-# rules, store rows), without calling a backend. Exit 3 means some account was
-# not listed: the run exists and the summary says which.
+  One run from the envelopes steps listed (heo/inbox.list@1) and, for every
+  other selected account, the script's own backend, as inbox/fetch@1 reads
+  them. A flow with no listing is a plain fetch.
+# wrappers/inbox-ingest merges the listings into one --envelopes document and
+# runs `inbox fetch --json --envelopes -`: an account in the document uses only
+# its envelopes (no backend call); every other selected account is fetched
+# through its own backend (direct IMAP, himalaya, heo backend) exactly as a plain
+# fetch does, into the same run (snapshot, carried decisions, locks, seen,
+# mutes, rules, store rows). An empty document is a plain fetch. Exit 3 means
+# some account was not fetched: the run exists and the summary says which.
 argv:
-  - inbox
-  - fetch
-  - --json
-  - --envelopes
-  - "-"
+  - inbox-ingest
   - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
   - "{{ in.limit > 0 ? ['--limit', string(in.limit)] : [] }}"
 stdin:
-  json: "{{ in.envelopes }}"
+  json: "{{ {'envelopes': in.envelopes, 'listings': in.listings} }}"
 inputs:
-  envelopes: { type: object, required: true, description: "The --envelopes document: {accounts: {name: {envelopes: [...]} | {error: text}}}, as heo/inbox.list@1 writes it." }
-  accounts:  { type: array, items: { type: string }, default: [], description: Account names to keep; none means every account in the document. }
+  envelopes: { type: object, default: {}, description: "A ready --envelopes document: {accounts: {name: {envelopes: [...]} | {error: text}}}, as heo/inbox.list@1 writes it." }
+  listings:  { type: array, items: { type: object }, default: [], description: "Outputs of heo/inbox.list@1 (one per account), merged with `envelopes` into one document." }
+  accounts:  { type: array, items: { type: string }, default: [], description: "Selected account names, listed or not; none means every configured account and every listed one." }
   limit:     { type: integer, default: 0, minimum: 0, description: Rows per account; 0 keeps the script's own setting. }
 exit_codes: { ok: [0, 3] }
 outputs:
@@ -40,7 +40,7 @@ outputs:
       locked: { type: integer }
       accounts: { type: object }
       failed_accounts: { type: array, items: { type: string } }
-side_effect: write-local        # a new run folder and the local mail store; reads no mail server
+side_effect: write-local        # a new run folder and the local mail store; reads the mail servers of the accounts that are not listed
 idempotent: true
 privacy: local
 capabilities: [mail.read]

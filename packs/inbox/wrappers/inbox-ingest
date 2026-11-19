@@ -1,0 +1,18 @@
+#!/bin/sh
+# inbox-ingest [--account A ...] [--limit N]    (stdin: {envelopes, listings})
+#
+# One run from the envelopes some steps listed (heo/inbox.list@1) and, for the
+# selected accounts the listings do not name, the script's own backends:
+# `inbox fetch --json --envelopes - ARGS`. The listings are merged into one
+# `--envelopes` document first, so a flow with one listing step per heo account
+# needs no more than this node. A later document wins over an earlier one for
+# the same account; `envelopes` (a ready document) comes first. No listing at
+# all is an empty document, which the script treats as a plain fetch.
+#
+# Prints the script's summary and exits with its status (0 ok, 3 some account
+# not fetched).
+command -v jq >/dev/null 2>&1 || { echo "inbox-ingest: jq is required" >&2; exit 69; }
+
+doc=$(jq -c '{accounts: ((.envelopes.accounts // {}) + ([.listings[]? | .accounts // {}] | add // {}))}') ||
+  { echo "inbox-ingest: stdin is not the {envelopes, listings} document" >&2; exit 64; }
+printf '%s' "$doc" | exec inbox fetch --json --envelopes - "$@"
