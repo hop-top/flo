@@ -69,6 +69,8 @@ steps:
 
   # The classifier backend is configuration (ai.classifier / FLO_AI_CLASSIFIER):
   # `rules` labels without a model; `model` is used by the judge backend only.
+  # The judge sees every item given, so only releases go in: advisories are
+  # already `security` above.
   - id: judge
     uses: flo/ai.classify@1
     with:

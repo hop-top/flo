@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"hop.top/flo/internal/core"
+	specrun "hop.top/flo/spec/run"
 )
 
 // ClassifyRequest is what flo/ai.classify@1 asks a backend (node.md §6.3).
@@ -19,6 +20,14 @@ type ClassifyRequest struct {
 	Strategy     string
 	Schema       map[string]any
 	Abstain      bool
+	// LocalOnly is set when the step runs under a local-only ceiling (the
+	// ceiling is absent or local-only). A model-backed backend must stay
+	// local, whatever the model URI says.
+	LocalOnly bool
+	// Tenant and Profile scope the secrets a backend reads: the run's
+	// tenant and the aps profile the step acts as.
+	Tenant  core.TenantID
+	Profile string
 }
 
 // Label is one backend answer. Label nil is an abstention.
@@ -33,9 +42,9 @@ type Label struct {
 // Labels are the answers to a request, one per item, in order.
 type Labels []Label
 
-// Classifier is the seam behind flo/ai.classify@1. kit's go/ai/judge
-// implements it once it exists; RulesClassifier is the deterministic
-// backend for runs without a model.
+// Classifier is the seam behind flo/ai.classify@1. JudgeClassifier (kit's
+// go/ai/judge over a model) implements it; RulesClassifier is the
+// deterministic backend for runs without a model.
 type Classifier interface {
 	Classify(ctx context.Context, req ClassifyRequest) (Labels, core.Cost, error)
 }
@@ -74,12 +83,13 @@ func classify(ctx context.Context, c Classifier, inv core.Invocation) (core.Resu
 	}
 	if c == nil {
 		return pureFail(core.New(core.CodeEngineFeature, "flo/ai.classify@1 has no backend configured").
-			WithSuggestion("set ai.classifier (env " + EnvClassifier + ") to a backend: rules")), nil
+			WithSuggestion("set ai.classifier (env " + EnvClassifier + ") to a backend: rules, judge")), nil
 	}
 	req := ClassifyRequest{
 		Items: items, Labels: labels, Model: asString(inv.In["model"]),
 		Instructions: asString(inv.In["instructions"]), Pattern: asString(inv.In["pattern"]),
-		Strategy: asString(inv.In["strategy"]),
+		Strategy: asString(inv.In["strategy"]), LocalOnly: inv.Privacy != specrun.PrivacyCloudAllowed,
+		Tenant: inv.Tenant, Profile: inv.RunAs,
 	}
 	req.Schema, _ = inv.In["schema"].(map[string]any)
 	req.Abstain, _ = inv.In["abstain"].(bool)
@@ -136,22 +146,26 @@ const (
 	// BackendRules is the deterministic rules classifier: no model, no
 	// network. It is an explicit choice, never a fallback.
 	BackendRules = "rules"
-	// BackendJudge is kit's go/ai/judge; not available until it exists.
+	// BackendJudge is kit's go/ai/judge over the step's model: one choice
+	// question per item, with confidence and a reason.
 	BackendJudge = "judge"
 )
 
 // ClassifierFor resolves the `ai.classifier` setting. Empty is no backend
-// (nil, nil): the node fails when used. "judge" is refused until kit's
-// go/ai/judge is wired, rather than quietly replaced by rules.
-func ClassifierFor(name string) (Classifier, error) {
+// (nil, nil): the node fails when used. d is what the "judge" backend needs;
+// the rules backend ignores it.
+func ClassifierFor(name string, d LLMDeps) (Classifier, error) {
 	switch name {
 	case "":
 		return nil, nil
 	case BackendRules:
 		return RulesClassifier{}, nil
 	case BackendJudge:
-		return nil, core.New(core.CodeEngineFeature, "ai.classifier=judge: the judge backend is not available in this build").
-			WithSuggestion("use ai.classifier=rules, or leave it unset")
+		c, err := NewJudgeClassifier(d)
+		if err != nil {
+			return nil, err
+		}
+		return c, nil
 	}
 	return nil, core.Errorf(core.CodeUsage, "ai.classifier=%s: unknown backend (%s)", name, fmt.Sprint([]string{BackendRules, BackendJudge}))
 }

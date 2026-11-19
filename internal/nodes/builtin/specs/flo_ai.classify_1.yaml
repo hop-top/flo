@@ -6,9 +6,9 @@ inputs:
   labels: { type: array, required: true, items: { type: string }, description: The closed label set. }
   model: { type: string, required: true, description: "Model URI, e.g. anthropic://claude-haiku-5-5; ignored by the rules backend." }
   instructions: { type: string, description: Extra guidance. }
-  pattern: { type: string, description: Named prompt pattern. }
-  strategy: { type: string, description: Named multi-call strategy. }
-  schema: { type: object, description: Extra fields per item the model must return. }
+  pattern: { type: string, description: Named prompt pattern (judge backend; needs a pattern source). }
+  strategy: { type: string, description: "Multi-call strategy: verbalized (default), votes or votes:<n> (judge backend)." }
+  schema: { type: object, description: Extra fields per item the model must return; the judge backend refuses it. }
   abstain: { type: boolean, default: false, description: Allow no label. }
 outputs:
   schema:

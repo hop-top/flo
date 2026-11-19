@@ -36,6 +36,8 @@ func (f *fakeHTTP) Do(r *http.Request) (*http.Response, error) {
 	var body []byte
 	if r.Body != nil {
 		body, _ = io.ReadAll(r.Body)
+		// The reply func may want the body too.
+		r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
 	}
 	f.mu.Lock()
 	f.reqs = append(f.reqs, r)

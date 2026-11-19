@@ -121,16 +121,19 @@ func TestClassifyChecksBackendAnswers(t *testing.T) {
 }
 
 func TestClassifierFor(t *testing.T) {
-	if c, err := builtin.ClassifierFor(""); c != nil || err != nil {
+	if c, err := builtin.ClassifierFor("", builtin.LLMDeps{}); c != nil || err != nil {
 		t.Fatalf("unset: %v %v", c, err)
 	}
-	if c, err := builtin.ClassifierFor("rules"); c == nil || err != nil {
+	if c, err := builtin.ClassifierFor("rules", builtin.LLMDeps{}); c == nil || err != nil {
 		t.Fatalf("rules: %v %v", c, err)
 	}
-	if c, err := builtin.ClassifierFor("judge"); c != nil || !core.IsCode(err, core.CodeEngineFeature) {
-		t.Fatalf("judge must be refused, not replaced: %v %v", c, err)
+	if c, err := builtin.ClassifierFor("judge", builtin.LLMDeps{}); c == nil || err != nil {
+		t.Fatalf("judge: %v %v", c, err)
 	}
-	if _, err := builtin.ClassifierFor("nope"); !core.IsCode(err, core.CodeUsage) {
+	if c, err := builtin.ClassifierFor("judge", builtin.LLMDeps{LocalHosts: []string{"bad host!"}}); c != nil || !core.IsCode(err, core.CodeUsage) {
+		t.Fatalf("a bad privacy.local_hosts is a usage error: %v %v", c, err)
+	}
+	if _, err := builtin.ClassifierFor("nope", builtin.LLMDeps{}); !core.IsCode(err, core.CodeUsage) {
 		t.Fatalf("unknown: %v", err)
 	}
 }

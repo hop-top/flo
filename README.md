@@ -93,8 +93,10 @@ flo run cancel <run> --yes
   file or with `-c` only.
 - Classifier: `ai.classifier` (env `FLO_AI_CLASSIFIER`) picks the backend of
   `flo/ai.classify@1`: `rules` (deterministic, no model; security by advisory,
-  breaking by major bump, else routine) or `judge` (kit go/ai/judge; refused
-  until it exists). Unset configures none and a step using the node fails
+  breaking by major bump, else routine) or `judge` (kit go/ai/judge over the step's
+  model: one choice question per item; confidence and reason from the model;
+  tokens and, for a cloud model, dollars count against the run's budget;
+  no `schema`). It reads the same model client rules as the generator. Unset configures none and a step using the node fails
   with `engine_feature`: no backend stands in for another.
 - Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
   `flo/ai.generate@1`: `template` (renders the prompt's template over the

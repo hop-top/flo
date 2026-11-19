@@ -138,16 +138,15 @@ func (e *Engine) wire() error {
 	if err := builtin.RegisterStd(builtins, builtin.Deps{Outputs: st.Outputs, IDs: ids, Clock: cfg.Clock}); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
-	classifier, err := builtin.ClassifierFor(cfg.Classifier)
+	modelDeps := builtin.LLMDeps{HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts}
+	classifier, err := builtin.ClassifierFor(cfg.Classifier, modelDeps)
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
 	if err := builtin.RegisterClassify(builtins, classifier); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
-	generator, err := builtin.GeneratorFor(cfg.Generator, builtin.LLMDeps{
-		HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts,
-	})
+	generator, err := builtin.GeneratorFor(cfg.Generator, modelDeps)
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}

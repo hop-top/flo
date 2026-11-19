@@ -358,6 +358,25 @@ per input item, in order; `cost` reported. `label` is always in `labels`
 validated repair loop. Privacy follows the model URI scheme (§9). Empty
 `items` returns `{items: []}` without a model call.
 
+Backend `ai.classifier`: `rules` labels by fixed rules with no model (an
+item with `ghsa_id` or `severity` is `security`, a higher major than
+`installed` is `breaking`, else `routine`; `model` is ignored). `judge` asks
+the step's model one choice question per item over kit's `go/ai/judge`: the
+item (every field) is the case, `labels` the options, `instructions` the
+question's guidance, `abstain` adds the `abstain` answer (a `null` label).
+Every item is judged as given; nothing is decided by item shape, so a flow
+that wants advisories labelled by rule routes them around the node. `confidence`
+and `why` are the model's. `strategy` is `verbalized` (default, one call per
+item, the model's stated confidence) or `votes[:n]` (n calls per item, 3 by
+default, up to 9; confidence is the share that agree). `pattern` names a
+system prompt resolved through a configured pattern source; without one it
+fails `engine_feature`. `schema` fails `engine_feature`: the judge returns no
+extra fields. Items run up to four at a time; a failed item fails the step
+and its spend is not reported. The model client follows §6.5 (hermetic, the
+engine's HTTP seam, local-only under a `local-only` ceiling, the key as
+`<scheme>_api_key`); `labels` needs two or more distinct labels, none of them
+`abstain`, else `input_invalid`. Cost: as §6.5, summed over the calls.
+
 ### 6.4 Built-in nodes that evaluate expressions per item
 
 `flo/dedupe@1` and `flo/filter@1` take an expression string (`key`,
