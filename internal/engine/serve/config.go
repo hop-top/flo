@@ -81,8 +81,9 @@ type Config struct {
 	// available. Empty configures none, and a step using the node fails.
 	Classifier string
 	// Generator names the flo/ai.generate@1 backend (`ai.generator`):
-	// "template" is the deterministic one, "llm" is a model client and not
-	// yet available. Empty configures none, and a step using the node fails.
+	// "template" is the deterministic one, "llm" calls the step's model
+	// through kit's client. Empty configures none, and a step using the node
+	// fails.
 	Generator string
 	// LocalHosts are the hosts and CIDRs treated as local when a model URI
 	// is read (`privacy.local_hosts`); empty lists none.

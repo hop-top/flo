@@ -123,6 +123,9 @@ func (e *Engine) wire() error {
 		secrets = cfg.Secrets
 	}
 	commands := command.NewRunner(exec)
+	// Every secret a node resolves goes through secretLog, the model keys of
+	// the generate node too, so a recording can scrub them.
+	e.secretLog = &secretLog{Secrets: httpnode.StoreSecrets{Store: secrets}}
 
 	e.Grants = grants.New(st.Grants, cfg.Clock)
 	adm := admission.New(e.Grants, st.Receipts, ids, cfg.Clock)
@@ -142,7 +145,9 @@ func (e *Engine) wire() error {
 	if err := builtin.RegisterClassify(builtins, classifier); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
-	generator, err := builtin.GeneratorFor(cfg.Generator)
+	generator, err := builtin.GeneratorFor(cfg.Generator, builtin.LLMDeps{
+		HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts,
+	})
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
@@ -177,7 +182,6 @@ func (e *Engine) wire() error {
 		return err //nolint:wrapcheck // *core.Error
 	}
 
-	e.secretLog = &secretLog{Secrets: httpnode.StoreSecrets{Store: secrets}}
 	e.dispDeps = dispatch.Deps{
 		Builtins: builtins, Commands: commands, HTTP: httpc, Secrets: e.secretLog,
 		Plugins: e.Nodes.Plugins, Clock: cfg.Clock, Limits: ratelimit.New(cfg.Clock),

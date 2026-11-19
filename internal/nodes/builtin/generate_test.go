@@ -57,7 +57,7 @@ func gen(t *testing.T, g builtin.Generator, bundle string, ceiling specrun.Priva
 	}
 	res, xerr := n.Execute(context.Background(), core.Invocation{
 		Tenant: "default", Run: core.RunContext{ID: "run_1"}, StepID: "s", Node: n.Spec(), In: full,
-		Bundle: bundle, Privacy: ceiling,
+		Bundle: bundle, Privacy: ceiling, RunAs: "prof",
 	})
 	if xerr != nil {
 		t.Fatal(xerr)
@@ -82,7 +82,7 @@ const briefPrompt = "system: s\ntemplate: |\n  Meeting {{ .title }}: {{ join \",
 
 func TestGenerateTemplateRenders(t *testing.T) {
 	b := bundleWith(t, map[string]string{"brief@1.yaml": briefPrompt})
-	g, err := builtin.GeneratorFor(builtin.BackendTemplate)
+	g, err := builtin.GeneratorFor(builtin.BackendTemplate, builtin.LLMDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func (f genFunc) Generate(ctx context.Context, r builtin.GenerateRequest) (built
 
 func TestGenerateWithoutBackendFails(t *testing.T) {
 	b := bundleWith(t, map[string]string{"brief@1.yaml": "template: hi\n"})
-	g, err := builtin.GeneratorFor("")
+	g, err := builtin.GeneratorFor("", builtin.LLMDeps{})
 	if err != nil || g != nil {
 		t.Fatalf("%v %v", g, err)
 	}
@@ -234,13 +234,10 @@ func TestGenerateWithoutBackendFails(t *testing.T) {
 }
 
 func TestGeneratorFor(t *testing.T) {
-	if g, err := builtin.GeneratorFor("template"); err != nil || g == nil {
+	if g, err := builtin.GeneratorFor("template", builtin.LLMDeps{}); err != nil || g == nil {
 		t.Errorf("template: %v %v", g, err)
 	}
-	if g, err := builtin.GeneratorFor("llm"); g != nil || !core.IsCode(err, core.CodeEngineFeature) {
-		t.Errorf("llm must be refused, not replaced: %v %v", g, err)
-	}
-	if _, err := builtin.GeneratorFor("nope"); !core.IsCode(err, core.CodeUsage) {
+	if _, err := builtin.GeneratorFor("nope", builtin.LLMDeps{}); !core.IsCode(err, core.CodeUsage) {
 		t.Errorf("unknown: %v", err)
 	}
 }

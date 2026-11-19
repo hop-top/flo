@@ -23,6 +23,13 @@ type GenerateRequest struct {
 	// node has already refused a cloud model; a backend that picks its own
 	// endpoint must stay local too.
 	LocalOnly bool
+	// Level is the model's privacy level as the node computed it (flo's
+	// ModelPrivacy): local or cloud. Empty when the model is not a URI.
+	Level node.Privacy
+	// Tenant and Profile scope the secrets a backend reads: the run's
+	// tenant and the aps profile the step acts as.
+	Tenant  core.TenantID
+	Profile string
 }
 
 // Generation is a backend answer. Data is set when the request had a Schema.
@@ -31,9 +38,9 @@ type Generation struct {
 	Data map[string]any
 }
 
-// Generator is the seam behind flo/ai.generate@1. kit's model client
-// implements it once it exists; TemplateGenerator is the deterministic
-// backend for runs without a model.
+// Generator is the seam behind flo/ai.generate@1. LLMGenerator (kit's model
+// client) implements it; TemplateGenerator is the deterministic backend for
+// runs without a model.
 type Generator interface {
 	Generate(ctx context.Context, req GenerateRequest) (Generation, core.Cost, error)
 }
@@ -95,7 +102,10 @@ func generate(ctx context.Context, g Generator, src PromptSource, local *node.Lo
 	if err != nil {
 		return failOf(err, core.Cost{})
 	}
-	req := GenerateRequest{Prompt: p, Context: ctxIn, Model: model, LocalOnly: localOnly}
+	req := GenerateRequest{
+		Prompt: p, Context: ctxIn, Model: model, LocalOnly: localOnly,
+		Level: lvl, Tenant: inv.Tenant, Profile: inv.RunAs,
+	}
 	req.Schema, _ = inv.In["schema"].(map[string]any)
 
 	got, cost, err := g.Generate(ctx, req)
@@ -140,22 +150,25 @@ const (
 	// BackendTemplate renders the prompt's template over the context: no
 	// model, no network, no cost. It is an explicit choice, never a fallback.
 	BackendTemplate = "template"
-	// BackendLLM is a model client; not available until kit's lands.
+	// BackendLLM calls the step's model through kit's model client.
 	BackendLLM = "llm"
 )
 
 // GeneratorFor resolves the `ai.generator` setting. Empty is no backend
-// (nil, nil): the node fails when used. "llm" is refused until kit's model
-// client is wired, rather than quietly replaced by the template backend.
-func GeneratorFor(name string) (Generator, error) {
+// (nil, nil): the node fails when used. d is what the "llm" backend needs;
+// the template backend ignores it.
+func GeneratorFor(name string, d LLMDeps) (Generator, error) {
 	switch name {
 	case "":
 		return nil, nil
 	case BackendTemplate:
 		return TemplateGenerator{}, nil
 	case BackendLLM:
-		return nil, core.New(core.CodeEngineFeature, "ai.generator=llm: the llm backend is not available in this build").
-			WithSuggestion("use ai.generator=template, or leave it unset")
+		g, err := NewLLMGenerator(d)
+		if err != nil {
+			return nil, err
+		}
+		return g, nil
 	}
 	return nil, core.Errorf(core.CodeUsage, "ai.generator=%s: unknown backend (%s)", name, fmt.Sprint([]string{BackendTemplate, BackendLLM}))
 }
