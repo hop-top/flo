@@ -1,4 +1,5 @@
-# The default scenario of the fake script: four messages, one automatic
+# The default scenario of the fake script and a model that answers every
+# question: four messages, one automatic
 # (every action trusted), three pending (one of them held back by a rule that
 # always asks). A test approves every item and runs no irreversible step; the
 # approval and the apply are planned, not executed.
@@ -10,8 +11,14 @@ expect:
       new: 4
       carried: 0
       failed_accounts: []
-  - step: decide
-    output: { run: "20261118-090001", rows: 4 }
+  # the judgment: the headers of the four messages go to the model, two
+  # questions each; the decisions file is the script's policy over its answers
+  - step: rows
+    output: { run: "20261118-090001", decided: false }
+  - step: label
+  - step: weigh
+  - step: decisions
+    output: { run: "20261118-090001", rows: 4, asked: 4, already_decided: false }
   - step: plan
     output:
       run: "20261118-090001"

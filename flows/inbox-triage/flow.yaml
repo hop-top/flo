@@ -1,13 +1,45 @@
 flow: inbox-triage
-version: 0.1.0
+version: 0.2.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
   - manual: {}
 run_as: automation
-privacy: cloud-allowed          # `decide` sends headers only
+# Mail is private: nothing in this flow may reach a cloud service. The judgment
+# runs on this machine's model; the list below names Jev after it, and under
+# this ceiling the engine skips it.
+#
+# Opt in to Jev (a hosted model, TypeSafe through OpenRouter) only by deciding
+# that the headers of your mail may leave the machine (sender, subject, date,
+# flags, folder, history; never a body): set `privacy: cloud-allowed` here and
+# on `label` and `weigh`, and keep the openrouter_api_key secret on the profile.
+# With `engine: auto` Jev then answers only when the local model is not
+# detected; without the key it fails (secret_not_found), it never falls back to
+# a silent skip. Compare the two on a day of mail first (docs: flows/inbox-triage).
+privacy: local-only
 tasks: per-run
 concurrency: { on_overlap: skip }
+vars:
+  # The labels a message may be filed under (the script's SOP labels). A label
+  # that does not exist in an account makes the plan item invalid; labels are
+  # never created.
+  labels:
+    type: list
+    default:
+      - Action Required
+      - Waiting
+      - Finance
+      - Legal
+      - Customers
+      - Sales
+      - Marketing
+      - Operations
+      - Vendors
+      - People
+      - Projects
+      - Travel
+      - Subscriptions
+      - Reference
 steps:
   # No lanes: fetch only reads and snapshots. The script's own state (seen
   # mail, pending locks, trust) lives between the steps, so they are ordered
@@ -15,14 +47,65 @@ steps:
   - id: fetch
     uses: inbox/fetch@1
 
-  - id: decide
-    uses: inbox/decide@1
+  # The judgment: two questions per message over its headers (the snapshot
+  # holds no body), asked of flo/ai.classify@1. `rows` lists the messages that
+  # still need a decision; `label` files each one under a label, `weigh` says
+  # how much it matters; `decisions` turns both into the script's decisions
+  # file by the script's own policy (low confidence is Needs Review, an
+  # abstention stays in the inbox for a person, quiet mail is also read and
+  # archived, mail from a person is never filed away). The classifier backend
+  # is configuration (ai.classifier=judge / FLO_AI_CLASSIFIER=judge); the engine
+  # defaults to auto (ai.judge.engine). The model is the local Qwen3 4B
+  # Instruct; Jev is listed after it and skipped under the local-only ceiling
+  # above. The model must pass ai.models.allow / ai.models.deny
+  # (e.g. FLO_AI_MODELS_ALLOW=ollama://qwen3*).
+  - id: rows
+    uses: inbox/rows@1
     depends_on: [fetch]
-    with: { run: "{{ results.fetch.run }}" }
+    with: { run_dir: "{{ results.fetch.run_dir }}" }
+
+  - id: label
+    uses: flo/ai.classify@1
+    privacy: local-only          # headers stay on the machine; refuses a cloud model
+    with:
+      model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]
+      engine: auto
+      labels: "{{ vars.labels }}"
+      abstain: true
+      instructions: >-
+        Best label for filing this mail in the owner's mailbox? Abstain when
+        routine filing (a label, read and archive flags) does not clearly cover
+        the message: legal, conflict, negotiation, angry or personal mail,
+        anything the headers alone do not settle.
+      items: "{{ results.rows.items }}"
+
+  - id: weigh
+    uses: flo/ai.classify@1
+    privacy: local-only
+    with:
+      model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]
+      engine: auto
+      labels: [irrelevant, low, normal, high, critical]
+      instructions: >-
+        How much does this mail matter to the owner? irrelevant: billing noise,
+        marketing, sign-in links, security pings. low: receipts and routine
+        notices. normal: ongoing service mail, digests worth keeping. high:
+        affects work in flight, a client, or money. critical: drop everything.
+      items: "{{ results.rows.items }}"
+
+  - id: decisions
+    uses: inbox/decisions@1
+    with:
+      run_dir: "{{ results.fetch.run_dir }}"
+      labels: "{{ results.label.items }}"
+      weights: "{{ results.weigh.items }}"
+      sop_labels: "{{ vars.labels }}"
+      engine: "{{ has(results.label.engine) ? results.label.engine : '' }}"
+      model: "{{ has(results.label.model) ? results.label.model : '' }}"
 
   - id: plan
     uses: inbox/plan@1
-    depends_on: [decide]
+    depends_on: [decisions]
     with: { run: "{{ results.fetch.run }}" }
 
   # Everything apply would touch goes through the approval, so the guard of the

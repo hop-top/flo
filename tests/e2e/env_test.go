@@ -133,6 +133,7 @@ type env struct {
 	shims   string
 	scratch string
 	extra   []string
+	model   *triageModel // the fake judge model of a triage env, when it has one
 }
 
 func newEnv(t *testing.T, extra ...string) *env {

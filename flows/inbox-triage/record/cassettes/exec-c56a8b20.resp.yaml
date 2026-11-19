@@ -1,0 +1,22 @@
+xrr: "1"
+adapter: exec
+fingerprint: c56a8b20
+recorded_at: "2026-11-19T05:18:17Z"
+payload:
+    exit_code: 0
+    files:
+        - content: |
+            {
+              "run": "20261118-090001",
+              "run_dir": "/tmp/flo-inbox-record/inbox/runs/20261118-090001",
+              "engine": "local",
+              "model": "ollama://qwen3:4b-instruct-2507-q4_K_M",
+              "already_decided": false,
+              "rows": 4,
+              "asked": 4,
+              "answered": 0,
+              "attention": 2,
+              "needs_review": 0
+            }
+          path: out.json
+    stdout: ""
