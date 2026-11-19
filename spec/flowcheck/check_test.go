@@ -191,6 +191,7 @@ inputs:
   weights: { type: array, required: true }
   sop_labels: { type: array, required: true }
   senders: { type: array, default: [] }
+  security_label: { type: [string, 'null'], default: null }
   engine: { type: [string, 'null'], default: null }
   model: { type: [string, 'null'], default: null }
 outputs: { from: "file:out.json", format: json, schema: { type: object } }
