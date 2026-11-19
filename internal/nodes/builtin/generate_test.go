@@ -11,6 +11,7 @@ import (
 	"hop.top/flo/internal/nodes/builtin"
 	"hop.top/flo/internal/nodes/schema"
 	"hop.top/flo/internal/prompts"
+	"hop.top/flo/spec/node"
 	specrun "hop.top/flo/spec/run"
 )
 
@@ -29,12 +30,24 @@ func bundleWith(t *testing.T, files map[string]string) string {
 	return dir
 }
 
+// listedHosts is what the tests list as privacy.local_hosts.
+var listedHosts = []string{"gpu.internal", "100.64.0.0/10"}
+
+func localHostsOf(t *testing.T) *node.LocalHosts {
+	t.Helper()
+	lh, err := node.NewLocalHosts(listedHosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lh
+}
+
 // gen runs flo/ai.generate@1 with a bundle and a ceiling, as the executor
 // fills them.
 func gen(t *testing.T, g builtin.Generator, bundle string, ceiling specrun.Privacy, in map[string]any) core.Result {
 	t.Helper()
 	r, _ := std(t)
-	if err := builtin.RegisterGenerate(r, g, prompts.Loader{}); err != nil {
+	if err := builtin.RegisterGenerate(r, g, prompts.Loader{}, localHostsOf(t)); err != nil {
 		t.Fatal(err)
 	}
 	n, _ := r.Lookup("flo/ai.generate@1")
@@ -150,17 +163,24 @@ func TestGenerateRuntimePrivacyCeiling(t *testing.T) {
 	}{
 		{"cloud under local-only", "anthropic://claude-sonnet-5-5", specrun.PrivacyLocalOnly, true},
 		{"cloud, no ceiling set", "anthropic://claude-sonnet-5-5", "", true},
-		{"public ollama host under local-only", "ollama://ollama.example.com/gemma", specrun.PrivacyLocalOnly, true},
+		{"public ollama host under local-only", "ollama://ollama.example.com:11434/gemma", specrun.PrivacyLocalOnly, true},
 		{"public openai host under local-only", "openai://api.example.com:8080/m", specrun.PrivacyLocalOnly, true},
+		{"base_url past a local host under local-only", "openai://localhost:8000/m?base_url=https://api.openai.com/v1", specrun.PrivacyLocalOnly, true},
+		{"unlisted tailnet name under local-only", "ollama://box.ts.net:11434/gemma", specrun.PrivacyLocalOnly, true},
 		{"not a URI under local-only", "gemma", specrun.PrivacyLocalOnly, true},
-		{"dotted ollama name, no slash, under local-only", "ollama://llama3.1", specrun.PrivacyLocalOnly, true},
-		{"dotted ollama via empty authority", "ollama:///llama3.1", specrun.PrivacyLocalOnly, false},
-		{"dotted ollama via localhost", "ollama://localhost/llama3.1", specrun.PrivacyLocalOnly, false},
-		{"dotted ollama name under cloud-allowed", "ollama://llama3.1", specrun.PrivacyCloudAllowed, false},
+		{"dotted ollama name is the local daemon", "ollama://llama3.1", specrun.PrivacyLocalOnly, false},
+		{"lmstudio default under local-only", "lmstudio://qwen", specrun.PrivacyLocalOnly, false},
+		{"base_url to localhost under local-only", "openai://m?base_url=http://localhost:8000/v1", specrun.PrivacyLocalOnly, false},
+		{"empty authority is not runnable", "ollama:///llama3.1", specrun.PrivacyLocalOnly, true},
+		{"portless localhost is not runnable", "ollama://localhost/llama3.1", specrun.PrivacyLocalOnly, true},
+		{"not runnable, even under cloud-allowed", "ollama:///llama3.1", specrun.PrivacyCloudAllowed, true},
 		{"local ollama under local-only", "ollama://gemma4:e4b", specrun.PrivacyLocalOnly, false},
 		{"private openai under local-only", "openai://10.0.0.7:8080/m", specrun.PrivacyLocalOnly, false},
+		{"listed named host under local-only", "openai://gpu.internal:8000/m", specrun.PrivacyLocalOnly, false},
+		{"listed tailnet CIDR under local-only", "ollama://100.64.9.9:11434/gemma", specrun.PrivacyLocalOnly, false},
+		{"listed host does not rescue a public base_url", "openai://gpu.internal:8000/m?base_url=https://api.openai.com/v1", specrun.PrivacyLocalOnly, true},
 		{"cloud under cloud-allowed", "anthropic://claude-sonnet-5-5", specrun.PrivacyCloudAllowed, false},
-		{"public host under cloud-allowed", "ollama://ollama.example.com/gemma", specrun.PrivacyCloudAllowed, false},
+		{"public host under cloud-allowed", "ollama://ollama.example.com:11434/gemma", specrun.PrivacyCloudAllowed, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			res := gen(t, builtin.TemplateGenerator{}, b, c.ceiling, genIn(c.model, nil))
@@ -168,7 +188,7 @@ func TestGenerateRuntimePrivacyCeiling(t *testing.T) {
 				if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodePrivacyViolation {
 					t.Fatalf("not refused: %+v", res)
 				}
-				if strings.Contains(c.model, "://llama3.1") && !strings.Contains(res.Err.Suggestion, "ollama:///<model>") {
+				if !strings.Contains(res.Err.Suggestion, "ollama://<model>") {
 					t.Errorf("suggestion lacks the local spelling: %q", res.Err.Suggestion)
 				}
 				return

@@ -186,9 +186,17 @@ func TestRules(t *testing.T) {
 		{"V19 hosted model under local-only", "V19", CodePrivacyViolation,
 			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'anthropic://claude' } }\n", false, ""},
 		{"V19 public ollama host under local-only", "V19", CodePrivacyViolation,
-			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://ollama.example.com/gemma' } }\n", false, ""},
-		{"V19 dotted ollama name without a slash is ambiguous", "V19", CodePrivacyViolation,
-			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://llama3.1' } }\n", false, "ollama:///<model>"},
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://ollama.example.com:11434/gemma' } }\n", false, ""},
+		{"V19 base_url past a local host", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://localhost:8000/m?base_url=https://api.openai.com/v1' } }\n", false, "is cloud"},
+		{"V19 tailnet host is cloud unless listed", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://100.64.1.2:11434/gemma' } }\n", false, "is cloud"},
+		{"V19 empty authority is not runnable", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama:///llama3.1' } }\n", false, "ollama://<model>"},
+		{"V19 portless localhost is not runnable", "V19", CodePrivacyViolation,
+			head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://localhost/llama3.1' } }\n", false, "scheme://host:port/<model>"},
+		{"V19 unix socket is not runnable, even under cloud-allowed", "V19", CodePrivacyViolation,
+			head + "privacy: cloud-allowed\nsteps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://unix:/run/ollama.sock' } }\n", false, "unix socket"},
 		{"V20 irreversible, no approval", "V20", CodeUnguardedIrreversible,
 			head + "privacy: local-only\nsteps:\n  - { id: f, uses: inbox/fetch@1 }\n  - { id: a, uses: inbox/apply@1, depends_on: [f], with: { run: x } }\n", false, ""},
 		{"V20 an exec step does not guard", "V20", CodeUnguardedIrreversible,
@@ -239,14 +247,15 @@ func TestLegalVariants(t *testing.T) {
 		"guard through results edge": head + "steps:\n" +
 			"  - { id: ap, uses: flo/approval@1, with: { items: [] } }\n" +
 			"  - { id: a, uses: inbox/apply@1, with: { run: \"{{ results.ap.approved }}\" } }\n",
-		"local model under local-only":         head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma' } }\n",
-		"ollama on a private host":             head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://10.0.0.4:11434/gemma' } }\n",
-		"ollama default daemon, tagged model":  head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma4:e4b' } }\n",
-		"ollama dotted model, empty authority": head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama:///llama3.1' } }\n",
-		"ollama dotted model on localhost":     head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://localhost/llama3.1' } }\n",
-		"private-network openai":               head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://192.168.1.5:8080/m' } }\n",
-		"retry on an idempotent node":          head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, retry: { max_attempts: 3 } }\n",
-		"narrowing step privacy":               head + "privacy: cloud-allowed\nsteps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, privacy: local-only }\n",
+		"local model under local-only":        head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma' } }\n",
+		"ollama on a private host":            head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://10.0.0.4:11434/gemma' } }\n",
+		"ollama default daemon, tagged model": head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://gemma4:e4b' } }\n",
+		"ollama dotted model":                 head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'ollama://llama3.1' } }\n",
+		"lmstudio default is localhost":       head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'lmstudio://qwen' } }\n",
+		"base_url to localhost":               head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://m?base_url=http://localhost:8000/v1' } }\n",
+		"private-network openai":              head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: 'openai://192.168.1.5:8080/m' } }\n",
+		"retry on an idempotent node":         head + "steps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, retry: { max_attempts: 3 } }\n",
+		"narrowing step privacy":              head + "privacy: cloud-allowed\nsteps:\n  - { id: a, uses: tlc/task.list@1, with: { search: x }, privacy: local-only }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -278,5 +287,24 @@ func TestPhase1RefusalsAreDefault(t *testing.T) {
 	}
 	if run.Check(parse(t, doc)).Has("D5") {
 		t.Error("run.Check is flow-only and has no phase-1 refusals")
+	}
+}
+
+// privacy.local_hosts lifts a tailnet host and a named host to local for V19.
+func TestLocalHostsOption(t *testing.T) {
+	lh, err := node.NewLocalHosts([]string{"100.64.0.0/10", "gpu.internal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []string{"ollama://100.64.1.2:11434/gemma", "openai://gpu.internal:8000/m"} {
+		doc := head + "steps:\n  - { id: g, uses: flo/ai.generate@1, with: { prompt: p@1, model: '" + m + "' } }\n"
+		if r := Check(parse(t, doc), opts(t)); !r.HasErrors() {
+			t.Errorf("%s: unlisted host passed", m)
+		}
+		o := opts(t)
+		o.LocalHosts = lh
+		if r := Check(parse(t, doc), o); len(r) > 0 {
+			t.Errorf("%s: listed host: %v", m, r)
+		}
 	}
 }

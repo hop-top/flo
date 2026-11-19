@@ -533,18 +533,28 @@ Rules:
 
 - A flow with `privacy: local-only` is refused if any node is `cloud`
   (flow.md V19).
-- For AI nodes the level is derived from the `model` URI: `ollama://<name>`
-  (the daemon on this machine; the name has no dot), `ollama://<host>/<model>` and
-  `openai://<host>/<model>` with a local host, and an `ollama://` unix
-  socket are `local`; hosted providers and any other host are `cloud`. An
-  `ollama://<authority>` with no slash after it and a dot in the authority
-  (`ollama://llama3.1`) is ambiguous (host or dotted model name) and is
-  `cloud`; a local dotted model is written `ollama:///llama3.1` or
-  `ollama://localhost/llama3.1`. A host
-  is local when it is `localhost`, `*.local`, loopback (127.0.0.0/8, `::1`) or
-  private (RFC 1918). The engine applies the same rule at run time: under a
-  local-only ceiling a cloud model fails `privacy_violation` before any call. The node spec states the default; the validator resolves the
-  actual value from `with.model` when it is a literal.
+- For AI nodes the level is derived from the `model` URI, which follows the
+  model client's grammar: `ollama://<model>` (any name with no slash, dots
+  included, is a model on the local daemon), `scheme://host:port/<model>` (the
+  port is numeric) and a `?base_url=` query param. The endpoint is chosen as
+  the model client chooses it: `base_url` first, else the `host:port`, else
+  the scheme's default. The level is that endpoint's: `local` when its host is
+  local, or when the scheme's default is (`ollama`, `lmstudio`); `cloud` for
+  every other host and default (`openai`, `anthropic`, `openrouter`, ...). So
+  `openai://localhost:8000/m?base_url=https://api.openai.com/v1` is `cloud`.
+  A host is local when it is `localhost`, `*.localhost`, loopback (127.0.0.0/8,
+  `::1`), private (RFC 1918, `fc00::/7`), or listed in `privacy.local_hosts`
+  (config; env `FLO_PRIVACY_LOCAL_HOSTS`, comma-separated; host names and
+  CIDRs; default empty). Tailnet addresses (100.64.0.0/10, `*.ts.net`), `.local`
+  names and every other named host are `cloud` unless listed. Forms the model
+  client cannot run are refused (V19, and `privacy_violation` at run time, under
+  any ceiling): an empty authority (`ollama:///x`), a unix socket, a portless
+  host (`ollama://localhost/x`, which the client reads as the model
+  `localhost/x`) and a non-numeric port. Write `ollama://<model>` for the
+  local daemon or `scheme://host:port/<model>`. The engine applies the same
+  rule at run time: under a local-only ceiling a cloud model fails
+  `privacy_violation` before any call. The node spec states the default; the
+  validator resolves the actual value from `with.model` when it is a literal.
 - A node whose data may not leave the machine (`local`) cannot be placed
   on a remote runner (placement check; §15).
 - The declared level is the node author's claim. Engines MUST NOT infer a

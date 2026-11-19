@@ -618,7 +618,7 @@ credentials and grants.
 An egress **ceiling** for the flow (or one step):
 
 - `local-only`: no node whose `privacy` is `cloud` may run, and AI nodes
-  must name a local model scheme (`ollama://`, a local `openai://host:port`).
+  must name a local model (`ollama://<model>`, a local `scheme://host:port/<model>`; node.md §9).
 - `cloud-allowed`: nodes with `privacy: cloud` may run.
 
 Nodes declare their own level (node.md §9); validation compares. The step

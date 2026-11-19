@@ -32,6 +32,7 @@ import (
 	"hop.top/flo/internal/store/sqlite"
 	"hop.top/flo/internal/tasks/tlccli"
 	"hop.top/flo/internal/triggers"
+	"hop.top/flo/spec/node"
 )
 
 // Engine is the assembled engine: every port wired to its implementation.
@@ -145,7 +146,11 @@ func (e *Engine) wire() error {
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
-	if err := builtin.RegisterGenerate(builtins, generator, packs.Prompts()); err != nil {
+	localHosts, err := node.NewLocalHosts(cfg.LocalHosts)
+	if err != nil {
+		return core.Wrap(core.CodeUsage, err)
+	}
+	if err := builtin.RegisterGenerate(builtins, generator, packs.Prompts(), localHosts); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
 	e.Nodes = newNodes(packs, builtins)
@@ -212,6 +217,7 @@ func (e *Engine) wire() error {
 	e.Pruner = &brief.Pruner{Outputs: st.Outputs, Jobs: e.Queue, Clock: cfg.Clock, Also: e.pruneRecordings}
 	e.Pruner.Register(e.Worker)
 	e.Flows = NewFlows(e.Services, e.Nodes)
+	e.Flows.localHosts = localHosts
 	gate.flows = e.Flows
 	return nil
 }

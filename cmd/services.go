@@ -15,6 +15,7 @@ import (
 	"hop.top/flo/internal/engine/serve"
 	"hop.top/flo/internal/nodes/builtin"
 	"hop.top/flo/internal/store/tenants"
+	"hop.top/flo/spec/node"
 )
 
 // ServicesFunc opens the ports a command works against. Commands call it
@@ -48,6 +49,10 @@ const (
 	EnvTLCDir     = "FLO_TLC_DIR"
 	EnvTLCProfile = "FLO_TLC_PROFILE"
 	EnvEvaURL     = "FLO_EVA_URL"
+
+	// EnvLocalHosts lists hosts and CIDRs read as local by the model privacy
+	// rule (key privacy.local_hosts; comma-separated in the environment).
+	EnvLocalHosts = "FLO_PRIVACY_LOCAL_HOSTS"
 )
 
 // setting reads one setting of the config of root, which holds every source in
@@ -58,6 +63,22 @@ func setting(root *kitcli.Root, env, key string) string {
 		return strings.TrimSpace(root.Viper.GetString(key))
 	}
 	return strings.TrimSpace(os.Getenv(env))
+}
+
+// listSetting reads a list setting: a file list, or a comma- or
+// space-separated environment value.
+func listSetting(root *kitcli.Root, env, key string) []string {
+	var raw []string
+	if root != nil && root.Viper != nil {
+		raw = root.Viper.GetStringSlice(key)
+	} else if v := os.Getenv(env); v != "" {
+		raw = []string{v}
+	}
+	var out []string
+	for _, r := range raw {
+		out = append(out, strings.FieldsFunc(r, func(c rune) bool { return c == ',' || c == ' ' || c == '\t' })...)
+	}
+	return out
 }
 
 func durationSetting(root *kitcli.Root, env, key string) (time.Duration, error) {
@@ -117,6 +138,11 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 	}
 	cfg.Classifier = setting(root, builtin.EnvClassifier, "ai.classifier")
 	cfg.Generator = setting(root, builtin.EnvGenerator, "ai.generator")
+	cfg.LocalHosts = listSetting(root, EnvLocalHosts, "privacy.local_hosts")
+	if _, err := node.NewLocalHosts(cfg.LocalHosts); err != nil {
+		return serve.Config{}, core.Errorf(core.CodeUsage, "privacy.local_hosts: %v", err).
+			WithSuggestion("list host names, addresses or CIDRs such as 100.64.0.0/10")
+	}
 	cfg.ExprConfig = exprConfig(root)
 	return cfg, nil
 }

@@ -1,6 +1,7 @@
 package flowcheck
 
 import (
+	"errors"
 	"slices"
 	"strings"
 
@@ -123,11 +124,13 @@ func (c *checker) privacy(st *spec.Step, n *node.Spec) {
 	how := "declared " + string(n.Privacy)
 	if _, takesModel := n.Inputs["model"]; takesModel {
 		if m, ok := st.With["model"].(string); ok && !strings.Contains(m, "{{") {
-			if p, ok := node.ModelPrivacy(m); ok {
+			p, err := node.ModelPrivacy(m, c.opts.LocalHosts)
+			switch {
+			case errors.Is(err, node.ErrNotRunnable):
+				c.err("V19", CodePrivacyViolation, st.ID, "with.model", "%s: %v", n.Node, err)
+				return
+			case err == nil:
 				eff, how = p, "its model "+m+" is "+string(p)
-				if node.AmbiguousOllama(m) {
-					how += "; " + node.LocalOllamaHint
-				}
 			}
 		}
 	}

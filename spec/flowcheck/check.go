@@ -84,6 +84,9 @@ type Options struct {
 	// nor uses) and a sub-flow step are engine_feature.
 	AllowAgent   bool
 	AllowSubFlow bool
+	// LocalHosts are the hosts privacy.local_hosts adds to the local ones
+	// when V19 reads a model URI (node.md §9); nil adds none.
+	LocalHosts *node.LocalHosts
 }
 
 // Check validates f: run.Check, then every rule that reads node specs,

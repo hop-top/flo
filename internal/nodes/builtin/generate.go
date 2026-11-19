@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -47,16 +48,18 @@ type PromptSource interface {
 // through src. A nil g registers the node with no backend: a step that
 // uses it fails with engine_feature and says how to configure one; nothing
 // falls back to another backend.
-func RegisterGenerate(r core.BuiltinRegistry, g Generator, src PromptSource) error {
+func RegisterGenerate(r core.BuiltinRegistry, g Generator, src PromptSource, local *node.LocalHosts) error {
 	s, err := Spec("flo/ai.generate@1")
 	if err != nil {
 		return err
 	}
-	n := fn{s, func(ctx context.Context, inv core.Invocation) (core.Result, error) { return generate(ctx, g, src, inv) }}
+	n := fn{s, func(ctx context.Context, inv core.Invocation) (core.Result, error) {
+		return generate(ctx, g, src, local, inv)
+	}}
 	return r.Register(n) //nolint:wrapcheck // *core.Error
 }
 
-func generate(ctx context.Context, g Generator, src PromptSource, inv core.Invocation) (core.Result, error) {
+func generate(ctx context.Context, g Generator, src PromptSource, local *node.LocalHosts, inv core.Invocation) (core.Result, error) {
 	ref := asString(inv.In["prompt"])
 	if ref == "" {
 		return pureFail(core.Errorf(core.CodeInputInvalid, "prompt is empty")), nil
@@ -72,13 +75,14 @@ func generate(ctx context.Context, g Generator, src PromptSource, inv core.Invoc
 	// The ceiling comes before any backend: a refused call sends nothing.
 	// An invocation that carries no ceiling is read as the strictest.
 	localOnly := inv.Privacy != specrun.PrivacyCloudAllowed
-	if lvl, ok := node.ModelPrivacy(model); localOnly && (!ok || lvl == node.PrivacyCloud) {
-		hint := "name a local model (ollama://, a local openai://host:port) or set privacy: cloud-allowed"
-		if node.AmbiguousOllama(model) {
-			hint = node.LocalOllamaHint
-		}
+	lvl, perr := node.ModelPrivacy(model, local)
+	if errors.Is(perr, node.ErrNotRunnable) {
+		return pureFail(core.Errorf(core.CodePrivacyViolation, "model %q: %v", model, perr).
+			WithSuggestion("write ollama://<model> for the local daemon or scheme://host:port/<model>")), nil
+	}
+	if localOnly && (perr != nil || lvl == node.PrivacyCloud) {
 		return pureFail(core.Errorf(core.CodePrivacyViolation, "model %q is not local under a local-only ceiling", model).
-			WithSuggestion(hint)), nil
+			WithSuggestion("name a local model (ollama://<model>, a local scheme://host:port/<model>), list the host in privacy.local_hosts, or set privacy: cloud-allowed")), nil
 	}
 	if g == nil {
 		return pureFail(core.New(core.CodeEngineFeature, "flo/ai.generate@1 has no backend configured").

@@ -53,6 +53,7 @@ var settingCases = []struct {
 	{"engine.approval_poll", EnvApprovalPoll, "1s", "2s", "3s", func(c serve.Config) string { return c.ApprovalPoll.String() }},
 	{"ai.classifier", "FLO_AI_CLASSIFIER", "cfile", "cenv", "cflag", func(c serve.Config) string { return c.Classifier }},
 	{"ai.generator", "FLO_AI_GENERATOR", "gfile", "genv", "gflag", func(c serve.Config) string { return c.Generator }},
+	{"privacy.local_hosts", EnvLocalHosts, "file.example", "env.example,env2.example", "flag.example", func(c serve.Config) string { return strings.Join(c.LocalHosts, ",") }},
 	{"eva.url", EnvEvaURL, "http://file", "http://env", "http://flag", func(c serve.Config) string { return pack("eva", "url")(c) }},
 	{"packs.ctxt.url", "FLO_PACKS_CTXT_URL", "http://file", "http://env", "http://flag", pack("ctxt", "url")},
 	{"packs.calendar.url", "FLO_PACKS_CALENDAR_URL", "/cal/file.ics", "/cal/env.ics", "/cal/flag.ics", pack("calendar", "url")},

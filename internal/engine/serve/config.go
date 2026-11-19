@@ -84,6 +84,9 @@ type Config struct {
 	// "template" is the deterministic one, "llm" is a model client and not
 	// yet available. Empty configures none, and a step using the node fails.
 	Generator string
+	// LocalHosts are the hosts and CIDRs treated as local when a model URI
+	// is read (`privacy.local_hosts`); empty lists none.
+	LocalHosts []string
 	// PacksDir holds the installed packs (<Root>/packs when empty).
 	PacksDir string
 	// TrustDirs hold trust provider documents, besides the trusts/ of every

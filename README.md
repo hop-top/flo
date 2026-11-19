@@ -105,6 +105,13 @@ flo run cancel <run> --yes
   text/template; funcs `join`, `trunc`, `default`; a missing key is an
   error). The ceiling of the step (`privacy`) refuses a cloud model with
   `privacy_violation`.
+- Local hosts: `privacy.local_hosts` (env `FLO_PRIVACY_LOCAL_HOSTS`,
+  comma-separated host names and CIDRs; default none) lists hosts a model URI
+  may name under a local-only ceiling beyond localhost and private addresses.
+  Tailnet (100.64.0.0/10, `*.ts.net`) and named hosts are cloud unless listed.
+  Model URIs: `ollama://<model>`, `scheme://host:port/<model>`, `?base_url=`
+  (which wins over the host); `ollama:///x`, `ollama://localhost/x` and unix
+  sockets are refused (node.md §9).
 - `packs/github` holds the GitHub nodes of `flows/dependency-watch.yaml`. Its
   wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.

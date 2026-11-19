@@ -418,14 +418,15 @@ func TestMeetingBriefStaysLocal(t *testing.T) {
 		return dir, r, m.jsonOf(&r, "flow", "validate", "-f", dir).Exit
 	}
 
-	// Local forms of a model hold; every hosted or public one fails V19, the
-	// dotted forms (a host without a slash is ambiguous) included.
-	for _, model := range []string{"ollama://gemma4:e4b", "ollama:///gemma4.5:e4b", "ollama://localhost/gemma4:e4b", "ollama://127.0.0.1:11434/gemma4:e4b", "ollama://10.0.0.5/gemma4:e4b"} {
+	// Local forms of a model hold (a name without a slash is a model on the
+	// local daemon, dotted or not); every hosted or public host, a base_url
+	// past a local host, and every form the model client cannot run fails V19.
+	for _, model := range []string{"ollama://gemma4:e4b", "ollama://gemma4.5:e4b", "ollama://127.0.0.1:11434/gemma4:e4b", "ollama://10.0.0.5:11434/gemma4:e4b", "lmstudio://gemma4"} {
 		if _, r, exit := swap(model); exit != 0 || !r.Valid || len(r.Issues) != 0 {
 			t.Errorf("%s: exit %d, %+v", model, exit, r)
 		}
 	}
-	for _, model := range []string{"anthropic://claude-sonnet-5-5", "ollama://public.host", "ollama://public.host/gemma4:e4b", "ollama://gpu.example.com:11434/gemma4:e4b", "ollama://gemma4.5:e4b", "openai://api.openai.com/gpt-5"} {
+	for _, model := range []string{"anthropic://claude-sonnet-5-5", "ollama://gpu.example.com:11434/gemma4:e4b", "openai://api.openai.com/gpt-5", "openai://localhost:8000/m?base_url=https://api.openai.com/v1", "ollama://100.64.1.2:11434/gemma4:e4b", "ollama:///gemma4:e4b", "ollama://localhost/gemma4:e4b"} {
 		_, r, exit := swap(model)
 		if exit == 0 || r.Valid || len(r.Issues) != 1 || r.Issues[0].Rule != "V19" || r.Issues[0].Code != "privacy_violation" || r.Issues[0].Step != "brief" || !strings.Contains(r.Issues[0].Message, model) {
 			t.Errorf("%s under local-only: exit %d, %+v", model, exit, r)

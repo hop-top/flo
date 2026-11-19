@@ -12,6 +12,7 @@ import (
 	"hop.top/flo/spec"
 	"hop.top/flo/spec/cel"
 	"hop.top/flo/spec/flowcheck"
+	"hop.top/flo/spec/node"
 )
 
 // Flows validates, stores and activates flow versions. It is what `flo flow
@@ -19,6 +20,8 @@ import (
 type Flows struct {
 	svc   *core.Services
 	nodes *Nodes
+	// localHosts is privacy.local_hosts, read by V19.
+	localHosts *node.LocalHosts
 }
 
 // NewFlows returns the flow operations over the engine's services.
@@ -154,7 +157,7 @@ func (f *Flows) Check(ctx context.Context, tenant core.TenantID, src Source) (Ch
 	if err != nil {
 		return Checked{}, err
 	}
-	rep := flowcheck.Check(fl, flowcheck.Options{Nodes: loc, Flows: flows, Grants: view})
+	rep := flowcheck.Check(fl, flowcheck.Options{Nodes: loc, Flows: flows, Grants: view, LocalHosts: f.localHosts})
 	out := Checked{Flow: fl, Report: reportOf(fl, rep)}
 	out.Capabilities = capabilitiesOf(fl, loc, flows)
 	return out, nil
