@@ -72,14 +72,17 @@ func TestImportRunAndGate(t *testing.T) {
 func TestRefusals(t *testing.T) {
 	flow := filepath.Join("..", "..", "flows", "inbox-triage", "flow.yaml")
 	runDir := filepath.Join("..", "..", "testdata", "judgeeval", "run")
-	// real mail never lands in this repository
-	inRepo := filepath.Join("..", "..", "testdata", "judgeeval", "set.jsonl")
+	// real mail never lands in a git work tree (a directory holding .git)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	inRepo := filepath.Join(repo, "set.jsonl")
 	if code, _, errOut := exec(t, "import", "--flow", flow, "--out", inRepo, runDir); code == 0 || !strings.Contains(errOut, "outside any git work tree") {
 		t.Errorf("import into the repository: %d %s", code, errOut)
 	}
 	if _, err := os.Stat(inRepo); err == nil {
-		_ = os.Remove(inRepo)
-		t.Error("a set was written into the repository")
+		t.Error("a set was written into a work tree")
 	}
 	set := filepath.Join(t.TempDir(), "label.jsonl")
 	if code, _, errOut := exec(t, "import", "--flow", flow, "--out", set, runDir); code != 0 {
