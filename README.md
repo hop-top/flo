@@ -92,12 +92,12 @@ flo run cancel <run> --yes
   profile (`FLO_ENGINE_PROFILE`, default `flo`) holds what installed packs
   declare. Packs are read when a process starts.
 - Config: one loader for every command and `flo engine serve`, kit's `-c`
-  convention (as tlc and aps). Precedence, highest first: `-c key=value`,
-  project config (below), `FLO_*` environment, config files, default. Files merge in order
+  convention (as tlc and aps). Precedence, lowest to highest: default,
   `/etc/flo/config.yaml`, `$XDG_CONFIG_HOME/flo/config.yaml` (kit's xdg
   default when unset: `~/.config/flo` on Linux, `~/Library/Application
-  Support/flo` on macOS), then each `-c <path>` (later over earlier; a missing `-c` path is an error, a missing
-  default file is skipped). `FLO_CONFIG` is `-c <path>` in the environment. A
+  Support/flo` on macOS), project config (below), each `-c <path>` (later over
+  earlier; a missing `-c` path is an error, a missing default file is
+  skipped), `FLO_*` environment, `-c key=value`. `FLO_CONFIG` is `-c <path>` in the environment. A
   key's variable is `FLO_` + the key upper-cased, dots as underscores
   (`packs.ctxt.url` is `FLO_PACKS_CTXT_URL`); the one exception is
   `engine.approval_poll`, which is `FLO_APPROVAL_POLL`. `flo status` shows
@@ -106,22 +106,24 @@ flo run cancel <run> --yes
   secret store (`FLO_SECRET_<TENANT>_<PROFILE>_<NAME>`).
 - Project config: the nearest `.flo/config.yaml` (else `.flo.yaml`) in the
   working directory or an ancestor. Only the nearest file is read; a farther
-  one is ignored. The walk stops at the filesystem root or at `$HOME`: a
-  config in `$HOME` or above it is never read. A key it sets wins over the
-  global files and the `FLO_*` environment, and loses to `-c key=value` (and a
-  command's own flag, such as `--dir`). It can set any key but these, which
-  fail the load: a key with `secret`, `token`, `passw`, `credential`,
-  `api_key`, `private_key` or `access_key` in a segment; `owner_profile`,
-  `engine_profile`, `privacy.local_hosts` and `bos.*` (user config, environment
-  or `-c` only). The model policy only narrows: `ai.models.deny` is the union
-  of the global and project lists; `ai.models.allow` keeps the entries both
-  lists allow (with no global list, the project's stands; disjoint lists deny
-  every model). `flo status` shows the file read (`project_file`).
+  one is ignored. The walk stops at `$HOME`: a config above it is never read,
+  and one in `$HOME` is read only when `$HOME` is the working directory. It
+  sits under the `-c` files and the `FLO_*` environment, so either beats it.
+  It can set any key but these, which fail the load: a key with `secret`,
+  `token`, `passw`, `credential`, `api_key`, `private_key` or `access_key` in a
+  segment; `owner_profile`, `engine_profile`, `privacy.local_hosts` and `bos.*`
+  (user config, environment or `-c` only); a key not in lower case. The model
+  policy only narrows what the user and system files set: `ai.models.deny` is
+  the union of the lists; `ai.models.allow` keeps the entries both lists allow
+  (with no list below, the project's stands). A project allow list that
+  leaves no allowed model fails the load. `flo status` shows the file read
+  (`project_file`).
 - Flows directory: `flows.dir` (`FLO_FLOWS_DIR`), default `flows`: where
   `flow draft apply --write` puts a new flow's bundle (`<dir>/<name>/`), unless
   `--dir`. A relative value is relative to the directory holding the project
-  config (`.flo/` or `.flo.yaml`'s parent) when the project config sets it,
-  else to the working directory. `flo status` shows the effective directory
+  config (`.flo/` or `.flo.yaml`'s parent) when the project config supplies
+  it (no `-c` file, `FLO_FLOWS_DIR` or `-c flows.dir=` beats it), else to the
+  working directory. `flo status` shows the effective directory
   and its source (`flows_dir`, `flows_dir_from`).
 
   ```yaml

@@ -107,8 +107,8 @@ func TestFlowsDirGlobalRelativeToCwd(t *testing.T) {
 	if want := filepath.Join(s.home, "work", "wf"); got != want {
 		t.Errorf("dir = %q, want %q", got, want)
 	}
-	if src != "file" {
-		t.Errorf("source = %q", src)
+	if want := "file " + filepath.Join(s.xdg, "flo", "config.yaml"); src != want {
+		t.Errorf("source = %q, want %q", src, want)
 	}
 	s.global("flows:\n  dir: /abs/flows\n")
 	if got, _ := s.dir("work"); got != "/abs/flows" {
@@ -129,10 +129,9 @@ func TestFlowsDirEnvOverGlobalFile(t *testing.T) {
 	}
 }
 
-func TestFlowsDirProjectOverGlobalAndEnv(t *testing.T) {
+func TestFlowsDirProjectOverGlobalFile(t *testing.T) {
 	s := newSandbox(t)
 	s.global("flows:\n  dir: fromfile\n")
-	t.Setenv("FLO_FLOWS_DIR", "fromenv")
 	proj := s.project("proj", "flows:\n  dir: pflows\n")
 	got, src := s.dir("proj")
 	if want := filepath.Join(proj, "pflows"); got != want {
@@ -140,6 +139,47 @@ func TestFlowsDirProjectOverGlobalAndEnv(t *testing.T) {
 	}
 	if !strings.HasPrefix(src, "project ") || !strings.Contains(src, filepath.Join(proj, ".flo", "config.yaml")) {
 		t.Errorf("source = %q", src)
+	}
+}
+
+// The environment beats the project config (kit order: project < -c files <
+// env < -c key=value).
+func TestFlowsDirEnvOverProject(t *testing.T) {
+	s := newSandbox(t)
+	t.Setenv("FLO_FLOWS_DIR", "fromenv")
+	s.project("proj", "flows:\n  dir: pflows\n")
+	got, src := s.dir("proj/sub")
+	if want := filepath.Join(s.home, "proj", "sub", "fromenv"); got != want {
+		t.Errorf("dir = %q, want %q", got, want)
+	}
+	if src != "env" {
+		t.Errorf("source = %q", src)
+	}
+}
+
+// A -c file beats the project config, and its relative flows.dir is relative
+// to the working directory like any non-project file.
+func TestFlowsDirCFileOverProject(t *testing.T) {
+	s := newSandbox(t)
+	s.project("proj", "flows:\n  dir: pflows\n")
+	extra := filepath.Join(s.home, "extra.yaml")
+	s.write(extra, "flows:\n  dir: xflows\n")
+	got, src := s.dir("proj", "-c", extra)
+	if want := filepath.Join(s.home, "proj", "xflows"); got != want {
+		t.Errorf("dir = %q, want %q", got, want)
+	}
+	if src != "file "+extra {
+		t.Errorf("source = %q", src)
+	}
+}
+
+// A config in $HOME is read when the working directory is $HOME itself.
+func TestProjectConfigInHomeWhenCwdIsHome(t *testing.T) {
+	s := newSandbox(t)
+	s.write(filepath.Join(s.home, ".flo", "config.yaml"), "flows:\n  dir: inhome\n")
+	got, _ := s.dir("")
+	if want := filepath.Join(s.home, "inhome"); got != want {
+		t.Errorf("dir = %q, want %q", got, want)
 	}
 }
 
@@ -201,12 +241,17 @@ func mustConfig(t *testing.T, s *sandbox, cwd string, args ...string) serve.Conf
 func TestProjectConfigOverridesAnyKey(t *testing.T) {
 	s := newSandbox(t)
 	s.global("ai:\n  classifier: global\n  generator: g\n")
-	t.Setenv("FLO_AI_CLASSIFIER", "env")
 	s.project("proj", "ai:\n  classifier: proj\n")
 	cfg := mustConfig(t, s, "proj/x")
 	if cfg.Classifier != "proj" {
 		t.Errorf("classifier = %q", cfg.Classifier)
 	}
+	// The environment beats the project.
+	t.Setenv("FLO_AI_CLASSIFIER", "env")
+	if cfg = mustConfig(t, s, "proj/x"); cfg.Classifier != "env" {
+		t.Errorf("classifier = %q, want env over project", cfg.Classifier)
+	}
+	t.Setenv("FLO_AI_CLASSIFIER", "")
 	if cfg.Generator != "g" {
 		t.Errorf("generator = %q, a key the project does not set keeps the global value", cfg.Generator)
 	}
@@ -331,17 +376,12 @@ func TestProjectModelPolicyNarrowsOnly(t *testing.T) {
 			wantAllow: "ollama://qwen3:4b",
 		},
 		{
-			name:      "disjoint allow permits nothing",
-			global:    "ai:\n  models:\n    allow: [\"ollama://a\"]\n",
-			project:   "ai:\n  models:\n    allow: [\"ollama://b\"]\n",
-			wantAllow: "",
-			wantDeny:  "*",
-		},
-		{
-			name:      "global from env",
+			// Env is above the project layer: it replaces the list, the
+			// project's narrowing does not apply to it.
+			name:      "env list wins over project",
 			envAllow:  "ollama://a,ollama://b",
 			project:   "ai:\n  models:\n    allow: [\"ollama://b\", \"ollama://c\"]\n",
-			wantAllow: "ollama://b",
+			wantAllow: "ollama://a,ollama://b",
 		},
 		{
 			name:      "project without models keeps global",
@@ -379,5 +419,49 @@ func TestModelPolicyCOverridesProject(t *testing.T) {
 	cfg := mustConfig(t, s, "proj", "-c", "ai.models.allow=ollama://z")
 	if got := strings.Join(cfg.ModelsAllow, ","); got != "ollama://z" {
 		t.Errorf("allow = %q", got)
+	}
+}
+
+// A project allow list that leaves no globally allowed model is a usage error
+// naming the file and key: never "no limit", never a silent deny-all.
+func TestProjectModelAllowDisjointIsUsageError(t *testing.T) {
+	s := newSandbox(t)
+	s.global("ai:\n  models:\n    allow: [\"ollama://a\"]\n")
+	proj := s.project("proj", "ai:\n  models:\n    allow: [\"ollama://b\"]\n")
+	_, err := s.run("proj")
+	if !core.IsCode(err, core.CodeUsage) {
+		t.Fatalf("err = %v, want a usage error", err)
+	}
+	for _, w := range []string{filepath.Join(proj, ".flo", "config.yaml"), "ai.models.allow", "ollama://a", "ollama://b"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("err %q lacks %q", err, w)
+		}
+	}
+}
+
+// Kit's order puts -c files below the environment.
+func TestEnvOverCFile(t *testing.T) {
+	s := newSandbox(t)
+	extra := filepath.Join(s.home, "extra.yaml")
+	s.write(extra, "ai:\n  generator: fromfile\n")
+	t.Setenv("FLO_AI_GENERATOR", "fromenv")
+	if cfg := mustConfig(t, s, "work", "-c", extra); cfg.Generator != "fromenv" {
+		t.Errorf("generator = %q, want env over a -c file", cfg.Generator)
+	}
+}
+
+// Keys are matched case-sensitively by kit but folded to lower case by the
+// config: a project may not spell a forbidden or narrowed key in another case.
+func TestProjectConfigRefusesUpperCaseKeys(t *testing.T) {
+	for _, text := range []string{
+		"Owner_Profile: evil\n",
+		"BOS:\n  bin: /tmp/x\n",
+		"ai:\n  MODELS:\n    allow: [\"*\"]\n",
+	} {
+		s := newSandbox(t)
+		s.project("proj", text)
+		if _, err := s.run("proj"); !core.IsCode(err, core.CodeUsage) || !strings.Contains(err.Error(), "lower case") {
+			t.Errorf("%q: err = %v", text, err)
+		}
 	}
 }

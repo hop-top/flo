@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
-	"io/fs"
 	"os"
 	"strings"
 	"sync"
@@ -16,19 +14,23 @@ import (
 )
 
 // The configuration of flo is kit's: a viper on the root, filled once per
-// process before a command runs, in the order the tlc and aps CLIs use.
+// process before a command runs, in the order every kit CLI uses.
 //
-//	-c key=value  >  flag  >  project config  >  FLO_* environment  >  files  >  default
+//	default < system file < user file < project file < -c files
+//	  < FLO_* environment < -c key=value < flag
 //
-// The project config is the nearest .flo/config.yaml (or .flo.yaml) in the
-// working directory or an ancestor, below $HOME; see projectconfig.go.
-//
-// Files merge system, user, then each -c <path> in argument order, later over
-// earlier: /etc/flo/config.yaml, $XDG_CONFIG_HOME/flo/config.yaml. A system or
-// user file that does not exist is skipped; a -c file that does not exist is
-// an error. The environment name of a key is FLO_ plus the key upper-cased,
-// dots as underscores (packs.ctxt.url is FLO_PACKS_CTXT_URL). FLO_CONFIG is
-// the environment form of -c <path>.
+// The files are merged by kit (config.Load): /etc/flo/config.yaml,
+// $XDG_CONFIG_HOME/flo/config.yaml, the project config, then each -c <path> in
+// argument order, later over earlier. A system, user or project file that does
+// not exist is skipped; a -c file that does not exist is an error. The project
+// config is the nearest .flo/config.yaml (or .flo.yaml) from the working
+// directory up, below $HOME (a config in $HOME is read when it is the working
+// directory); it may not set a secret or authority key and only narrows the
+// model policy lists, see projectconfig.go. The files sit in the config layer
+// of the viper, so the environment and -c key=value beat them. The
+// environment name of a key is FLO_ plus the key upper-cased, dots as
+// underscores (packs.ctxt.url is FLO_PACKS_CTXT_URL). FLO_CONFIG is the
+// environment form of -c <path>.
 //
 // Secrets are not settings: nothing reads one from a file or the environment
 // of this loader; they stay in the secret store.
@@ -53,12 +55,10 @@ var envBinds = []kitconfig.EnvBind{
 type configLoader struct {
 	mu    sync.Mutex
 	files []string
-	// projectFile is the project config read (empty when none), projectRoot the
-	// directory it belongs to, projectKeys the keys it set, cOverride the keys
-	// -c key=value set.
-	projectFile, projectRoot string
-	projectKeys              map[string]bool
-	cOverride                map[string]bool
+	// projectFile is the project config read (empty when none); flowsFrom is
+	// where flows.dir came from.
+	projectFile string
+	flowsFrom   string
 }
 
 // loaders maps a root to its loader, for the readers of the config that
@@ -112,54 +112,38 @@ func (l *configLoader) load(root *kitcli.Root) error {
 		return core.Errorf(core.CodeUsage, "-c/--config: %v", err).
 			WithSuggestion("-c takes a file path or a key=value pair")
 	}
-	opts := kitconfig.OptionsForTool(configTool)
-	l.files = l.files[:0]
-	for _, f := range []struct {
-		path     string
-		explicit bool
-	}{{opts.SystemConfigPath, false}, {opts.UserConfigPath, false}} {
-		if err := l.merge(root, f.path, f.explicit); err != nil {
-			return err
-		}
-	}
-	for _, p := range paths {
-		if err := l.merge(root, p, true); err != nil {
-			return err
-		}
-	}
-	if err := l.loadProject(root); err != nil {
+	opts := kitconfig.OptionsForToolWithMarkers(configTool, projectMarkers)
+	opts.ExtraConfigPaths = paths
+	doc, err := loadFiles(opts)
+	if err != nil {
 		return err
 	}
-	l.cOverride = map[string]bool{}
+	// Merge order of the files, for the source of a key.
+	merged := []string{opts.SystemConfigPath, opts.UserConfigPath, opts.ProjectConfigPath}
+	merged = append(merged, paths...)
+	l.files, l.projectFile = nil, opts.ProjectConfigPath
+	for _, f := range merged {
+		if _, err := os.Stat(f); err == nil && f != opts.ProjectConfigPath {
+			l.files = append(l.files, f)
+		}
+	}
+	cSet := flatten("", overrides)
+	_, cFlows := cSet[flowsDirKey]
+	l.flowsFrom = flowsSource(merged, opts.ProjectConfigPath, cFlows)
+	if strings.HasPrefix(l.flowsFrom, "project ") {
+		resolveFlowsDir(doc, projectRoot(opts.ProjectConfigPath))
+	}
+	// The files are the config layer: the environment and -c key=value, set
+	// as overrides, sit above them.
+	if err := root.Viper.MergeConfigMap(doc); err != nil {
+		return core.Errorf(core.CodeUsage, "config: %v", err)
+	}
 	// Each leaf is set alone: a nested override ("ai": {...}) would replace
-	// the whole subtree, the project's keys under it included.
-	for k, v := range flatten("", overrides) {
+	// the whole subtree.
+	for k, v := range cSet {
 		root.Viper.Set(k, v)
-		l.cOverride[strings.ToLower(k)] = true
 	}
 	bindPackEnv(root)
-	return nil
-}
-
-// merge reads one file over what is loaded. A missing file is skipped unless
-// explicit (a -c path).
-func (l *configLoader) merge(root *kitcli.Root, path string, explicit bool) error {
-	if path == "" {
-		return nil
-	}
-	if _, err := os.Stat(path); err != nil {
-		if errors.Is(err, fs.ErrNotExist) && !explicit {
-			return nil
-		}
-		return core.Errorf(core.CodeUsage, "config file %s: %v", path, err).
-			WithSuggestion("check the path given to -c")
-	}
-	root.Viper.SetConfigFile(path)
-	if err := root.Viper.MergeInConfig(); err != nil {
-		return core.Errorf(core.CodeUsage, "config file %s: %v", path, err).
-			WithSuggestion("fix the file, or leave it out of -c")
-	}
-	l.files = append(l.files, path)
 	return nil
 }
 
@@ -185,7 +169,7 @@ func (l *configLoader) registerStatus(root *kitcli.Root) {
 				"user_file":      opts.UserConfigPath,
 				"project_file":   l.projectFile,
 				"env_prefix":     EnvPrefix + "_",
-				"precedence":     "-c key=value > flag > project config > environment > files > default",
+				"precedence":     "flag > -c key=value > environment > -c files > project config > user file > system file > default",
 				"flows_dir":      dir,
 				"flows_dir_from": src,
 			},
