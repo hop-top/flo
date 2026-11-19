@@ -220,6 +220,9 @@ type triageApproval struct {
 		Class   []string `json:"class"`
 		Verdict string   `json:"verdict"`
 		By      string   `json:"by"`
+		// the operation a person approves, and its request digest
+		Capability string `json:"capability"`
+		Digest     string `json:"digest"`
 	} `json:"items"`
 }
 
@@ -400,6 +403,24 @@ func TestInboxTriageParksAndApplies(t *testing.T) {
 	}
 	if a := e.inboxCalls("plan"); len(a) != 1 {
 		t.Errorf("plan calls: %v", a)
+	}
+
+	// every item names the operation it approves (a reply is mail.send, the
+	// rest mail.write), so the engine holds a proposal with a request digest
+	// for it; the digests differ per message
+	digests := map[string]bool{}
+	for _, it := range av.Items {
+		want := "mail.write"
+		if it.ID == m3 {
+			want = "mail.send"
+		}
+		if it.Capability != want || it.Digest == "" {
+			t.Errorf("item %s: capability %q, digest %q, want %s and a digest", it.ID, it.Capability, it.Digest, want)
+		}
+		digests[it.Digest] = true
+	}
+	if len(digests) != len(av.Items) {
+		t.Errorf("two items share a request digest: %+v", av.Items)
 	}
 
 	// the approval holds every item apply would touch; trust decided the
