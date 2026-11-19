@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -552,4 +553,50 @@ func (j fakeJevJudge) Judge(ctx context.Context, c judge.Case) (judge.Verdict, e
 		Answers: map[string]judge.Answer{"label": {Value: a.Choice, Confidence: a.Confidence}},
 		Cost:    judge.Cost{USD: r.Usage.Cost, Tokens: int64(r.Usage.In + r.Usage.Out)},
 	}, nil
+}
+
+// The real kit Jev wire through the factory: request mapping (a choice over
+// the labels, the item as state), response parsing and usage.cost.
+func TestKitJevWire(t *testing.T) {
+	_, h := newWorld(false)
+	h.reply = func(r *http.Request) (int, string) {
+		return 200, `{"model":"typesafe/jev-1.14","answers":{"label":{"type":"choice","choice":"breaking","confidence":0.7,` +
+			`"probabilities":{"security":0.1,"breaking":0.7,"routine":0.1,"noise":0.1}}},"usage":{"input_tokens":120,"output_tokens":12,"cost":0.000042}}`
+	}
+	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{
+		HTTP: h, Secrets: withT(t, jevKeys()), LocalHosts: listedHosts, JudgeEngine: builtin.EngineJev, Jev: builtin.KitJev,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := engineIn("ollama://m", "")
+	in["instructions"] = "Label by impact."
+	res := classifyAs(t, c, specrun.PrivacyCloudAllowed, in)
+	if res.Outcome != core.OutcomeOK {
+		t.Fatalf("%+v", res.Err)
+	}
+	row := rowsOf(res)[0]
+	if row["label"] != "breaking" || math.Abs(row["confidence"].(float64)-0.7) > 1e-9 || res.Cost.USD != 0.000042 || res.Cost.Tokens != 132 {
+		t.Fatalf("row %v cost %+v", row, res.Cost)
+	}
+	if got := h.urls(); len(got) != 1 || got[0] != "POST "+jevURL {
+		t.Fatalf("calls %v", got)
+	}
+	if h.reqs[0].Header.Get("Authorization") != "Bearer or-s3cret" {
+		t.Errorf("authorization %q", h.reqs[0].Header.Get("Authorization"))
+	}
+	var req struct {
+		Model     string                    `json:"model"`
+		State     map[string]any            `json:"state"`
+		Questions map[string]map[string]any `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(h.bodies[0]), &req); err != nil {
+		t.Fatal(err)
+	}
+	q := req.Questions["label"]
+	crit, _ := q["criteria"].(map[string]any)
+	if req.Model != "typesafe/jev-1.14" || req.State["package"] != "net" || q["type"] != "choice" ||
+		q["instructions"] != "Label by impact." || len(crit) != 4 {
+		t.Errorf("request %s", h.bodies[0])
+	}
 }

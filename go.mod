@@ -93,4 +93,4 @@ replace hop.top/flo/spec => ./spec
 // judge/eval, grounding, strategy and llmxrr packages). The commit is not in
 // hop-top/kit, so it is fetched from the poly-kit repository, where it is
 // reachable through its next branch.
-replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119023858-9eaa26dcdf99
+replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119031747-276efdd425d8

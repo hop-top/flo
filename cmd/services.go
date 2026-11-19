@@ -138,6 +138,7 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 	}
 	cfg.Classifier = setting(root, builtin.EnvClassifier, "ai.classifier")
 	cfg.JudgeEngine = setting(root, builtin.EnvJudgeEngine, "ai.judge.engine")
+	cfg.Jev = builtin.KitJev
 	cfg.Generator = setting(root, builtin.EnvGenerator, "ai.generator")
 	cfg.LocalHosts = listSetting(root, EnvLocalHosts, "privacy.local_hosts")
 	if _, err := node.NewLocalHosts(cfg.LocalHosts); err != nil {
