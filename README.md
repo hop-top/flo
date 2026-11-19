@@ -184,7 +184,9 @@ flo run cancel <run> --yes
   `flows/dependency-watch/record/` holds a recording, model calls included:
   `flo flow test dependency-watch` replays it offline. Re-record with
   `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestDependencyWatchCommittedRecording`
-  on a host whose ollama has the model.
+  on a host whose ollama has the model. `tests/watch.yaml` pins the judge's
+  engine, model and per-release labels from the tape: a re-recording that
+  labels differently fails the replay until the pin is updated with it.
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
   wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`; they
