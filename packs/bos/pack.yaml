@@ -1,0 +1,13 @@
+pack: bos
+version: 0.1.0
+description: Workflow stage of a subject, read from bos, and the request for its next transition.
+requires: { flo: ">=0.1" }
+# The nodes run the bos CLI as `aps run <profile> -- bos ...`: bos must be on
+# the PATH of the profile, and the profile's environment holds the credential
+# of its bos agent principal (never a flag). config.bos.scope is the business
+# scope id the tenant is bound to; the engine fills it from the bos.scope
+# setting.
+config:
+  bos:
+    scope: { type: string, required: true }
+nodes: [nodes/workflow-status.yaml, nodes/workflow-request-transition.yaml]

@@ -26,6 +26,7 @@ import (
 	"hop.top/kit/go/runtime/sideeffect"
 	"hop.top/kit/go/storage/secret"
 
+	"hop.top/flo/internal/bos"
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/nodes/builtin"
 	"hop.top/flo/internal/store/tenants"
@@ -100,6 +101,14 @@ type Config struct {
 	// TrustDirs hold trust provider documents, besides the trusts/ of every
 	// installed pack and <Root>/trusts.
 	TrustDirs []string
+
+	// Bos, when set, makes bos the business's governance backend: admission
+	// of steps with a side effect opens bos proposals, the trust provider
+	// `bos` reads bos graduated autonomy. Nil keeps the local ones.
+	Bos *bos.Config
+	// BosPollEvery spaces the looks at an open bos proposal; zero is
+	// bos.DefaultPollEvery.
+	BosPollEvery time.Duration
 
 	// Exec starts every process; HTTP sends every request of declared HTTP
 	// nodes and the eva check; Secrets resolves secret references. Nil takes

@@ -168,5 +168,45 @@
     "input": "{\"args\":[],\"flags\":{\"kind\":\"person\",\"name\":\"Ana\"}}",
     "canonical": "{\"acting_for\":\"principals_person\",\"actor\":\"principals_agent\",\"input\":{\"args\":[],\"flags\":{\"kind\":\"person\",\"name\":\"Ana\"}},\"operation\":\"party.add\",\"scope\":\"business_scopes_1\",\"v\":1}",
     "digest": "sha256:0f1abc9146c66b1bcb1c4af3bc973f86121832c7603c84788f1754b637902b21"
+  },
+  {
+    "name": "flo-bos billing.pay named args",
+    "operation": "billing.pay",
+    "scope": "business_scopes_1",
+    "actor": "principals_1",
+    "acting_for": "principals_2",
+    "input": "{\"args\":[],\"flags\":{\"name\":\"Ana\"}}",
+    "canonical": "{\"acting_for\":\"principals_2\",\"actor\":\"principals_1\",\"input\":{\"args\":[],\"flags\":{\"name\":\"Ana\"}},\"operation\":\"billing.pay\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:8f5a1e222c3819cfa65b0c57e308d4eaabb225e992cf693c562645379f23bc40"
+  },
+  {
+    "name": "flo-bos billing.pay key order and html chars",
+    "operation": "billing.pay",
+    "scope": "business_scopes_1",
+    "actor": "principals_1",
+    "acting_for": "principals_2",
+    "input": "{\"flags\":{\"z\":\"<&>\",\"a\":\"é\"},\"args\":[\"b\",\"a\"]}",
+    "canonical": "{\"acting_for\":\"principals_2\",\"actor\":\"principals_1\",\"input\":{\"args\":[\"b\",\"a\"],\"flags\":{\"a\":\"é\",\"z\":\"<&>\"}},\"operation\":\"billing.pay\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:64084bf1fb7425ccb653722619fb139f32d6e6b4278efaf91b3669e04e531f1e"
+  },
+  {
+    "name": "flo-bos billing.pay exact numbers and nesting",
+    "operation": "billing.pay",
+    "scope": "business_scopes_1",
+    "actor": "principals_1",
+    "acting_for": "principals_2",
+    "input": "{\"flags\":{\"amount\":\"100.10\"},\"n\":1.10,\"big\":12345678901234567890,\"nested\":{\"b\":[3,2,{\"y\":1,\"x\":2}],\"a\":null}}",
+    "canonical": "{\"acting_for\":\"principals_2\",\"actor\":\"principals_1\",\"input\":{\"big\":12345678901234567890,\"flags\":{\"amount\":\"100.10\"},\"n\":1.10,\"nested\":{\"a\":null,\"b\":[3,2,{\"x\":2,\"y\":1}]}},\"operation\":\"billing.pay\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:9261bf30c616f54d2c684e20462d62eb0707b2c7b685c7fe9ef19e617cb8c877"
+  },
+  {
+    "name": "flo-bos billing.pay no input",
+    "operation": "billing.pay",
+    "scope": "business_scopes_1",
+    "actor": "principals_1",
+    "acting_for": "principals_2",
+    "input": "",
+    "canonical": "{\"acting_for\":\"principals_2\",\"actor\":\"principals_1\",\"input\":{},\"operation\":\"billing.pay\",\"scope\":\"business_scopes_1\",\"v\":1}",
+    "digest": "sha256:c3f162492a324cf4cbd51528f1aee9f0c84f437630b0234d58ab6ea3aabdfe1f"
   }
 ]

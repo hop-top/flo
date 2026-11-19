@@ -1,0 +1,72 @@
+node: bos/workflow.request-transition@1
+kind: command
+lowers_to: engine
+description: >-
+  Ask for the transition out of a bos workflow instance's current state. It is
+  a request only: bos records it, casts no vote and moves nothing; the people
+  the definition names decide in bos.
+# The input is the request as bos states it (args, flags), so the digest flo
+# binds an approval to is the one bos computes for this command. An agent's
+# write needs an approved proposal: flo passes it as FLO_ADMISSION_PROPOSAL and
+# the execution key as FLO_IDEMPOTENCY_KEY, and the shell line turns them into
+# --proposal and --idempotency-key.
+argv:
+  - sh
+  - -c
+  - >-
+    exec bos workflow request-transition "$@" --format json
+    ${FLO_IDEMPOTENCY_KEY:+--idempotency-key "$FLO_IDEMPOTENCY_KEY"}
+    ${FLO_ADMISSION_PROPOSAL:+--proposal "$FLO_ADMISSION_PROPOSAL"}
+  - bos
+  - "{{ in.args }}"
+  - --scope
+  - "{{ config.bos.scope }}"
+  - --reason
+  - "{{ in.flags.reason }}"
+  - "{{ 'state-version' in in.flags ? ['--state-version', in.flags['state-version']] : [] }}"
+  - "{{ 'action' in in.flags ? ['--action', in.flags.action] : [] }}"
+inputs:
+  args:
+    type: array
+    items: { type: string }
+    required: true
+    description: "One element: the instance id."
+  flags:
+    type: object
+    required: true
+    description: "The flags of the command: reason and state-version are always given, so a request is made from a read and a stale one is refused."
+    properties:
+      reason: { type: string, description: "Why the transition is asked for." }
+      state-version: { type: string, description: "The state version the flow read (output.state_version of bos/workflow.status@1), as a string. A stale one is refused." }
+      action: { type: string, description: "The transition, when several leave the state." }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  map: >-
+    {{ {'instance_id': out[0].instance_id,
+        'action': out[0].action,
+        'from': out[0].from,
+        'to': out[0].to,
+        'state_version': out[0].state_version,
+        'required': out[0].required,
+        'accepted': out[0].accepted} }}
+  schema:
+    type: object
+    required: [instance_id, action, from, to, state_version]
+    properties:
+      instance_id: { type: string }
+      action: { type: string }
+      from: { type: string }
+      to: { type: string }
+      state_version: { type: integer }
+      required: { type: integer }
+      accepted: { type: integer }
+side_effect: write-shared
+privacy: local
+# bos keeps the request once per idempotency key; with an approval the key is
+# the execution key.
+idempotent: true
+idempotency_key: "request-transition:{{ in.args[0] }}:{{ in.flags['state-version'] }}"
+capabilities: [workflow.request-transition]
+timeout: 30s

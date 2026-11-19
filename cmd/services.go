@@ -11,6 +11,7 @@ import (
 
 	kitcli "hop.top/kit/go/console/cli"
 
+	"hop.top/flo/internal/bos"
 	"hop.top/flo/internal/core"
 	"hop.top/flo/internal/engine/serve"
 	"hop.top/flo/internal/nodes/builtin"
@@ -146,6 +147,84 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 			WithSuggestion("list host names, addresses or CIDRs such as 100.64.0.0/10")
 	}
 	cfg.ExprConfig = exprConfig(root)
+	bc, err := bosSettings(root)
+	if err != nil {
+		return serve.Config{}, err
+	}
+	if bc.Scope != "" { // a business scope turns bos on
+		cfg.Bos = &bc
+	}
+	if cfg.Bos != nil {
+		if cfg.BosPollEvery, err = durationSetting(root, EnvBosPoll, "bos.poll"); err != nil {
+			return serve.Config{}, err
+		}
+	}
+	return cfg, nil
+}
+
+// Settings of the bos port: environment variable, then the config key.
+const (
+	// EnvBosScope is the bos business scope id the tenant is bound to; setting
+	// it (or bos.scope) turns bos on as the governance backend.
+	EnvBosScope = "FLO_BOS_SCOPE"
+	// EnvBosPrincipals maps flo profiles to bos principal ids:
+	// "noor=principals_01..,jad=principals_01.." (config: bos.principals, a map).
+	EnvBosPrincipals = "FLO_BOS_PRINCIPALS"
+	// EnvBosActingFor is the principal a run acts for when its starter has none.
+	EnvBosActingFor = "FLO_BOS_ACTING_FOR"
+	EnvBosBin       = "FLO_BOS_BIN"
+	EnvBosTimeout   = "FLO_BOS_TIMEOUT"
+	EnvBosPoll      = "FLO_BOS_POLL"
+	// EnvBosMaxStaleness is the age of the applied access set past which flo
+	// denies what it provisioned (config: bos.max_staleness; default 24h).
+	EnvBosMaxStaleness = "FLO_BOS_MAX_STALENESS"
+	// EnvBosNarrowOwner stops the owner profile's wildcard being seeded.
+	EnvBosNarrowOwner = "FLO_BOS_NARROW_OWNER"
+)
+
+// bosSettings reads the bos port's settings. An empty Scope means no bos: flo
+// stands alone. The credential of a profile's bos principal is not a setting:
+// the command runs under the profile (aps), whose environment holds it.
+func bosSettings(root *kitcli.Root) (bos.Config, error) {
+	cfg := bos.Config{
+		Bin: setting(root, EnvBosBin, "bos.bin"), Scope: setting(root, EnvBosScope, "bos.scope"),
+		ActingFor:   setting(root, EnvBosActingFor, "bos.acting_for"),
+		Principals:  map[string]string{},
+		NarrowOwner: setting(root, EnvBosNarrowOwner, "bos.narrow_owner") == "true",
+	}
+	var err error
+	if cfg.Timeout, err = durationSetting(root, EnvBosTimeout, "bos.timeout"); err != nil {
+		return bos.Config{}, err
+	}
+	// bos.principals is a map in a file or -c bos.principals.<profile>=<id>, and
+	// "profile=id,profile=id" in FLO_BOS_PRINCIPALS, which the config binds to
+	// the same key: one source wins as a whole, in the order of the config.
+	var raw any
+	if root != nil && root.Viper != nil {
+		raw = root.Viper.Get("bos.principals")
+	} else if v := os.Getenv(EnvBosPrincipals); v != "" {
+		raw = v
+	}
+	switch v := raw.(type) {
+	case map[string]any:
+		for k, id := range v {
+			if s, ok := id.(string); ok {
+				cfg.Principals[k] = s
+			}
+		}
+	case map[string]string:
+		for k, id := range v {
+			cfg.Principals[k] = id
+		}
+	case string:
+		for _, pair := range strings.FieldsFunc(v, func(c rune) bool { return c == ',' || c == ' ' || c == '\t' }) {
+			k, id, ok := strings.Cut(pair, "=")
+			if !ok || k == "" || id == "" {
+				return bos.Config{}, core.Errorf(core.CodeUsage, "%s: %q is not profile=principal", EnvBosPrincipals, pair)
+			}
+			cfg.Principals[k] = id
+		}
+	}
 	return cfg, nil
 }
 
@@ -164,6 +243,16 @@ func exprConfig(root *kitcli.Root) map[string]any {
 	}
 	if u := setting(root, EnvEvaURL, "eva.url"); u != "" {
 		out["eva"] = map[string]any{"url": u}
+	}
+	// config.bos.scope: the business scope the nodes of the bos pack pass to
+	// the bos CLI, the one setting bos.scope names.
+	if sc := setting(root, EnvBosScope, "bos.scope"); sc != "" {
+		ns, _ := out["bos"].(map[string]any)
+		if ns == nil {
+			ns = map[string]any{}
+		}
+		ns["scope"] = sc
+		out["bos"] = ns
 	}
 	return out
 }

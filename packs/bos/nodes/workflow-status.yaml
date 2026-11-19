@@ -1,0 +1,44 @@
+node: bos/workflow.status@1
+kind: command
+lowers_to: engine               # reshapes the row bos prints
+description: The stage of a subject, read from its bos workflow instance (state, state version, quorum per transition).
+argv:
+  - bos
+  - workflow
+  - status
+  - "{{ in.instance }}"
+  - --scope
+  - "{{ config.bos.scope }}"
+  - --format
+  - json
+inputs:
+  instance: { type: string, required: true, description: "The bos workflow instance id." }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  # bos prints one row per instance; the step's output is that row, with the
+  # state version a later request passes back (flags.state-version of
+  # bos/workflow.request-transition@1).
+  map: >-
+    {{ {'instance_id': out[0].id,
+        'state': out[0].state,
+        'state_version': out[0].state_version,
+        'subject_id': out[0].subject_id,
+        'subject_revision': out[0].subject_revision,
+        'quorum': has(out[0].quorum) ? out[0].quorum : ''} }}
+  schema:
+    type: object
+    required: [instance_id, state, state_version]
+    properties:
+      instance_id: { type: string }
+      state: { type: string }
+      state_version: { type: integer }
+      subject_id: { type: string }
+      subject_revision: { type: integer }
+      quorum: { type: string, description: 'Per transition out of the state: "action: status accepted/required", separated by ;.' }
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [workflow.status]
+timeout: 30s

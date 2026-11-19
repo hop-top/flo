@@ -14,6 +14,7 @@ import (
 	"hop.top/flo/internal/access/admission"
 	"hop.top/flo/internal/access/grants"
 	"hop.top/flo/internal/approvals"
+	"hop.top/flo/internal/bos"
 	"hop.top/flo/internal/brief"
 	"hop.top/flo/internal/check/eva"
 	"hop.top/flo/internal/core"
@@ -128,7 +129,7 @@ func (e *Engine) wire() error {
 	e.secretLog = &secretLog{Secrets: httpnode.StoreSecrets{Store: secrets}}
 
 	e.Grants = grants.New(st.Grants, cfg.Clock)
-	adm := admission.New(e.Grants, st.Receipts, ids, cfg.Clock)
+	var adm core.Admission = admission.New(e.Grants, st.Receipts, ids, cfg.Clock)
 
 	packs, err := LoadPacks(cfg.PacksDir)
 	if err != nil {
@@ -163,9 +164,17 @@ func (e *Engine) wire() error {
 	}
 
 	trustDirs := append([]string{filepath.Join(cfg.Root, "trusts")}, cfg.TrustDirs...)
-	trust, err := approvals.NewCommandTrust(commands, packs.Locator(trustDirs...))
+	cmdTrust, err := approvals.NewCommandTrust(commands, packs.Locator(trustDirs...))
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error
+	}
+	var trust core.Trust = cmdTrust
+	if cfg.Bos != nil {
+		gw := bos.NewGateway(commands, *cfg.Bos)
+		adm = bos.NewAdmission(bos.AdmissionDeps{
+			Gateway: gw, Receipts: st.Receipts, Jobs: e.Queue, IDs: ids, Clock: cfg.Clock, PollEvery: cfg.BosPollEvery,
+		})
+		trust = bos.NewTrust(gw, cmdTrust)
 	}
 	tasks := tlccli.New(commands, cfg.Tasks)
 	resumer := jobs.NewResumer(e.Queue)
@@ -229,7 +238,7 @@ func (e *Engine) wire() error {
 // the installed packs declare.
 func (e *Engine) seed(ctx context.Context) error {
 	cfg := e.Config
-	if cfg.Owner != "" {
+	if cfg.Owner != "" && (cfg.Bos == nil || !cfg.Bos.NarrowOwner) {
 		if _, err := e.Grants.SeedOwner(ctx, cfg.Tenant, cfg.Owner); err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
