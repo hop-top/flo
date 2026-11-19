@@ -135,7 +135,8 @@ flo run cancel <run> --yes
   host or params is refused at load. Deny is looser on purpose: it matches the
   model name at any endpoint and scheme (`qwen3*` or `ollama://qwen3*` also
   denies `ollama://otherhost:11434/qwen3:4b` and `?base_url=…`), so a model
-  cannot be moved out of it; entries may be bare names (`qwen3*`).
+  cannot be moved out of it; entries may be bare names (`qwen3*`). Deny fails
+  safe: odd names (`/` segments, `@`, `..`) over-deny rather than slip through.
 
   ```yaml
   ai:

@@ -145,6 +145,42 @@ func TestModelDenyBareNamesAndStar(t *testing.T) {
 	}
 }
 
+// Deny fails safe: odd names over-deny rather than slip through. `*` crosses a
+// `/`, no `@ ? # ..` guard, and an unreadable model is denied when any entry is
+// set.
+func TestModelDenyFailsSafe(t *testing.T) {
+	for _, m := range []string{
+		"ollama://qwen3:4b@host/m",
+		"ollama://qwen3:4b@attacker.example:11434/m",
+		"ollama://qwen3@attacker.example",
+		"ollama://qwen3..%2f",
+		"ollama://qwen3/x",
+		"ollama://qwen3/x/y",
+		"ollama://qwen3#frag",
+		"ollama://h:1/qwen3/a/b",
+		"ollama://h:1/qwen3:4b..x",
+	} {
+		for _, e := range []string{"qwen3*", "ollama://qwen3*"} {
+			if !builtin.ModelDenied([]string{e}, m) {
+				t.Errorf("deny %q let %q through", e, m)
+			}
+		}
+	}
+	if !builtin.ModelDenied([]string{"ollama://m"}, "nope") || !builtin.ModelDenied([]string{"x"}, "::not a uri") {
+		t.Error("unreadable model not denied")
+	}
+	if builtin.ModelDenied([]string{" ", ""}, "::not a uri") || builtin.ModelDenied(nil, "::not a uri") {
+		t.Error("no entry, no denial")
+	}
+	if builtin.ModelDenied([]string{"qwen3*"}, "ollama://gemma4:e4b") {
+		t.Error("over-deny of an unrelated name")
+	}
+	// Allow keeps its guards.
+	if builtin.ModelAllowed([]string{"ollama://qwen3*"}, "ollama://qwen3:4b@host/m") || builtin.ModelAllowed([]string{"ollama://qwen3*"}, "ollama://qwen3/x") {
+		t.Error("allow lost a guard")
+	}
+}
+
 func TestValidateDenyPatterns(t *testing.T) {
 	for _, ok := range []string{"*", "jev", "qwen3*", "qwen3:4b", "hf.co/u/*", "ollama://qwen3*", "jev://typesafe/*", " ", ""} {
 		if err := builtin.ValidateDenyPatterns([]string{ok}); err != nil {
@@ -210,7 +246,8 @@ func TestModelGlobClassDoesNotCrossASlash(t *testing.T) {
 		if got := builtin.ModelAllowed([]string{c.entry}, c.model); got != c.want {
 			t.Errorf("ModelAllowed(%q, %q) = %v", c.entry, c.model, got)
 		}
-		if got := builtin.ModelDenied([]string{c.entry}, c.model); got != c.want {
+		// Deny fails safe: a class or `*` crosses a `/` too.
+		if got := builtin.ModelDenied([]string{c.entry}, c.model); !got {
 			t.Errorf("ModelDenied(%q, %q) = %v", c.entry, c.model, got)
 		}
 	}

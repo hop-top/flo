@@ -199,11 +199,32 @@ func (p modelPattern) nameMatches(model string) bool {
 	return err == nil && ok
 }
 
+// denyMatches is nameMatches for deny, which fails safe: no `@ ? # ..` guard,
+// and `*`, `?` and classes cross a `/` (the `/` of the pattern and of the name
+// are both read as one ordinary byte). Odd names over-deny, never slip through.
+func (p modelPattern) denyMatches(names []string) bool {
+	const slash = "\x01"
+	pat := strings.ReplaceAll(p.name, "/", slash)
+	for _, n := range names {
+		if ok, err := path.Match(pat, strings.ReplaceAll(n, "/", slash)); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
 // listed reports whether model matches any entry of list. Entries that cannot
 // be read match nothing; ValidateModelPatterns refuses them at load.
 func listed(list []string, model string, deny bool) bool {
 	m := canonModel(model)
 	mu, merr := llm.ParseURI(m)
+	names := []string{mu.Model}
+	// Userinfo (`name@host/m`) is not a name to the parser; deny also tries
+	// what is before the `@` and the whole text, so it over-denies.
+	if _, rest, ok := strings.Cut(m, "://"); ok && strings.Contains(rest, "@") {
+		before, _, _ := strings.Cut(rest, "@")
+		names = append(names, before, rest)
+	}
 	for _, e := range list {
 		if strings.TrimSpace(e) == "" {
 			continue
@@ -215,8 +236,11 @@ func listed(list []string, model string, deny bool) bool {
 		switch {
 		case p.any:
 			return true
+		case deny && merr != nil:
+			// Unreadable model: denied while any entry is set (fails closed).
+			return true
 		case merr != nil:
-		case deny && p.nameMatches(mu.Model):
+		case deny && p.denyMatches(names):
 			return true
 		case !deny && p.matches(mu):
 			return true

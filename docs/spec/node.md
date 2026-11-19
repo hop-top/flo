@@ -708,8 +708,11 @@ before any request and before any secret read.
   is refused at configuration load (`usage`), naming the setting and the entry.
 - Deny reads the model name only. An entry of `ai.models.deny` is `*`, `jev`,
   a bare model name (a glob), or a model URI; for a URI entry the scheme, host,
-  port and params are ignored and only the name pattern is compared (same glob
-  rules and protections as above) with the model's name, so a model cannot
+  port and params are ignored and only the name pattern is compared with the
+  model's name (glob; unlike allow, deny fails safe: `*`, `?` and classes
+  cross a `/`, no `@`, `?`, `#` or `..` guard, a `name@host` userinfo is also
+  tried as a name, and a model that cannot be read as a URI is denied while any
+  entry is set), so a model cannot
   escape deny by pointing elsewhere. `ollama://qwen3*` and `qwen3*` both deny
   `ollama://qwen3:4b`, `ollama://qwen3:4b?base_url=http://other`,
   `ollama://otherhost:11434/qwen3:4b`, `ollama://[::1]:11434/qwen3:4b` and
