@@ -194,16 +194,17 @@ func (j *JudgeClassifier) classifyLocal(ctx context.Context, req ClassifyRequest
 	if p, ok := j.m.price(ctx, level, uri); ok {
 		opts = append(opts, llmjudge.Price(p))
 	}
-	verdicts, err := judge.Batch(ctx, llmjudge.New(client, opts...), cases, judgeParallel)
+	verdicts, cost, err := judgeAll(ctx, llmjudge.New(client, opts...), cases, judgeParallel, func(v judge.Verdict) core.Cost {
+		return core.Cost{USD: v.Cost.USD, Tokens: tokensOf(v.Usage)}
+	})
 	if err != nil {
 		if errors.Is(err, judge.ErrInvalid) {
-			return nil, core.Cost{}, core.Errorf(core.CodeInputInvalid, "%v", err).
+			return nil, cost, core.Errorf(core.CodeInputInvalid, "%v", err).
 				WithSuggestion("labels needs at least two distinct labels, none of them \"abstain\"")
 		}
-		return nil, core.Cost{}, upstreamErr(err)
+		return nil, cost, upstreamErr(err)
 	}
 	out := make(Labels, len(verdicts))
-	var cost core.Cost
 	for i, v := range verdicts {
 		a := v.Answers[judgeQuestion]
 		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineLocal, Model: llm.RedactURI(req.Model)}
@@ -211,8 +212,6 @@ func (j *JudgeClassifier) classifyLocal(ctx context.Context, req ClassifyRequest
 			value := a.Value
 			out[i].Label = &value
 		}
-		cost.USD += v.Cost.USD
-		cost.Tokens += tokensOf(v.Usage)
 	}
 	return out, cost, nil
 }

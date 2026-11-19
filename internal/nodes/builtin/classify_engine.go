@@ -93,17 +93,18 @@ func (j *JudgeClassifier) classifyJev(ctx context.Context, req ClassifyRequest, 
 	if err != nil {
 		return nil, core.Cost{}, core.Errorf(core.CodeInputInvalid, "engine jev: %v", err)
 	}
-	verdicts, err := judge.Batch(ctx, jj, cases, judgeParallel)
+	verdicts, cost, err := judgeAll(ctx, jj, cases, judgeParallel, func(v judge.Verdict) core.Cost {
+		return core.Cost{USD: v.Cost.USD, Tokens: v.Cost.Tokens}
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, judge.ErrInvalid):
-			return nil, core.Cost{}, core.Errorf(core.CodeInputInvalid, "%v", err).
+			return nil, cost, core.Errorf(core.CodeInputInvalid, "%v", err).
 				WithSuggestion("labels needs at least two distinct labels, none of them \"abstain\"")
 		}
-		return nil, core.Cost{}, upstreamErr(err)
+		return nil, cost, upstreamErr(err)
 	}
 	out := make(Labels, len(verdicts))
-	var cost core.Cost
 	for i, v := range verdicts {
 		a := v.Answers[judgeQuestion]
 		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineJev, Model: p.ref.model, Notes: notes}
@@ -111,8 +112,6 @@ func (j *JudgeClassifier) classifyJev(ctx context.Context, req ClassifyRequest, 
 			value := a.Value
 			out[i].Label = &value
 		}
-		cost.USD += v.Cost.USD
-		cost.Tokens += v.Cost.Tokens
 	}
 	return out, cost, nil
 }
