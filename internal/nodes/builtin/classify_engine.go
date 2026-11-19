@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"hop.top/flo/internal/core"
@@ -49,6 +50,19 @@ func validEngine(s string) bool {
 	return false
 }
 
+// joinInstructions is the pattern's system text, a blank line, then the
+// step's instructions; either may be empty.
+func joinInstructions(system, instructions string) string {
+	system, instructions = strings.TrimSpace(system), strings.TrimSpace(instructions)
+	switch {
+	case system == "":
+		return instructions
+	case instructions == "":
+		return system
+	}
+	return system + "\n\n" + instructions
+}
+
 // classifyJev judges through the Jev judge of LLMDeps.Jev. p is the pick: the
 // pick has checked the allow-list and the ceiling and read the OpenRouter key,
 // so a refused call read no secret and sent nothing. The judge is hermetic
@@ -56,9 +70,20 @@ func validEngine(s string) bool {
 // invocation's HTTP seam and keeps to Jev's own endpoint, the only place the
 // key goes.
 func (j *JudgeClassifier) classifyJev(ctx context.Context, req ClassifyRequest, p picked) (Labels, core.Cost, error) {
-	if req.Pattern != "" {
-		return nil, core.Cost{}, core.New(core.CodeEngineFeature, "engine jev takes no prompt pattern").
-			WithSuggestion("drop pattern, or use engine local")
+	// Jev has no system prompt of its own to replace: the pattern's text
+	// goes first in the question's instructions, then the step's. Jev has one
+	// call per item and no sampling, so a strategy is ignored, and the step
+	// says so.
+	pat, err := j.patternOf(req.Pattern)
+	if err != nil {
+		return nil, core.Cost{}, err
+	}
+	if pat != nil {
+		req.Instructions = joinInstructions(pat.System, req.Instructions)
+	}
+	var notes []string
+	if s := strings.TrimSpace(req.Strategy); s != "" {
+		notes = append(notes, "strategy "+s+" ignored: engine jev answers each item in one call")
 	}
 	cases, err := casesOf(req)
 	if err != nil {
@@ -81,7 +106,7 @@ func (j *JudgeClassifier) classifyJev(ctx context.Context, req ClassifyRequest, 
 	var cost core.Cost
 	for i, v := range verdicts {
 		a := v.Answers[judgeQuestion]
-		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineJev, Model: p.ref.model}
+		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineJev, Model: p.ref.model, Notes: notes}
 		if !a.Abstained {
 			value := a.Value
 			out[i].Label = &value

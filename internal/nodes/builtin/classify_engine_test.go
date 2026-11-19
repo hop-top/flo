@@ -16,6 +16,7 @@ import (
 	"hop.top/flo/internal/nodes/schema"
 	specrun "hop.top/flo/spec/run"
 	"hop.top/kit/go/ai/judge"
+	"hop.top/kit/go/ai/prompt"
 )
 
 const jevURL = "https://openrouter.ai/api/v1/systemone"
@@ -137,7 +138,7 @@ func TestEngineLocalIsTheCurrentBehaviour(t *testing.T) {
 	if rowsOf(res)[0]["label"] != "routine" || res.Output.(map[string]any)["engine"] != "local" {
 		t.Fatalf("%v", res.Output)
 	}
-	if h.count("/api/tags") != 0 || h.count("/api/chat") != 1 || h.count("openrouter") != 0 || len(s.got) != 0 {
+	if h.count("/api/tags") != 1 || h.count("/api/chat") != 1 || h.count("openrouter") != 0 || len(s.got) != 0 {
 		t.Errorf("calls %v secrets %v", h.urls(), s.got)
 	}
 }
@@ -490,6 +491,7 @@ func TestEngineCallsGoThroughTheContextSeam(t *testing.T) {
 
 func TestEngineJevRefusesWhatItCannotDo(t *testing.T) {
 	_, h := newWorld(true)
+	// A pattern needs a pattern source, as with the local engine.
 	in := engineIn("ollama://m", builtin.EngineJev)
 	in["pattern"] = "terse"
 	res := classifyAs(t, engineCls(t, h, withT(t, jevKeys()), ""), specrun.PrivacyCloudAllowed, in)
@@ -614,5 +616,135 @@ func TestKitJevWire(t *testing.T) {
 	if req.Model != "typesafe/jev-1.14" || req.State["package"] != "net" || q["type"] != "choice" ||
 		q["instructions"] != "Label by impact." || len(crit) != 4 {
 		t.Errorf("request %s", h.bodies[0])
+	}
+}
+
+// kitJevCls is the judge backend over the real kit Jev, on a fake wire that
+// answers every Jev request with a verdict; the request bodies are kept.
+func kitJevCls(t *testing.T, h *fakeHTTP, engine string, pats map[string]*prompt.Pattern) builtin.Classifier {
+	t.Helper()
+	h.reply = func(r *http.Request) (int, string) {
+		if r.URL.Path == "/api/tags" {
+			return 200, tagsOf()
+		}
+		return 200, `{"model":"typesafe/jev-1.14","answers":{"label":{"type":"choice","choice":"breaking","confidence":0.7,` +
+			`"probabilities":{"security":0.1,"breaking":0.7,"routine":0.1,"noise":0.1}}},"usage":{"input_tokens":1,"output_tokens":1,"cost":0.00001}}`
+	}
+	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{
+		HTTP: h, Secrets: withT(t, jevKeys()), LocalHosts: listedHosts, JudgeEngine: engine, Jev: builtin.KitJev,
+		Allow: allowAny, Patterns: patterns(pats),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// jevInstructions is the instructions field of the first Jev request on the wire.
+func jevInstructions(t *testing.T, h *fakeHTTP) string {
+	t.Helper()
+	for i, r := range h.reqs {
+		if r.URL.String() != jevURL {
+			continue
+		}
+		var req struct {
+			Questions map[string]map[string]any `json:"questions"`
+		}
+		if err := json.Unmarshal([]byte(h.bodies[i]), &req); err != nil {
+			t.Fatal(err)
+		}
+		s, _ := req.Questions["label"]["instructions"].(string)
+		return s
+	}
+	t.Fatalf("no Jev request: %v", h.urls())
+	return ""
+}
+
+var tersePattern = map[string]*prompt.Pattern{"terse": {Name: "terse", System: "ANSWER TERSELY\n"}}
+
+// A pattern is not refused by Jev: its system text goes first in the
+// question's instructions, then a blank line, then the step's instructions.
+func TestJevPatternTextReachesTheInstructions(t *testing.T) {
+	for _, c := range []struct{ name, instr, want string }{
+		{"with instructions", "Label by impact.", "ANSWER TERSELY\n\nLabel by impact."},
+		{"without instructions", "", "ANSWER TERSELY"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, h := newWorld(false)
+			cls := kitJevCls(t, h, builtin.EngineJev, tersePattern)
+			in := engineIn("ollama://m", "")
+			in["pattern"] = "terse"
+			in["instructions"] = c.instr
+			res := classifyAs(t, cls, specrun.PrivacyCloudAllowed, in)
+			if res.Outcome != core.OutcomeOK || out(res)["engine"] != "jev" {
+				t.Fatalf("%+v %v", res.Err, res.Output)
+			}
+			if got := jevInstructions(t, h); got != c.want {
+				t.Errorf("instructions %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// The auto fallback to Jev maps the pattern the same way.
+func TestJevPatternOnTheAutoFallback(t *testing.T) {
+	_, h := newWorld(false)
+	cls := kitJevCls(t, h, builtin.EngineAuto, tersePattern)
+	in := engineIn("ollama://m", "")
+	in["pattern"] = "terse"
+	in["instructions"] = "Label by impact."
+	res := classifyAs(t, cls, specrun.PrivacyCloudAllowed, in)
+	if res.Outcome != core.OutcomeOK || out(res)["engine"] != "jev" {
+		t.Fatalf("%+v %v", res.Err, res.Output)
+	}
+	if got := jevInstructions(t, h); got != "ANSWER TERSELY\n\nLabel by impact." {
+		t.Errorf("instructions %q", got)
+	}
+}
+
+// strategy is ignored by Jev, not a failure: the run records a note.
+func TestJevStrategyIsIgnoredWithANote(t *testing.T) {
+	_, h := newWorld(false)
+	cls := kitJevCls(t, h, builtin.EngineJev, nil)
+	in := engineIn("ollama://m", "")
+	in["strategy"] = "votes:5"
+	res := classifyAs(t, cls, specrun.PrivacyCloudAllowed, in)
+	if res.Outcome != core.OutcomeOK || out(res)["engine"] != "jev" {
+		t.Fatalf("%+v %v", res.Err, res.Output)
+	}
+	notes, _ := out(res)["notes"].([]any)
+	if len(notes) != 1 || !strings.Contains(notes[0].(string), "strategy") || !strings.Contains(notes[0].(string), "votes:5") ||
+		!strings.Contains(notes[0].(string), "jev") {
+		t.Errorf("notes %v", out(res)["notes"])
+	}
+	if h.count(jevURL) != 1 {
+		t.Errorf("calls %v", h.urls())
+	}
+}
+
+// No strategy, no note; and a local judge keeps its strategy, with no note.
+func TestJevNoStrategyNoNote(t *testing.T) {
+	_, h := newWorld(false)
+	res := classifyAs(t, kitJevCls(t, h, builtin.EngineJev, nil), specrun.PrivacyCloudAllowed, engineIn("ollama://m", ""))
+	if _, has := out(res)["notes"]; res.Outcome != core.OutcomeOK || has {
+		t.Fatalf("%+v %v", res.Err, res.Output)
+	}
+	_, h2 := newWorld(true, "m")
+	in := engineIn("ollama://m", builtin.EngineLocal)
+	in["strategy"] = "votes:2"
+	res = classifyAs(t, engineCls(t, h2, withT(t, jevKeys()), ""), specrun.PrivacyCloudAllowed, in)
+	if _, has := out(res)["notes"]; res.Outcome != core.OutcomeOK || has {
+		t.Fatalf("%+v %v", res.Err, res.Output)
+	}
+}
+
+// A pattern that is not found is still input_invalid under Jev, before any request.
+func TestJevUnknownPatternFails(t *testing.T) {
+	_, h := newWorld(false)
+	in := engineIn("ollama://m", "")
+	in["pattern"] = "missing"
+	res := classifyAs(t, kitJevCls(t, h, builtin.EngineJev, tersePattern), specrun.PrivacyCloudAllowed, in)
+	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeInputInvalid || h.count(jevURL) != 0 {
+		t.Fatalf("%+v", res)
 	}
 }

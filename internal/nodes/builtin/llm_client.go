@@ -47,10 +47,10 @@ type LLMDeps struct {
 	// endpoint only. Nil is a build without Jev: a Jev model is unusable
 	// (engine_feature) and auto never falls back to it.
 	Jev JevFactory
-	// Allow is the model allow-list (`ai.models.allow`): the model URIs a
-	// flow may run, each exact or with a trailing `*`. Every model of the
-	// model-backed backends must be on it; empty allows none.
-	Allow []string
+	// Allow is the model allow-list (`ai.models.allow`) and Deny the deny-list
+	// (`ai.models.deny`): model patterns (see ModelPermitted). Deny wins; with
+	// neither set every model is permitted, with only Allow the listed ones.
+	Allow, Deny []string
 }
 
 // JevFactory builds a Jev judge of the named model (empty is the default one)
@@ -81,6 +81,12 @@ func newModelClients(d LLMDeps) (*modelClients, error) {
 	}
 	if _, err := llm.Resolve("ollama://probe", llm.Hermetic(), llm.LocalOnly(llm.AllowHosts(d.LocalHosts...))); err != nil {
 		return nil, core.Errorf(core.CodeUsage, "privacy.local_hosts: %v", err)
+	}
+	if err := ValidateModelPatterns(d.Allow); err != nil {
+		return nil, prefixed("ai.models.allow", err)
+	}
+	if err := ValidateModelPatterns(d.Deny); err != nil {
+		return nil, prefixed("ai.models.deny", err)
 	}
 	local, err := node.NewLocalHosts(d.LocalHosts)
 	if err != nil {
@@ -239,4 +245,13 @@ func upstreamErr(err error) error {
 		e = e.WithTransience(core.TransienceTransient)
 	}
 	return e
+}
+
+// prefixed puts the setting a malformed list came from before its error.
+func prefixed(setting string, err error) error {
+	var ce *core.Error
+	if errors.As(err, &ce) {
+		return core.Errorf(core.CodeUsage, "%s: %s", setting, ce.Message).WithSuggestion(ce.Suggestion)
+	}
+	return err
 }

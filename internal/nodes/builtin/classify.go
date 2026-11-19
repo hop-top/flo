@@ -53,6 +53,9 @@ type Label struct {
 	// answered, as a URI without secrets; empty when the backend has none.
 	Engine string
 	Model  string
+	// Notes are what the engine did not do as asked (a strategy it ignores);
+	// the step output carries them as `notes`.
+	Notes []string
 }
 
 // Labels are the answers to a request, one per item, in order.
@@ -157,6 +160,13 @@ func classify(ctx context.Context, c Classifier, inv core.Invocation) (core.Resu
 	}
 	if got[0].Model != "" {
 		output["model"] = got[0].Model
+	}
+	if len(got[0].Notes) > 0 {
+		notes := make([]any, len(got[0].Notes))
+		for i, n := range got[0].Notes {
+			notes[i] = n
+		}
+		output["notes"] = notes
 	}
 	res := pureOK(output)
 	res.Cost = cost

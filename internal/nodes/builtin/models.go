@@ -11,10 +11,6 @@ import (
 	"hop.top/kit/go/ai/llm"
 )
 
-// EnvModelsAllow names the setting of the model allow-list (`ai.models.allow`,
-// comma-separated in the environment).
-const EnvModelsAllow = "FLO_AI_MODELS_ALLOW"
-
 // Model names of Jev: `jev` is the kit default model, written out as
 // JevModel; jev://<name> is any other.
 const (
@@ -30,65 +26,6 @@ func canonModel(s string) string {
 		return JevModel
 	}
 	return s
-}
-
-// ModelAllowed reports whether model is on the allow-list. An entry is an
-// exact model URI, or a model URI whose name ends in `*`; a `*` alone allows
-// every model. Entries and models are compared as parsed URIs (kit's
-// llm.ParseURI, the parser the client uses), never as strings: scheme, host
-// and port, and query params (`base_url` moves the endpoint) must be equal,
-// and the `*` stands for the rest of the model name only. What it stands for
-// holds no `@`, `?`, `#` or `..`, and no `/` unless the prefix has one. The
-// scheme is compared as written. `jev` stands for the default Jev model on
-// both sides.
-func ModelAllowed(allow []string, model string) bool {
-	m := canonModel(model)
-	mu, merr := llm.ParseURI(m)
-	for _, e := range allow {
-		e = canonModel(e)
-		switch {
-		case e == "":
-			continue
-		case e == "*":
-			return true
-		case merr != nil:
-			continue
-		}
-		pattern, glob := strings.CutSuffix(e, "*")
-		if !glob {
-			if eu, err := llm.ParseURI(e); err == nil && sameEndpoint(eu, mu) && eu.Model == mu.Model {
-				return true
-			}
-			continue
-		}
-		// The entry up to the star, parsed with a placeholder name char.
-		eu, err := llm.ParseURI(pattern + "x")
-		if err != nil || !sameEndpoint(eu, mu) {
-			continue
-		}
-		prefix := strings.TrimSuffix(eu.Model, "x")
-		rest, ok := strings.CutPrefix(mu.Model, prefix)
-		if !ok || strings.ContainsAny(rest, "@?#") || strings.Contains(rest, "..") ||
-			(strings.Contains(rest, "/") && !strings.Contains(prefix, "/")) {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-// sameEndpoint is whether two parsed model URIs have the same scheme, host
-// and params: where a call goes, whatever the model name.
-func sameEndpoint(a, b llm.URI) bool {
-	if a.Scheme != b.Scheme || a.Host != b.Host || len(a.Params) != len(b.Params) {
-		return false
-	}
-	for k, v := range a.Params {
-		if w, ok := b.Params[k]; !ok || w != v {
-			return false
-		}
-	}
-	return true
 }
 
 // modelRef is one model of a step, read.
@@ -176,6 +113,7 @@ type skipKind int
 
 const (
 	skipNotAllowed skipKind = iota
+	skipDenied
 	skipNotDetected
 	skipNoKey
 	skipNoJev
@@ -188,12 +126,13 @@ type skip struct {
 	why  string
 }
 
-// pick is the first usable model, in order. Usable is: on the allow-list,
-// allowed by the ceiling, and available: a local model the daemon lists
-// (asked only when there is a choice to make), a keyed model with its key in
+// pick is the first usable model, in order. Usable is: permitted by the
+// allow and deny lists, allowed by the ceiling, and available: a local ollama model the daemon lists
+// (always asked, even for a lone model, so a missing one fails as not
+// detected), a keyed model with its key in
 // the store. Only unavailability falls through to the next model; a model
 // that cannot be read at all fails the step before any is tried. Nothing is
-// sent and no secret read for a model the allow-list or the ceiling refuses.
+// sent and no secret read for a model the allow or deny list or the ceiling refuses.
 func (m *modelClients) pick(ctx context.Context, in pickIn) (picked, error) {
 	refs := make([]modelRef, 0, len(in.models)+1)
 	for _, raw := range in.models {
@@ -210,16 +149,16 @@ func (m *modelClients) pick(ctx context.Context, in pickIn) (picked, error) {
 		return picked{}, core.New(core.CodeInputInvalid, "no model is given").
 			WithSuggestion("write model: scheme://<model>, e.g. ollama://gemma4:e4b")
 	}
-	if len(m.d.Allow) == 0 {
-		return picked{}, core.New(core.CodePrivacyViolation, "no model is allowed: ai.models.allow is not set").
-			WithSuggestion("list the model URIs flows may use under ai.models.allow (env " + EnvModelsAllow +
-				", comma-separated; a trailing * matches a prefix), e.g. ollama://qwen3*")
-	}
+	// Only ollama models can be detected: another local scheme is detected
+	// only when there is a choice to make (a list), else it runs as written.
 	probe := len(refs) > 1
 	var skips []skip
 	for _, r := range refs {
 		switch {
-		case !ModelAllowed(m.d.Allow, r.model):
+		case ModelDenied(m.d.Deny, r.model):
+			skips = append(skips, skip{r, skipDenied, "denied: on ai.models.deny"})
+			continue
+		case !ModelPermitted(m.d.Allow, nil, r.model):
 			skips = append(skips, skip{r, skipNotAllowed, "not allowed: not on ai.models.allow"})
 			continue
 		case in.localOnly && r.level == node.PrivacyCloud:
@@ -264,9 +203,10 @@ func (m *modelClients) available(ctx context.Context, r modelRef, in pickIn, pro
 			return missing(r.uri.Scheme)
 		}
 		return "", nil, err
-	case !probe:
-		return "", nil, nil
 	case r.uri.Scheme != "ollama":
+		if !probe {
+			return "", nil, nil
+		}
 		return "", &skip{r, skipNotDetected, "not detected: only ollama models can be detected"}, nil
 	}
 	found, why, err := m.detectOllama(ctx, in.run, r.uri)
@@ -277,6 +217,20 @@ func (m *modelClients) available(ctx context.Context, r modelRef, in pickIn, pro
 		return "", &skip{r, skipNotDetected, "not detected: " + why}, nil
 	}
 	return "", nil, nil
+}
+
+// pulls is the pull command of each ollama model not detected.
+func pulls(skips []skip) string {
+	var cmds []string
+	for _, s := range skips {
+		if s.kind == skipNotDetected && !s.ref.jev && s.ref.uri.Scheme == "ollama" {
+			cmds = append(cmds, "ollama pull "+s.ref.uri.Model)
+		}
+	}
+	if len(cmds) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(cmds, "; ") + ")"
 }
 
 // noneUsable is the failure when no model is usable: every model with its
@@ -298,6 +252,7 @@ func noneUsable(skips []skip) error {
 		{skipNoJev, core.CodeEngineFeature},
 		{skipNoKey, core.CodeSecretNotFound},
 		{skipNotDetected, core.CodeUpstreamFailed},
+		{skipDenied, core.CodePrivacyViolation},
 		{skipNotAllowed, core.CodePrivacyViolation},
 	}
 	for _, o := range order {
@@ -314,10 +269,13 @@ func noneUsable(skips []skip) error {
 		hints = append(hints, "store the API key of the model's scheme as the secret <scheme>_api_key of the flow's profile (openrouter_api_key for jev)")
 	}
 	if kinds[skipNotDetected] {
-		hints = append(hints, "run ollama with the model pulled")
+		hints = append(hints, "run ollama with the model pulled"+pulls(skips))
 	}
 	if kinds[skipNotAllowed] {
 		hints = append(hints, "add the model to ai.models.allow (env "+EnvModelsAllow+")")
+	}
+	if kinds[skipDenied] {
+		hints = append(hints, "remove the model from ai.models.deny (env "+EnvModelsDeny+")")
 	}
 	if kinds[skipNoJev] {
 		hints = append(hints, "use a build with jev, or another model")

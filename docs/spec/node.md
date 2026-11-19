@@ -346,17 +346,18 @@ Output `{items}`.
 |---|---|---|
 | `items` | array, required | what to classify; each element a map |
 | `labels` | array of string, required | the closed label set |
-| `model` | string URI, or array of string URIs | `anthropic://…`, `ollama://…`, `openai://host:port/…` (provider chosen by kit's model client), `jev` or `jev://<model>` (§6.3.1); a list is tried in order (§6.3.1). Absent or blank: Jev under `auto`. Every model must be on the allow-list (§9.1) |
+| `model` | string URI, or array of string URIs | `anthropic://…`, `ollama://…`, `openai://host:port/…` (provider chosen by kit's model client), `jev` or `jev://<model>` (§6.3.1); a list is tried in order (§6.3.1). Absent or blank: Jev under `auto`. Every model must pass the allow and deny lists (§9.1) |
 | `instructions` | string | extra guidance |
 | `pattern`, `strategy` | string | named prompt pattern / multi-call strategy, resolved through kit |
 | `schema` | object | extra fields per item the model must return |
 | `abstain` | boolean, default false | allow no label |
 | `engine` | `local` \| `jev` \| `auto` | judge engine of this step (judge backend); default is the `ai.judge.engine` setting, else `auto`; any other value is `input_invalid` |
 
-Output `{items: [{item, label, confidence, why, …schema fields}], engine?, model?}`,
+Output `{items: [{item, label, confidence, why, …schema fields}], engine?, model?, notes?}`,
 one per input item, in order; `cost` reported. `engine` and `model` (judge
 backend) name the engine and the model that answered, the model as a URI
-without secrets. `label` is always in `labels`
+without secrets; `notes` (judge backend, when present) lists what the engine
+did not do as asked: a `strategy` Jev ignored. `label` is always in `labels`
 (or null when `abstain`); the model call uses structured output and a
 validated repair loop. Privacy follows the model URI scheme (§9). Empty
 `items` returns `{items: []}` without a model call.
@@ -389,7 +390,10 @@ answered (`local` or `jev`), so a run shows who judged:
 - `jev`: kit's `go/ai/judge/jev` (TypeSafe Jev through OpenRouter), one
   choice question per item over `labels`; confidence and probabilities are
   the service's, `why` is empty, cost is the service's reported USD.
-  `strategy` is ignored; `pattern` and `schema` fail `engine_feature`. It is
+  `strategy` is ignored, with a `notes` entry in the output; `pattern`'s system
+  text goes first in the question's instructions, then a blank line, then the
+  step's `instructions` (a pattern needs a pattern source as under `local`);
+  `schema` fails `engine_feature`. It is
   hermetic like §6.5: the key is the secret `openrouter_api_key` of the step's
   profile, sent only to Jev's own endpoint; requests go through the run's HTTP
   seam (a recording keeps them); no environment variable, no `llm.yaml`. A
@@ -419,27 +423,28 @@ first usable model answers; an entry is a model URI (§9) or Jev:
 - `engine` filters the list: `local` keeps the non-Jev entries, `jev` the Jev
   ones (none: the default Jev model), `auto` keeps all and uses it as written.
   `engine: local` with no model, or with Jev entries only, is `input_invalid`.
-- Usable: on the allow-list (§9.1), allowed by the privacy ceiling (§9), and
-  available. A local model is available when the daemon lists it
-  (`GET /api/tags`, 2 s timeout, through the HTTP seam, remembered per run, a
-  name without a tag is `:latest`); only ollama models can be detected, so a
-  local model of another scheme is unavailable in a list. A cloud model or Jev
+- Usable: permitted by the allow and deny lists (§9.1), allowed by the privacy
+  ceiling (§9), and available. A local ollama model is available when the
+  daemon lists it (`GET /api/tags`, 2 s timeout, through the HTTP seam,
+  remembered per run, a name without a tag is `:latest`). The daemon is asked
+  for every local ollama model, a lone one included, so a missing model fails
+  as not detected with the hint `ollama pull <model>`. Only ollama models can
+  be detected: a local model of another scheme is unavailable in a list, and
+  runs as written when alone. A cloud model or Jev
   is available when its key is in the store (a model that names its own
-  endpoint needs none). The daemon is asked only when there is a choice to make:
-  a step with one candidate (`engine: local` over one model, a one-entry list,
-  every `ai.generate` string) is run as written, and a missing model is the
-  call's own failure.
-- Only unavailability falls through (not allowed, refused by the ceiling, not
+  endpoint needs none). A one-entry list stays explicit under `auto`: no
+  implicit Jev follows it.
+- Only unavailability falls through (denied, not allowed, refused by the ceiling, not
   detected, no key). A call that fails on the chosen model (`upstream_failed`,
   `output_invalid`, `engine_feature`, `input_invalid`) is reported, not retried
   on the next model. An entry that cannot be read at all (not a model URI,
   `ollama:///x`) fails the step before any is tried.
-- None usable fails with every model and its reason (`not allowed`, `refused by
+- None usable fails with every model and its reason (`denied`, `not allowed`, `refused by
   the local-only ceiling`, `not detected`, `no key`), the code that of the most
   significant reason, in this order: `privacy_violation` (ceiling),
   `engine_feature` (no Jev in the build), `secret_not_found` (no key),
-  `upstream_failed` (not detected), `privacy_violation` (all were not allowed).
-  An unset allow-list is `privacy_violation` ("no model is allowed").
+  `upstream_failed` (not detected), `privacy_violation` (all were denied or not
+  allowed).
 
 ### 6.4 Built-in nodes that evaluate expressions per item
 
@@ -454,7 +459,7 @@ element are made.
 |---|---|---|
 | `prompt` | string `name@N`, required | a prompt file in the bundle's or pack's `prompts/` |
 | `context` | object | variables for the prompt |
-| `model` | string URI, or array of string URIs, required | as §6.3; a list is tried in order (§6.3.1), without Jev entries. Every model must be on the allow-list (§9.1) |
+| `model` | string URI, or array of string URIs, required | as §6.3; a list is tried in order (§6.3.1), without Jev entries. Every model must pass the allow and deny lists (§9.1) |
 | `schema` | object | optional output schema; validated with repair |
 
 Output `{text, data?, prompt: {name, version, hash}, model?}` (`data` present
@@ -667,30 +672,44 @@ Rules:
   cassettes and logs.
 - Data lineage is not tracked in 0.1 (flow.md §7.6).
 
-### 9.1 Model allow-list
+### 9.1 Model allow and deny lists
 
 Every model a model-backed backend runs (the `judge` classifier, the `llm`
-generator; any engine, local or cloud) must be on the allow-list, the
-`ai.models.allow` setting (env `FLO_AI_MODELS_ALLOW`, comma-separated; config
-file list; `-c`). It is checked before any request and before any secret read.
+generator; any engine, local or cloud) must pass the model policy: the
+`ai.models.allow` and `ai.models.deny` settings (env `FLO_AI_MODELS_ALLOW`,
+`FLO_AI_MODELS_DENY`, comma-separated; config file list; `-c`). It is checked
+before any request and before any secret read.
 
-- An entry is an exact model URI, or a model URI whose name ends in `*`
-  (`ollama://qwen3*`); `*` alone allows every model. Entry and model are
-  compared as parsed URIs (the model client's parser), not as strings: scheme
-  (as written), host and port, and query params (`base_url`) must be equal, so
-  an entry without a host matches only models without one, and the same for
-  `base_url`. The `*` stands for the rest of the model name only: what it
-  matches holds no `@`, `?`, `#` or `..`, and no `/` unless the prefix has one.
-  `ollama://qwen3*` allows `ollama://qwen3:4b`, not
-  `ollama://qwen3.example.com:11434/m` or `ollama://qwen3?base_url=…`. `jev`
-  stands for the default Jev model on both sides (`jev` and
-  `jev://typesafe/jev-1.14` are the same entry).
-- An unlisted model is unusable: alone, or when the whole list is, the step
-  fails `privacy_violation`; inside a list it is skipped (§6.3.1).
-- An unset or empty list allows nothing: every model is refused, with a
-  message saying how to set it. This is deliberate; backends that run no model
-  (`rules`, `template`) are not subject to it.
-- The list is policy, the privacy ceiling is per step: a model must pass both.
+- Deny wins. Neither list set: every model is permitted. Only allow: the
+  listed models. Only deny: every model but the denied. Both: allowed and not
+  denied. Backends that run no model (`rules`, `template`) are not subject to
+  it.
+- An entry is `*` (every model), `jev`, or a model URI. Entry and model are
+  compared as parsed URIs (the model client's parser), not as strings. The
+  endpoint, that is the scheme (as written), the host and port, and the query
+  params (`base_url`), must be equal: an entry without a host matches only
+  models without one, and the same for `base_url`. The model name is a glob
+  (path.Match: `*`, `?`, `[...]`, `\` escapes) and a name with none is
+  compared as is. A glob matches the model name only: what it matches holds no
+  `@`, `?`, `#` or `..`, and as many `/` as the pattern has (`*`, `?` and
+  classes never cross a `/`). So `ollama://qwen3*` allows `ollama://qwen3:4b`,
+  not `ollama://qwen3.example.com:11434/m` or `ollama://qwen3?base_url=…`;
+  `ollama://qwen3:*-instruct-*`, `jev://typesafe/*` and
+  `ollama://localhost:11434/*` are entries too. `jev` stands for the default
+  Jev model on both sides (`jev` and `jev://typesafe/jev-1.14` are the same
+  entry). In an entry a `?` is a glob unless a `key=` follows it, which starts
+  the query.
+- Globs in the scheme, the host or the params are not supported: an entry
+  with one, one that is not a model URI, a bad glob, or a class holding a `/`
+  is refused at configuration load (`usage`), naming the setting and the entry.
+- Allow and deny use the same matcher. A deny entry is therefore as exact as
+  an allow entry: `ollama://qwen3*` does not deny the same model name at
+  another endpoint (host or `base_url`); deny `*` or name the endpoint.
+- A refused model is unusable: alone, or when the whole list is, the step
+  fails `privacy_violation` ("denied" or "not allowed"); inside a list it is
+  skipped (§6.3.1).
+- The policy is global, the privacy ceiling is per step: a model must pass
+  both.
 
 ---
 

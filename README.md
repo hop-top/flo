@@ -112,20 +112,26 @@ flo run cancel <run> --yes
 - Model lists: a step's `model:` is a string or an ordered list, for
   `flo/ai.classify@1` and `flo/ai.generate@1`:
   `model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]`. The first usable
-  model answers: on the allow-list, allowed by the step's privacy ceiling, and
-  available (a local model the daemon lists; a cloud model or `jev` with its
-  key stored). Only unavailability falls through; a call that fails on the
+  model answers: permitted by the allow and deny lists, allowed by the step's privacy ceiling, and
+  available (a local ollama model the daemon lists, even a lone one: a missing
+  model fails as not detected, `ollama pull <model>`; a cloud model or `jev`
+  with its key stored). Only unavailability falls through; a call that fails on the
   chosen model is reported, not retried on the next. `jev` is the default Jev
   model (`jev://typesafe/jev-1.14`) and is classify only; `engine:` filters the
-  list. When none is usable the error lists each model and why.
-- Model allow-list: `ai.models.allow` (env `FLO_AI_MODELS_ALLOW`,
-  comma-separated) lists the models flows may run, cloud or local, on every
-  engine; anything else is refused with `privacy_violation` before any request
-  or secret read. Entries are exact model URIs, or a prefix with a trailing `*`
-  (`ollama://qwen3*`; `*` alone allows all). Entries are matched as parsed URIs:
-  scheme, host and `base_url` must equal the model's, and `*` covers only the
-  rest of the model name, never a host or a query.
-  Unset allows nothing: set it before using `judge` or `llm`.
+  list. Jev takes a step's `pattern` text first in its instructions and ignores
+  `strategy`, with a `notes` entry in the step output. When none is usable the error lists each model and why.
+- Model allow and deny lists: `ai.models.allow` and `ai.models.deny` (env
+  `FLO_AI_MODELS_ALLOW`, `FLO_AI_MODELS_DENY`, comma-separated) say which
+  models flows may run, cloud or local, on every engine. Deny wins. Neither
+  set: every model. Only allow: the listed ones. Only deny: all but the
+  denied. Both: allowed and not denied. A refused model fails with
+  `privacy_violation` before any request or secret read. Entries: `*` (any
+  model), `jev`, or a model URI whose model name may be a glob (`*`, `?`,
+  `[...]`): `ollama://qwen3*`, `ollama://qwen3:*-instruct-*`,
+  `jev://typesafe/*`, `ollama://localhost:11434/*`. Entries are matched as
+  parsed URIs: scheme, host and `base_url` must equal the model's, and a glob
+  covers the model name only, never a host or a query; a glob in the scheme,
+  host or params is refused at load.
 
   ```yaml
   ai:
@@ -135,6 +141,8 @@ flo run cancel <run> --yes
         - ollama://qwen3*
         - ollama://gemma4:e4b
         - jev
+      deny:
+        - ollama://*-base-*
   ```
 - Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
   `flo/ai.generate@1`: `template` (renders the prompt's template over the
@@ -147,8 +155,8 @@ flo run cancel <run> --yes
   profile (`anthropic_api_key`); it is sent only to the scheme's default
   endpoint, never to a host or `base_url` the model URI names. This build
   links the `ollama` scheme only. Unset configures none and a step using the
-  node fails with `engine_feature`. The `llm` backend runs only models on
-  `ai.models.allow`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
+  node fails with `engine_feature`. The `llm` backend runs only models the
+  allow and deny lists permit. A prompt `name@N` is `prompts/name@N.yaml` in the flow
   bundle, else in an installed pack: YAML with `system:` and `template:` (Go
   text/template; funcs `join`, `trunc`, `default`; a missing key is an
   error). The ceiling of the step (`privacy`) refuses a cloud model with
@@ -202,7 +210,7 @@ flo run cancel <run> --yes
   still produced; the three retry once at most, so a brief waits seconds, not
   minutes. The facts handed to the model are cut to the var `context_chars`
   (default 6000; `--var context_chars=N`). The `template` backend renders the prompt
-  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it (on a model of `ai.models.allow`) on
+  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it (on a model the allow and deny lists permit) on
   the model. To run
   it: set `packs.ctxt.url` and `packs.calendar.url` (config file,
   `FLO_PACKS_*` or `-c`), the secret `ctxt_token` when ctxt needs one, grant

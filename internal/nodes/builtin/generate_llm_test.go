@@ -52,9 +52,17 @@ func (f *fakeHTTP) Do(r *http.Request) (*http.Response, error) {
 
 func (f *fakeHTTP) calls() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.reqs) }
 
-// ollamaReply answers an ollama /api/chat call with text and token counts.
+// detectedByDefault are the models the fake daemon lists, for tests that are
+// not about detection: every local model they name is pulled.
+var detectedByDefault = []string{"m", "gemma4:e4b", "gemma4:e2b", "qwen3:4b"}
+
+// ollamaReply answers an ollama /api/chat call with text and token counts,
+// and /api/tags with detectedByDefault.
 func ollamaReply(text string, in, out int) func(*http.Request) (int, string) {
-	return func(*http.Request) (int, string) {
+	return func(r *http.Request) (int, string) {
+		if r.URL.Path == "/api/tags" {
+			return 200, tagsOf(detectedByDefault...)
+		}
 		b, _ := json.Marshal(map[string]any{
 			"message": map[string]any{"role": "assistant", "content": text},
 			"done":    true, "prompt_eval_count": in, "eval_count": out,
@@ -162,14 +170,14 @@ func TestLLMHappyPathLocal(t *testing.T) {
 	if out := res.Output.(map[string]any); out["text"] != "a brief" {
 		t.Errorf("text %v", out["text"])
 	}
-	if h.calls() != 1 || h.reqs[0].URL.Path != "/api/chat" || h.reqs[0].URL.Host != "localhost:11434" {
-		t.Fatalf("calls %d %v", h.calls(), h.reqs)
+	if h.calls() != 2 || h.reqs[0].URL.Path != "/api/tags" || h.reqs[1].URL.Path != "/api/chat" || h.reqs[1].URL.Host != "localhost:11434" {
+		t.Fatalf("calls %d %v", h.calls(), h.urls())
 	}
 	var sent struct {
 		Model    string
 		Messages []struct{ Role, Content string }
 	}
-	if err := json.Unmarshal([]byte(h.bodies[0]), &sent); err != nil {
+	if err := json.Unmarshal([]byte(h.bodies[1]), &sent); err != nil {
 		t.Fatal(err)
 	}
 	if sent.Model != "gemma4:e4b" || len(sent.Messages) != 2 ||
@@ -195,8 +203,8 @@ func TestLLMNoSystemTextSendsOnlyTheUserMessage(t *testing.T) {
 	if res.Outcome != core.OutcomeOK {
 		t.Fatalf("%+v", res.Err)
 	}
-	if strings.Contains(h.bodies[0], `"system"`) {
-		t.Errorf("empty system text sent: %s", h.bodies[0])
+	if strings.Contains(h.bodies[1], `"system"`) {
+		t.Errorf("empty system text sent: %s", h.bodies[1])
 	}
 }
 
@@ -387,8 +395,8 @@ func TestLLMStructuredData(t *testing.T) {
 	if d, _ := out["data"].(map[string]any); d["label"] != "pass" {
 		t.Errorf("data %v", out["data"])
 	}
-	if !strings.Contains(h.bodies[0], `"format"`) {
-		t.Errorf("schema not sent: %s", h.bodies[0])
+	if !strings.Contains(h.bodies[1], `"format"`) {
+		t.Errorf("schema not sent: %s", h.bodies[1])
 	}
 	if res.Cost.Tokens != 25 {
 		t.Errorf("cost %+v", res.Cost)
@@ -409,8 +417,8 @@ func TestLLMStructuredInvalidKeepsTheCost(t *testing.T) {
 	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeOutputInvalid {
 		t.Fatalf("%+v", res)
 	}
-	if h.calls() < 2 || res.Cost.Tokens != int64(20*h.calls()) {
-		t.Errorf("calls %d cost %+v", h.calls(), res.Cost)
+	if chats := h.count("/api/chat"); chats < 2 || res.Cost.Tokens != int64(20*chats) {
+		t.Errorf("calls %v cost %+v", h.urls(), res.Cost)
 	}
 }
 

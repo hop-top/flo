@@ -33,7 +33,28 @@ func TestModelAllowed(t *testing.T) {
 		{"glob stops at the query", []string{"ollama://qwen3*"}, "ollama://qwen3?base_url=https://evil.example.com", false},
 		{"glob in the query is not a glob", []string{"ollama://qwen3?base_url=http://gpu.internal*"}, "ollama://qwen3?base_url=http://gpu.internal:1", false},
 		{"star alone", []string{"*"}, "anthropic://claude-haiku-5-5", true},
-		{"star is only a suffix", []string{"ollama://*3:4b"}, "ollama://qwen3:4b", false},
+		{"star in the middle", []string{"ollama://*3:4b"}, "ollama://qwen3:4b", true},
+		{"star in the middle other", []string{"ollama://*3:4b"}, "ollama://qwen3:8b", false},
+		{"question mark", []string{"ollama://qwen?:4b"}, "ollama://qwen3:4b", true},
+		{"question mark is one char", []string{"ollama://qwen?:4b"}, "ollama://qwen33:4b", false},
+		{"class", []string{"ollama://qwen[23]:4b"}, "ollama://qwen3:4b", true},
+		{"class other", []string{"ollama://qwen[23]:4b"}, "ollama://qwen4:4b", false},
+		{"negated class", []string{"ollama://qwen[^2]:4b"}, "ollama://qwen2:4b", false},
+		{"two stars", []string{"ollama://qwen3:*-instruct-*"}, "ollama://qwen3:4b-instruct-2507-q4_K_M", true},
+		{"two stars other", []string{"ollama://qwen3:*-instruct-*"}, "ollama://qwen3:4b-base-2507", false},
+		{"jev glob", []string{"jev://typesafe/*"}, "jev://typesafe/jev-2", true},
+		{"jev glob matches the shorthand", []string{"jev://typesafe/*"}, "jev", true},
+		{"jev glob other", []string{"jev://other/*"}, "jev", false},
+		{"bad glob matches nothing", []string{"ollama://qwen[3"}, "ollama://qwen3", false},
+		{"question mark glob keeps the query", []string{"ollama://qwen?:4b?base_url=http://gpu.internal:1"}, "ollama://qwen3:4b?base_url=http://gpu.internal:1", true},
+		{"question mark glob keeps the query other", []string{"ollama://qwen?:4b?base_url=http://gpu.internal:1"}, "ollama://qwen3:4b?base_url=http://evil.example", false},
+		{"class past a slash", []string{"ollama://a[/]b"}, "ollama://a/b", false},
+		{"question mark does not cross a slash", []string{"ollama://qwen3?x"}, "ollama://qwen3/x", false},
+		{"star does not cross a slash in the middle", []string{"ollama://qwen*:4b"}, "ollama://qwen/x:4b", false},
+		{"host smuggled through a mid glob", []string{"ollama://qwen*:4b"}, "ollama://qwen3.attacker.example:11434/m:4b", false},
+		{"userinfo through a mid glob", []string{"ollama://qwen*b"}, "ollama://qwen3:4b@attacker.example:11434/b", false},
+		{"dot dot through a mid glob", []string{"ollama://qwen*b"}, "ollama://qwen..b", false},
+		{"base_url smuggled past a mid glob", []string{"ollama://qwen*b"}, "ollama://qwen3:4b?base_url=http://evil.example", false},
 		{"any entry", []string{"x://a", "ollama://m"}, "ollama://m", true},
 		{"jev shorthand entry", []string{"jev"}, jevModel, true},
 		{"jev shorthand model", []string{jevModel}, "jev", true},
@@ -387,8 +408,6 @@ func TestAllowListRefusesBeforeAnyRequestOrSecret(t *testing.T) {
 			{"query escapes glob", []string{"ollama://gemma4*"}, "ollama://gemma4:e4b?base_url=http://gpu.internal:11434"},
 			{"unlisted cloud", []string{"ollama://*"}, "fakecloud://big"},
 			{"jev not listed", []string{"ollama://*"}, "jev"},
-			{"unset", nil, "ollama://gemma4:e4b"},
-			{"empty", []string{}, "jev"},
 		} {
 			if engine == builtin.EngineLocal && c.model == "jev" {
 				continue // the engine leaves nothing to try: input_invalid, not a refusal
@@ -402,17 +421,6 @@ func TestAllowListRefusesBeforeAnyRequestOrSecret(t *testing.T) {
 				}
 				noTraffic(t, h, s)
 			})
-		}
-	}
-}
-
-func TestAllowListUnsetSaysHowToConfigure(t *testing.T) {
-	_, h := newWorld(true, "gemma4:e4b")
-	res := classifyAs(t, listCls(t, h, withT(t, jevKeys()), nil, ""), specrun.PrivacyCloudAllowed, listIn("ollama://gemma4:e4b", ""))
-	text := res.Err.Message + " " + res.Err.Suggestion
-	for _, want := range []string{"not set", "ai.models.allow", "FLO_AI_MODELS_ALLOW"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("error lacks %q: %s", want, text)
 		}
 	}
 }
@@ -514,15 +522,15 @@ func TestGenerateListFallsThroughAndRecordsTheModel(t *testing.T) {
 	}
 }
 
-func TestGenerateSingleModelRecordsItAndDoesNotProbe(t *testing.T) {
-	h := &fakeHTTP{reply: ollamaReply("a brief", 10, 2)}
+func TestGenerateSingleModelRecordsItAfterTheProbe(t *testing.T) {
+	h := &fakeHTTP{reply: tagsOrChat("gemma4:e4b")}
 	b := bundleWith(t, map[string]string{"brief@1.yaml": sysPrompt})
 	res := gen(t, genCls(t, h, &storeSecrets{t: t}, allowAny), b, specrun.PrivacyLocalOnly, genIn("ollama://gemma4:e4b", map[string]any{"title": "sync"}))
 	if res.Outcome != core.OutcomeOK || out(res)["model"] != "ollama://gemma4:e4b" {
 		t.Fatalf("%+v %v", res.Err, res.Output)
 	}
-	if got := h.urls(); len(got) != 1 || !strings.HasSuffix(got[0], "/api/chat") {
-		t.Errorf("calls %v", got)
+	if h.count("/api/tags") != 1 || h.count("/api/chat") != 1 {
+		t.Errorf("calls %v", h.urls())
 	}
 }
 
@@ -553,7 +561,6 @@ func TestGenerateAllowListRefusesBeforeAnyRequestOrSecret(t *testing.T) {
 		model any
 	}{
 		{"unlisted", []string{"ollama://other*"}, "ollama://gemma4:e4b"},
-		{"unset", nil, "ollama://gemma4:e4b"},
 		{"list all unlisted", []string{"ollama://other*"}, []any{"ollama://gemma4:e4b", "fakecloud://big"}},
 		{"cloud unlisted", []string{"ollama://*"}, "fakecloud://big"},
 	} {

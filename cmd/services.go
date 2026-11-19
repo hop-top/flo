@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strconv"
@@ -140,6 +141,19 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 	cfg.JudgeEngine = setting(root, builtin.EnvJudgeEngine, "ai.judge.engine")
 	cfg.Jev = builtin.KitJev
 	cfg.ModelsAllow = listSetting(root, builtin.EnvModelsAllow, "ai.models.allow")
+	cfg.ModelsDeny = listSetting(root, builtin.EnvModelsDeny, "ai.models.deny")
+	for _, l := range []struct {
+		key  string
+		list []string
+	}{{"ai.models.allow", cfg.ModelsAllow}, {"ai.models.deny", cfg.ModelsDeny}} {
+		if err := builtin.ValidateModelPatterns(l.list); err != nil {
+			var ce *core.Error
+			if errors.As(err, &ce) {
+				return serve.Config{}, core.Errorf(core.CodeUsage, "%s: %s", l.key, ce.Message).WithSuggestion(ce.Suggestion)
+			}
+			return serve.Config{}, err
+		}
+	}
 	cfg.Generator = setting(root, builtin.EnvGenerator, "ai.generator")
 	cfg.LocalHosts = listSetting(root, EnvLocalHosts, "privacy.local_hosts")
 	if _, err := node.NewLocalHosts(cfg.LocalHosts); err != nil {

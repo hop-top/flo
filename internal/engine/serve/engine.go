@@ -138,7 +138,7 @@ func (e *Engine) wire() error {
 	if err := builtin.RegisterStd(builtins, builtin.Deps{Outputs: st.Outputs, IDs: ids, Clock: cfg.Clock}); err != nil {
 		return err //nolint:wrapcheck // *core.Error
 	}
-	modelDeps := builtin.LLMDeps{HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts, JudgeEngine: cfg.JudgeEngine, Jev: cfg.Jev, Allow: cfg.ModelsAllow}
+	modelDeps := builtin.LLMDeps{HTTP: httpc, Secrets: e.secretLog, LocalHosts: cfg.LocalHosts, JudgeEngine: cfg.JudgeEngine, Jev: cfg.Jev, Allow: cfg.ModelsAllow, Deny: cfg.ModelsDeny}
 	classifier, err := builtin.ClassifierFor(cfg.Classifier, modelDeps)
 	if err != nil {
 		return err //nolint:wrapcheck // *core.Error

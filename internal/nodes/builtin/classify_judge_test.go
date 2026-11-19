@@ -26,6 +26,9 @@ func verdict(value string, conf float64, why string) string {
 // in the request body; tokens are reported per call.
 func byItem(answers map[string]string, in, out int, wrap func(string, int, int) func(*http.Request) (int, string)) func(*http.Request) (int, string) {
 	return func(r *http.Request) (int, string) {
+		if r.URL.Path == "/api/tags" {
+			return 200, tagsOf(detectedByDefault...)
+		}
 		body := bodyOf(r)
 		for pkg, ans := range answers {
 			if strings.Contains(body, `"`+pkg+`"`) || strings.Contains(body, `\"`+pkg+`\"`) {
@@ -129,10 +132,10 @@ func TestJudgeHappyPath(t *testing.T) {
 	if rows[1]["item"].(map[string]any)["package"] != "net" {
 		t.Errorf("item not echoed: %v", rows[1])
 	}
-	if h.calls() != 2 || h.reqs[0].URL.Host != "localhost:11434" {
+	if h.calls() != 3 || h.reqs[0].URL.Host != "localhost:11434" {
 		t.Fatalf("calls %d", h.calls())
 	}
-	body := h.bodies[0]
+	body := h.bodies[1]
 	for _, want := range []string{"security", "breaking", "routine", "noise", "what it means for a dependent", "gemma4:e4b"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("request lacks %q: %s", want, body)
@@ -162,8 +165,8 @@ func TestJudgeAbstain(t *testing.T) {
 	if l, present := row["label"]; !present || l != nil || row["confidence"] != 0.4 || row["why"] != "cannot tell" {
 		t.Fatalf("row %v", row)
 	}
-	if !strings.Contains(h.bodies[0], "abstain") {
-		t.Errorf("abstain not offered: %s", h.bodies[0])
+	if !strings.Contains(h.bodies[1], "abstain") {
+		t.Errorf("abstain not offered: %s", h.bodies[1])
 	}
 }
 
@@ -176,8 +179,8 @@ func TestJudgeAbstainOffIsRefused(t *testing.T) {
 	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeOutputInvalid {
 		t.Fatalf("%+v", res)
 	}
-	if strings.Contains(h.bodies[0], `"abstain"`) {
-		t.Errorf("abstain offered while off: %s", h.bodies[0])
+	if strings.Contains(h.bodies[1], `"abstain"`) {
+		t.Errorf("abstain offered while off: %s", h.bodies[1])
 	}
 }
 
@@ -328,7 +331,7 @@ func TestJudgeVotesStrategy(t *testing.T) {
 	if res.Outcome != core.OutcomeOK {
 		t.Fatalf("%+v", res.Err)
 	}
-	if h.calls() != 3 || rowsOf(res)[0]["confidence"] != 1.0 || res.Cost.Tokens != 45 {
+	if h.calls() != 4 || rowsOf(res)[0]["confidence"] != 1.0 || res.Cost.Tokens != 45 {
 		t.Fatalf("calls %d row %v cost %+v", h.calls(), rowsOf(res)[0], res.Cost)
 	}
 }
@@ -361,7 +364,7 @@ func TestJudgePattern(t *testing.T) {
 	in := judgeIn("ollama://m", map[string]any{"package": "a"})
 	in["pattern"] = "terse"
 	res := classifyAs(t, judgeCls(t, h, &storeSecrets{t: t}, nil, src), specrun.PrivacyLocalOnly, in)
-	if res.Outcome != core.OutcomeOK || !strings.Contains(h.bodies[0], "ANSWER TERSELY") {
+	if res.Outcome != core.OutcomeOK || !strings.Contains(h.bodies[1], "ANSWER TERSELY") {
 		t.Fatalf("%+v %s", res.Err, h.bodies)
 	}
 	in["pattern"] = "missing"
@@ -379,7 +382,7 @@ func TestJudgePattern(t *testing.T) {
 func TestJudgeItemMustBeAMap(t *testing.T) {
 	h := &fakeHTTP{reply: ollamaReply("x", 1, 1)}
 	res := classifyAs(t, judgeCls(t, h, &storeSecrets{t: t}, nil, nil), specrun.PrivacyLocalOnly, judgeIn("ollama://m", "just a string"))
-	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeInputInvalid || h.calls() != 0 {
+	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeInputInvalid || h.count("/api/chat") != 0 {
 		t.Fatalf("%+v", res)
 	}
 }
@@ -408,7 +411,7 @@ func TestJudgeNeedsTwoLabels(t *testing.T) {
 	in := judgeIn("ollama://m", map[string]any{"package": "a"})
 	in["labels"] = []any{"only"}
 	res := classifyAs(t, judgeCls(t, h, &storeSecrets{t: t}, nil, nil), specrun.PrivacyLocalOnly, in)
-	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeInputInvalid || h.calls() != 0 {
+	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeInputInvalid || h.count("/api/chat") != 0 {
 		t.Fatalf("%+v", res)
 	}
 }

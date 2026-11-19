@@ -4,10 +4,10 @@ description: One label per item from a closed set, with confidence and a reason.
 inputs:
   items: { type: array, required: true, description: What to classify; each element a map. }
   labels: { type: array, required: true, items: { type: string }, description: The closed label set. }
-  model: { type: [string, array], items: { type: string }, description: "Model URI, e.g. ollama://gemma4:e4b, or an ordered list of them (the first usable one answers; jev is the default Jev model). Every model must be on ai.models.allow. Unset: jev under engine auto. Ignored by the rules backend." }
+  model: { type: [string, array], items: { type: string }, description: "Model URI, e.g. ollama://gemma4:e4b, or an ordered list of them (the first usable one answers; jev is the default Jev model). Every model must pass ai.models.allow and ai.models.deny. Unset: jev under engine auto. Ignored by the rules backend." }
   instructions: { type: string, description: Extra guidance. }
-  pattern: { type: string, description: Named prompt pattern (judge backend; needs a pattern source). }
-  strategy: { type: string, description: "Multi-call strategy: verbalized (default), votes or votes:<n> (judge backend)." }
+  pattern: { type: string, description: Named prompt pattern (judge backend; needs a pattern source). Jev takes its text first in the instructions. }
+  strategy: { type: string, description: "Multi-call strategy: verbalized (default), votes or votes:<n> (judge backend; jev ignores it, with a note in the output)." }
   engine: { type: string, enum: [local, jev, auto], description: "Judge engine (judge backend): local (the non-jev models), jev (the jev models, else the default Jev model; TypeSafe Jev through OpenRouter, cloud) or auto (the models as listed; a single local model, or none, is followed by jev). Default: the ai.judge.engine setting, else auto." }
   schema: { type: object, description: Extra fields per item the model must return; the judge backend refuses it. }
   abstain: { type: boolean, default: false, description: Allow no label. }
@@ -18,6 +18,7 @@ outputs:
     properties:
       engine: { type: string, description: "The judge engine that answered (judge backend only)." }
       model: { type: string, description: "The model that answered, as a URI without secrets (judge backend only)." }
+      notes: { type: array, items: { type: string }, description: "What the engine did not do as asked, e.g. a strategy Jev ignores (judge backend only)." }
       items:
         type: array
         items:
