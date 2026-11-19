@@ -1,0 +1,23 @@
+flow: digest
+version: 0.1.0
+description: One digest of the errors and the warnings.
+privacy: local-only
+tasks: none
+vars:
+  errors:
+    type: list
+    default:
+      - { title: disk full }
+  warnings:
+    type: list
+    default:
+      - { title: slow query }
+steps:
+  - id: publish
+    uses: flo/output@1
+    with:
+      kind: findings
+      title: digest
+      items: >-
+        {{ vars.errors.map(e, {'title': e.title, 'label': 'error'})
+           + vars.warnings.map(w, {'title': w.title, 'label': 'warning'}) }}

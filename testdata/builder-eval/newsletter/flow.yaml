@@ -1,0 +1,32 @@
+flow: newsletter
+version: 0.1.0
+description: Publish the posts worth reading.
+privacy: cloud-allowed
+tasks: none
+vars:
+  posts:
+    type: list
+    default:
+      - { title: Intro, score: 3 }
+      - { title: Deep dive, score: 9 }
+steps:
+  - id: all
+    uses: flo/filter@1
+    with:
+      items: "{{ vars.posts }}"
+      where: "{{ item.score >= 0 }}"
+
+  - id: keep
+    uses: flo/filter@1
+    depends_on: [all]
+    with:
+      items: "{{ results.all.items }}"
+      where: "{{ item.score >= 5 }}"
+
+  - id: publish
+    uses: flo/output@1
+    depends_on: [all]
+    with:
+      kind: findings
+      title: newsletter
+      items: "{{ results.all.items.map(p, {'title': p.title}) }}"
