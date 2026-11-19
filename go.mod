@@ -89,7 +89,7 @@ require (
 replace hop.top/flo/spec => ./spec
 
 // kit pinned to a poly-kit next commit (beta.14 plus the llm transport,
-// local-only, structured output, prompt, judge and price packages). The commit
-// is not in hop-top/kit, so it is fetched from the poly-kit repository, where
-// it is reachable through its next branch.
-replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119004910-2c04e9c16c94
+// local-only, structured output, prompt, judge, judge/llmjudge and price
+// packages). The commit is not in hop-top/kit, so it is fetched from the
+// poly-kit repository, where it is reachable through its next branch.
+replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119012252-f6be8ad6786e
