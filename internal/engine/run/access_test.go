@@ -218,3 +218,48 @@ steps:
 		t.Errorf("key = %q", got)
 	}
 }
+
+// A step an external backend approved runs with the proposal and the
+// execution key, and with the approver's input when the approval corrected the
+// request.
+func TestApprovedStepRunsWithProposalKeyAndCorrection(t *testing.T) {
+	h := newH(t)
+	h.mail()
+	if _, err := h.fx.Grants.Set(h.ctx, core.DefaultTenant, "bot", "mail.send"); err != nil {
+		t.Fatal(err)
+	}
+	h.fx.Admission.Stamp = func(r *core.Receipt) {
+		r.Proposal, r.ExecutionKey, r.CorrectedInput = "agent_proposals_1", "exec_1", map[string]any{"to": "ana@example.org"}
+	}
+	id := h.do(botFlow, nil)
+	h.wantRun(id, core.RunSucceeded, "")
+	inv := h.fx.Runner.CallsFor("send")[0]
+	if inv.Admission == nil || inv.Admission.Proposal != "agent_proposals_1" || inv.Admission.ExecutionKey != "exec_1" {
+		t.Fatalf("admission = %+v", inv.Admission)
+	}
+	if inv.IdempotencyKey != "exec_1" {
+		t.Errorf("idempotency key = %q, want the execution key", inv.IdempotencyKey)
+	}
+	if inv.In["to"] != "ana@example.org" {
+		t.Errorf("input = %v, want the approver's", inv.In)
+	}
+	if s := h.steps(id)["send"]; s.IdemKey != "exec_1" {
+		t.Errorf("step record key = %q", s.IdemKey)
+	} else if in, _ := s.Inputs.(map[string]any); in["to"] != "ana@example.org" {
+		t.Errorf("step record inputs = %v", s.Inputs)
+	}
+}
+
+// Without an approval binding nothing is handed to the step.
+func TestUnboundStepGetsNoAdmissionBinding(t *testing.T) {
+	h := newH(t)
+	h.mail()
+	if _, err := h.fx.Grants.Set(h.ctx, core.DefaultTenant, "bot", "mail.send"); err != nil {
+		t.Fatal(err)
+	}
+	id := h.do(botFlow, nil)
+	h.wantRun(id, core.RunSucceeded, "")
+	if inv := h.fx.Runner.CallsFor("send")[0]; inv.Admission != nil {
+		t.Errorf("admission = %+v", inv.Admission)
+	}
+}

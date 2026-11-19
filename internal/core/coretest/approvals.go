@@ -90,6 +90,7 @@ type Trust struct {
 	levels    map[string][]core.TrustLevel
 	decisions []TrustCall
 	sets      []TrustSet
+	reads     []map[string]any
 	// Skip lists decision ids Decide reports as skipped.
 	Skip []string
 	// SetErr is returned by Set.
@@ -120,10 +121,18 @@ func (t *Trust) SetLevels(provider string, levels ...core.TrustLevel) {
 }
 
 // Levels implements core.Trust.
-func (t *Trust) Levels(_ context.Context, _ core.TenantID, provider string, _ map[string]any) ([]core.TrustLevel, error) {
+func (t *Trust) Levels(_ context.Context, _ core.TenantID, provider string, params map[string]any) ([]core.TrustLevel, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.reads = append(t.reads, clone(params))
 	return clone(t.levels[provider]), nil
+}
+
+// ReadParams returns the context of each Levels call, in order.
+func (t *Trust) ReadParams() []map[string]any {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return clone(t.reads)
 }
 
 // Decide implements core.Trust.

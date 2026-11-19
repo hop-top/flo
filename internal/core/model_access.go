@@ -283,6 +283,8 @@ type GuardQuery struct {
 	StepID string
 	// Approvals are the ancestor flo/approval@1 step ids that guard it.
 	Approvals []string
+	// Agent is the profile the step runs as: a trust provider reads its level.
+	Agent string
 	// TrustProvider and TrustClass, when set, let trust guard the step.
 	TrustProvider string
 	TrustClass    string
@@ -308,7 +310,14 @@ type Grant struct {
 	Capability string      `json:"capability"`
 	Source     GrantSource `json:"source"`
 	CreatedAt  time.Time   `json:"created_at"`
+	// ExpiresAt ends the grant (exclusive); nil is no end. A provisioned grant
+	// ends at the earlier of its own end and the staleness limit of the set it
+	// came from, so a set nobody refreshes stops covering by itself.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
+
+// Live reports whether the grant covers at now.
+func (g Grant) Live(now time.Time) bool { return g.ExpiresAt == nil || now.Before(*g.ExpiresAt) }
 
 // GrantCheck asks whether a flow may be saved or activated by a caller
 // (flow.md V18).
@@ -384,6 +393,13 @@ type Receipt struct {
 	Backend string    `json:"backend"`
 	Reason  string    `json:"reason,omitempty"`
 	At      time.Time `json:"at"`
+	// Proposal and ExecutionKey bind an allowed step to the approval of an
+	// external backend: the step runs the operation once with them.
+	Proposal     string `json:"proposal,omitempty"`
+	ExecutionKey string `json:"execution_key,omitempty"`
+	// CorrectedInput is the input the approver changed the request to; the
+	// step runs it, never its own. Nil when the approval was as asked.
+	CorrectedInput map[string]any `json:"corrected_input,omitempty"`
 }
 
 // OutputKind is what a flo/output@1 step publishes (node.md §6.7).

@@ -27,8 +27,11 @@ func (g *Grants) held(ctx context.Context, tenant core.TenantID, profile string)
 		return nil, err //nolint:wrapcheck // port error passes through
 	}
 	out := make(map[string]bool, len(rows))
+	now := g.Clock.Now()
 	for _, r := range rows {
-		out[r.Capability] = true
+		if r.Live(now) {
+			out[r.Capability] = true
+		}
 	}
 	return out, nil
 }
@@ -137,6 +140,10 @@ type Admission struct {
 	Clock    core.Clock
 	// Policy decides a request; nil allows everything.
 	Policy func(core.AdmissionRequest) (core.AdmissionResult, string)
+	// Stamp, when set, fills the receipt of a new decision further, as a
+	// backend that binds the step to an approval does (Proposal,
+	// ExecutionKey, CorrectedInput).
+	Stamp func(*core.Receipt)
 
 	mu    sync.Mutex
 	calls []core.AdmissionRequest
@@ -172,6 +179,9 @@ func (a *Admission) Admit(ctx context.Context, req core.AdmissionRequest) (core.
 		ID: core.NewReceiptID(a.IDs), Tenant: req.Tenant, Run: req.Run, StepRun: req.StepRun, StepID: req.Purpose.StepID,
 		Digest: digest(req), Decision: res, Agent: req.Agent, Principal: req.Principal, Operation: req.Operation,
 		Capabilities: req.Capabilities, SideEffect: req.SideEffect, Backend: "local", Reason: reason, At: a.Clock.Now(),
+	}
+	if a.Stamp != nil {
+		a.Stamp(&r)
 	}
 	if err := a.Receipts.PutReceipt(ctx, r); err != nil {
 		return core.AdmissionDecision{}, err //nolint:wrapcheck // port error passes through

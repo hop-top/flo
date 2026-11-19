@@ -125,4 +125,7 @@ CREATE TABLE IF NOT EXISTS group_claims (
 );
 CREATE INDEX IF NOT EXISTS group_claims_grp ON group_claims (grp);
 `,
+	2: `
+ALTER TABLE grants ADD COLUMN expires_at INTEGER;
+`,
 }

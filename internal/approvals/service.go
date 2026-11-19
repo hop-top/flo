@@ -241,7 +241,7 @@ func (s *Service) GuardSatisfied(ctx context.Context, q core.GuardQuery) (bool, 
 		}
 	}
 	if q.TrustProvider != "" && q.TrustClass != "" && s.Trust != nil {
-		levels, err := s.Trust.Levels(ctx, q.Tenant, q.TrustProvider, nil)
+		levels, err := s.Trust.Levels(ctx, q.Tenant, q.TrustProvider, TrustContext(nil, q.Agent, []string{q.TrustClass}))
 		if err != nil {
 			return false, err //nolint:wrapcheck // port error passes through
 		}

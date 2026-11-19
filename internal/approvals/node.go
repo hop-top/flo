@@ -141,7 +141,7 @@ func (n *Node) request(ctx context.Context, inv core.Invocation) (core.ApprovalR
 		}
 	}
 	if req.Trust != "" {
-		if err := n.autoItems(ctx, inv.Tenant, req, items); err != nil {
+		if err := n.autoItems(ctx, inv.Tenant, inv.RunAs, req, items); err != nil {
 			return req, err
 		}
 	}
@@ -151,11 +151,15 @@ func (n *Node) request(ctx context.Context, inv core.Invocation) (core.ApprovalR
 
 // autoItems gives the verdict auto to every item whose classes trust has all
 // at level auto. An item without a class is never auto.
-func (n *Node) autoItems(ctx context.Context, tenant core.TenantID, req core.ApprovalRequest, items []core.ApprovalItem) error {
+func (n *Node) autoItems(ctx context.Context, tenant core.TenantID, runAs string, req core.ApprovalRequest, items []core.ApprovalItem) error {
 	if n.deps.Trust == nil {
 		return core.Errorf(core.CodeInternal, "trust provider %q is named and the engine has no trust port", req.Trust)
 	}
-	levels, err := n.deps.Trust.Levels(ctx, tenant, req.Trust, req.Context)
+	var classes []string
+	for _, it := range items {
+		classes = append(classes, it.Class...)
+	}
+	levels, err := n.deps.Trust.Levels(ctx, tenant, req.Trust, TrustContext(req.Context, runAs, classes))
 	if err != nil {
 		return err //nolint:wrapcheck // port error passes through
 	}

@@ -23,15 +23,34 @@ func (s *GrantStore) SetGrant(ctx context.Context, g core.Grant) (bool, error) {
 	if g.CreatedAt.IsZero() {
 		g.CreatedAt = s.s.clock.Now()
 	}
+	var exp any
+	if g.ExpiresAt != nil {
+		exp = g.ExpiresAt.UnixNano()
+	}
 	changed := false
 	err := s.s.tx(ctx, g.Tenant, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO grants (profile, capability, source, created_at) VALUES (?, ?, ?, ?)`,
-			g.Profile, g.Capability, string(g.Source), g.CreatedAt.UnixNano())
+			`INSERT OR IGNORE INTO grants (profile, capability, source, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+			g.Profile, g.Capability, string(g.Source), g.CreatedAt.UnixNano(), exp)
 		if err != nil {
 			return internal(err)
 		}
 		n, err := res.RowsAffected()
+		if err != nil {
+			return internal(err)
+		}
+		changed = n > 0
+		if changed || g.Source != core.GrantProvisioned {
+			return nil
+		}
+		// A provisioned grant is refreshed by the next set: its end moves.
+		res, err = tx.ExecContext(ctx,
+			`UPDATE grants SET source = ?, expires_at = ? WHERE profile = ? AND capability = ? AND (source <> ? OR expires_at IS NOT ?)`,
+			string(g.Source), exp, g.Profile, g.Capability, string(g.Source), exp)
+		if err != nil {
+			return internal(err)
+		}
+		n, err = res.RowsAffected()
 		changed = n > 0
 		return internal(err)
 	})
@@ -59,7 +78,7 @@ func (s *GrantStore) ListGrants(ctx context.Context, tenant core.TenantID, profi
 	if err != nil {
 		return nil, err
 	}
-	query, args := `SELECT profile, capability, source, created_at FROM grants`, []any(nil)
+	query, args := `SELECT profile, capability, source, created_at, expires_at FROM grants`, []any(nil)
 	if profile != "" {
 		query += ` WHERE profile = ?`
 		args = append(args, profile)
@@ -73,13 +92,17 @@ func (s *GrantStore) ListGrants(ctx context.Context, tenant core.TenantID, profi
 	for rows.Next() {
 		g := core.Grant{Tenant: tenant}
 		var src string
-		var at sql.NullInt64
-		if err := rows.Scan(&g.Profile, &g.Capability, &src, &at); err != nil {
+		var at, exp sql.NullInt64
+		if err := rows.Scan(&g.Profile, &g.Capability, &src, &at, &exp); err != nil {
 			return nil, internal(err)
 		}
 		g.Source = core.GrantSource(src)
 		if at.Valid {
 			g.CreatedAt = time.Unix(0, at.Int64).UTC()
+		}
+		if exp.Valid {
+			t := time.Unix(0, exp.Int64).UTC()
+			g.ExpiresAt = &t
 		}
 		out = append(out, g)
 	}

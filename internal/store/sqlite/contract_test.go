@@ -461,6 +461,58 @@ func TestGrantsReceiptsOutputs(t *testing.T) {
 	})
 }
 
+// A provisioned grant carries an end and is refreshed by the next set: its end
+// moves, and it takes over a local grant of the same capability; a local set
+// never moves one.
+func TestProvisionedGrantsEndAndRefresh(t *testing.T) {
+	both(t, func(t *testing.T, b bundle) {
+		end1 := b.clock.Now().Add(24 * time.Hour).UTC()
+		end2 := end1.Add(24 * time.Hour)
+		prov := func(end time.Time) core.Grant {
+			return core.Grant{Tenant: T, Profile: "p", Capability: "billing.pay", Source: core.GrantProvisioned, ExpiresAt: &end}
+		}
+		if ch, err := b.grants.SetGrant(bg, prov(end1)); err != nil || !ch {
+			t.Fatalf("first provision: %v %v", ch, err)
+		}
+		if ch, _ := b.grants.SetGrant(bg, prov(end1)); ch {
+			t.Error("the same end is a no-op")
+		}
+		if ch, _ := b.grants.SetGrant(bg, prov(end2)); !ch {
+			t.Error("a later end is a change")
+		}
+		if ch, _ := b.grants.SetGrant(bg, core.Grant{Tenant: T, Profile: "p", Capability: "billing.pay"}); ch {
+			t.Error("a local set moved a provisioned grant")
+		}
+		got, _ := b.grants.ListGrants(bg, T, "p")
+		if len(got) != 1 || got[0].Source != core.GrantProvisioned || got[0].ExpiresAt == nil || !got[0].ExpiresAt.Equal(end2) {
+			t.Fatalf("grants = %+v", got)
+		}
+		if !got[0].Live(end2.Add(-time.Second)) || got[0].Live(end2) {
+			t.Error("a grant is live until its end, exclusive")
+		}
+		_, _ = b.grants.SetGrant(bg, core.Grant{Tenant: T, Profile: "q", Capability: "x.y"})
+		if ch, _ := b.grants.SetGrant(bg, core.Grant{Tenant: T, Profile: "q", Capability: "x.y", Source: core.GrantProvisioned}); !ch {
+			t.Error("a provisioned grant takes over a local one")
+		}
+		if q, _ := b.grants.ListGrants(bg, T, "q"); q[0].Source != core.GrantProvisioned || q[0].ExpiresAt != nil {
+			t.Errorf("takeover = %+v", q)
+		}
+	})
+}
+
+// A receipt keeps what binds a step to an external approval.
+func TestReceiptKeepsProposalKeyAndCorrection(t *testing.T) {
+	both(t, func(t *testing.T, b bundle) {
+		r := core.Receipt{ID: "rcp_b", Tenant: T, Run: "r", Decision: core.AdmissionAllow, Backend: "bos",
+			Proposal: "agent_proposals_1", ExecutionKey: "exec_1", CorrectedInput: map[string]any{"n": int64(2)}}
+		_ = b.receipts.PutReceipt(bg, r)
+		got, ok, _ := b.receipts.GetReceipt(bg, T, "rcp_b")
+		if !ok || got.Proposal != "agent_proposals_1" || got.ExecutionKey != "exec_1" || got.CorrectedInput["n"] != int64(2) {
+			t.Fatalf("receipt = %+v", got)
+		}
+	})
+}
+
 func TestOutputPrune(t *testing.T) {
 	both(t, func(t *testing.T, b bundle) {
 		old := b.clock.Now().Add(-100 * 24 * time.Hour)

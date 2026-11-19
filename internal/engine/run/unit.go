@@ -133,8 +133,12 @@ func (u *unit) runUnit(ctx context.Context) stepResult {
 	}
 	u.rec.Inputs = in
 	if u.rec.Status != core.StepWaiting || u.rec.Reason == core.ReasonAdmissionDeferred {
-		if res, ok := u.access(ctx, in); !ok {
+		res, bound, ok := u.access(ctx, in)
+		if !ok {
 			return res
+		}
+		if bound != nil {
+			inv = u.bind(inv, bound)
 		}
 	}
 	return u.attempts(ctx, inv, resume, reasked)

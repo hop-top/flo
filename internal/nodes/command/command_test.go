@@ -489,3 +489,40 @@ func TestPlanRendersWithoutRunning(t *testing.T) {
 		t.Fatalf("plan = %v", plan)
 	}
 }
+
+// A step an external backend approved gets its proposal, and the key that lets
+// the target run it once, in its environment.
+func TestAdmissionBindingReachesTheProcess(t *testing.T) {
+	s := spec(t, `
+node: bos/pay@1
+kind: command
+argv: [bos, pay]
+inputs: {}
+outputs: { from: stdout, format: text }
+side_effect: write-shared
+privacy: local
+capabilities: [billing.pay]
+`)
+	fx := &fakeExec{fn: func(cmd *exec.Cmd) error { return nil }}
+	x := &command.Executor{Commands: command.NewRunner(fx)}
+	inv := invoke(s, map[string]any{})
+	inv.IdempotencyKey = "exec_1"
+	inv.Admission = &core.AdmissionBinding{Proposal: "agent_proposals_1", ExecutionKey: "exec_1"}
+	if _, err := x.Execute(context.Background(), inv); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(fx.envs[0], "FLO_ADMISSION_PROPOSAL=agent_proposals_1") || !slices.Contains(fx.envs[0], "FLO_IDEMPOTENCY_KEY=exec_1") {
+		t.Fatalf("env = %v", fx.envs[0][len(fx.envs[0])-3:])
+	}
+	// and nothing of the kind without one
+	fx2 := &fakeExec{fn: func(cmd *exec.Cmd) error { return nil }}
+	x2 := &command.Executor{Commands: command.NewRunner(fx2)}
+	if _, err := x2.Execute(context.Background(), invoke(s, map[string]any{})); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range fx2.envs[0] {
+		if strings.HasPrefix(e, "FLO_ADMISSION_PROPOSAL=") {
+			t.Errorf("a step with no approval got %s", e)
+		}
+	}
+}

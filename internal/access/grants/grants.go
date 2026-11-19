@@ -40,9 +40,12 @@ func (s *Service) held(ctx context.Context, tenant core.TenantID, profile string
 	if err != nil {
 		return nil, err //nolint:wrapcheck // port error passes through
 	}
+	now := s.clock.Now()
 	out := make(map[string]bool, len(rows))
 	for _, r := range rows {
-		out[r.Capability] = true
+		if r.Live(now) {
+			out[r.Capability] = true
+		}
 	}
 	return out, nil
 }

@@ -86,6 +86,12 @@ func (x *Executor) render(inv core.Invocation, stepDir string) (Request, *core.E
 		}
 		req.Env["FLO_IDEMPOTENCY_KEY"] = inv.IdempotencyKey
 	}
+	if inv.Admission != nil {
+		if req.Env == nil {
+			req.Env = map[string]string{}
+		}
+		req.Env["FLO_ADMISSION_PROPOSAL"] = inv.Admission.Proposal
+	}
 	if req.Cwd, err = env.String(spec.Cwd, act); err != nil {
 		return Request{}, render.Fail("cwd", err)
 	}

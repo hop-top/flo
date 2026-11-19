@@ -220,3 +220,50 @@ func TestDirLocator(t *testing.T) {
 		t.Errorf("path traversal: %v", err)
 	}
 }
+
+// A provider is read with the profile the step runs as and the classes asked
+// about, unless the step's own context names them: what a provider keyed by
+// agent (bos) needs.
+func TestTrustContextAddsAgentAndClasses(t *testing.T) {
+	base := map[string]any{"run": "r1"}
+	got := approvals.TrustContext(base, "noor", []string{"archive", "", "archive", "label"})
+	classes, _ := got["classes"].([]any)
+	if got["run"] != "r1" || got["agent"] != "noor" || len(classes) != 2 || classes[0] != "archive" || classes[1] != "label" {
+		t.Fatalf("context = %v", got)
+	}
+	if _, touched := base["agent"]; touched {
+		t.Error("the step's own map was changed")
+	}
+	own := approvals.TrustContext(map[string]any{"agent": "other", "classes": []any{"x"}}, "noor", []string{"archive"})
+	if own["agent"] != "other" || own["classes"].([]any)[0] != "x" {
+		t.Errorf("the step's own agent and classes were overridden: %v", own)
+	}
+	if bare := approvals.TrustContext(nil, "", nil); len(bare) != 0 {
+		t.Errorf("empty = %v", bare)
+	}
+}
+
+func TestNodeAndGuardReadTrustForTheAgentAndItsClasses(t *testing.T) {
+	r := newRig(t)
+	r.fx.Trust.SetLevels("bos", core.TrustLevel{Class: "archive", Level: core.TrustAuto})
+	r.run(t, "run_1")
+	execute(t, r, map[string]any{
+		"items": []any{it("m1", "archive")}, "trust": "bos", "context": map[string]any{"run": "run_1"},
+	})
+	reads := r.fx.Trust.ReadParams()
+	if len(reads) != 1 || reads[0]["agent"] != "noor" || reads[0]["run"] != "run_1" {
+		t.Fatalf("node read = %v", reads)
+	}
+	if cl, _ := reads[0]["classes"].([]any); len(cl) != 1 || cl[0] != "archive" {
+		t.Errorf("node read classes = %v", reads[0]["classes"])
+	}
+	ok, err := r.svc.GuardSatisfied(context.Background(), core.GuardQuery{
+		Tenant: tenant, Run: "run_2", StepID: "send", Agent: "noor", TrustProvider: "bos", TrustClass: "archive"})
+	if err != nil || !ok {
+		t.Fatalf("guard = %v %v", ok, err)
+	}
+	reads = r.fx.Trust.ReadParams()
+	if len(reads) != 2 || reads[1]["agent"] != "noor" || reads[1]["classes"].([]any)[0] != "archive" {
+		t.Errorf("guard read = %v", reads)
+	}
+}

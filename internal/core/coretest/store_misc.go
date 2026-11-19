@@ -45,9 +45,15 @@ func (s *GrantStore) SetGrant(_ context.Context, g core.Grant) (bool, error) {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	d := s.db.td(g.Tenant)
-	for _, x := range d.grants {
+	for i, x := range d.grants {
 		if x.Profile == g.Profile && x.Capability == g.Capability {
-			return false, nil
+			if g.Source != core.GrantProvisioned {
+				return false, nil
+			}
+			same := x.Source == g.Source && ((x.ExpiresAt == nil && g.ExpiresAt == nil) ||
+				(x.ExpiresAt != nil && g.ExpiresAt != nil && x.ExpiresAt.Equal(*g.ExpiresAt)))
+			d.grants[i].Source, d.grants[i].ExpiresAt = g.Source, g.ExpiresAt
+			return !same, nil
 		}
 	}
 	if g.Source == "" {

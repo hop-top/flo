@@ -36,6 +36,32 @@ func NewCommandTrust(run core.CommandRunner, loc Locator) (*CommandTrust, error)
 	return &CommandTrust{run: run, loc: loc, env: env}, nil
 }
 
+// TrustContext is the context a provider is read with: the step's own, plus
+// the profile the step runs as (`agent`) and the action classes asked about
+// (`classes`) unless the step names them itself. The step's map is not
+// changed.
+func TrustContext(base map[string]any, agent string, classes []string) map[string]any {
+	out := make(map[string]any, len(base)+2)
+	for k, v := range base {
+		out[k] = v
+	}
+	if _, ok := out["agent"]; !ok && agent != "" {
+		out["agent"] = agent
+	}
+	if _, ok := out["classes"]; !ok && len(classes) > 0 {
+		seen := map[string]bool{}
+		list := make([]any, 0, len(classes))
+		for _, c := range classes {
+			if c != "" && !seen[c] {
+				seen[c] = true
+				list = append(list, c)
+			}
+		}
+		out["classes"] = list
+	}
+	return out
+}
+
 // Levels implements core.Trust: runs `read` and returns the levels it
 // prints, a JSON list of {class, level, streak, threshold, resets,
 // last_reset}. A level other than ask or auto is output_invalid.

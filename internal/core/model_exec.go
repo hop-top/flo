@@ -72,6 +72,13 @@ type Resume struct {
 	Approval Approval
 }
 
+// AdmissionBinding is what an allowed step runs with when its backend asked a
+// person: the proposal and the key that lets the target run it once.
+type AdmissionBinding struct {
+	Proposal     string
+	ExecutionKey string
+}
+
 // Invocation is one request to execute a step attempt. The executor renders
 // `with` and fills the rest from the run; the dispatcher routes it by Kind
 // and the runner places it. It is a value: a handler may keep it.
@@ -118,6 +125,10 @@ type Invocation struct {
 	// IdempotencyKey is passed to the target (FLO_IDEMPOTENCY_KEY, the
 	// Idempotency-Key header).
 	IdempotencyKey string
+	// Admission is the approval an external admission backend bound the step
+	// to; nil for none. The command node passes it as FLO_ADMISSION_PROPOSAL
+	// and sets the idempotency key to the execution key.
+	Admission *AdmissionBinding
 	// Resume is set when a parked step is re-dispatched after its approval
 	// completed.
 	Resume *Resume

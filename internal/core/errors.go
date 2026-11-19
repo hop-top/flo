@@ -72,6 +72,10 @@ const (
 // its exit code without a second table.
 const (
 	CodeUsage                 Code = "usage"
+	CodeScopeUnknown          Code = "scope_unknown"        // it is for a scope flo is not bound to
+	CodeSetInvalid            Code = "set_invalid"          // an access set flo refuses (bos.access/v1)
+	CodeDigestMismatch        Code = "digest_mismatch"      // its digest is not its content's
+	CodeUnsupportedContract   Code = "unsupported_contract" // it is another contract
 	CodeInvalidFlow           Code = "invalid_flow"
 	CodeFlowNotTested         Code = "flow_not_tested" // activation needs a passing test of that exact version
 	CodeInvalidVar            Code = "invalid_var"
@@ -125,6 +129,8 @@ const (
 	CodeNodeConflict          Code = "node_conflict" // two packs declare the same ns/name@N
 	CodeTriggerCASLost        Code = "trigger_cas_lost"
 	CodeApprovalAlreadyClosed Code = "approval_closed"
+	CodeEpochStale            Code = "epoch_stale"         // an access set older than the one held (bos.access/v1)
+	CodeBaseEpochMismatch     Code = "base_epoch_mismatch" // a delta that does not apply to the one held
 )
 
 // Permission (exit 5), transient (exit 6) and waiting (exit 7).
@@ -160,7 +166,7 @@ func buildCodeTable() map[Code]codeInfo {
 		CodeInternal, CodePlacementRefused, CodeIrreversibleUnsafe, CodeApprovalTimedOut)
 	set(ExitGeneral, TransienceTransient, CodeTimeout, CodeAdmissionUnavailable)
 	set(ExitUsage, TransiencePermanent,
-		CodeUsage, CodeInvalidFlow, CodeFlowNotTested, CodeInvalidVar, CodeInvalidNode, CodeInvalidDecision, CodeReservedKey,
+		CodeUsage, CodeSetInvalid, CodeDigestMismatch, CodeUnsupportedContract, CodeInvalidFlow, CodeFlowNotTested, CodeInvalidVar, CodeInvalidNode, CodeInvalidDecision, CodeReservedKey,
 		CodeEngineNode, CodeEngineFeature, CodeConfirmationRequired, CodeTTYRequired,
 		CodeUnguardedIrreversible, CodePrivacyViolation, CodeCapabilityMismatch, CodeSyntaxError,
 		CodeUndeclaredRef, CodeUnknownFunction, CodeTypeError, CodeNotBoolean, CodeNotList,
@@ -168,10 +174,10 @@ func buildCodeTable() map[Code]codeInfo {
 	set(ExitNotFound, TransiencePermanent,
 		CodeNotFound, CodeFlowNotFound, CodeRunNotFound, CodeNodeNotFound, CodeApprovalNotFound, CodeItemNotFound,
 		CodeTriggerNotFound, CodeTaskNotFound, CodeJobNotFound, CodeTenantNotFound, CodeOutputNotFound,
-		CodeSecretNotFound)
+		CodeSecretNotFound, CodeScopeUnknown)
 	set(ExitConflict, TransiencePermanent,
 		CodeFlowVersionConflict, CodeDraftStale, CodeGrantProvisioned, CodeFlowNotActive, CodeDuplicate,
-		CodeNodeConflict, CodeApprovalAlreadyClosed)
+		CodeNodeConflict, CodeApprovalAlreadyClosed, CodeEpochStale, CodeBaseEpochMismatch)
 	// A lost race is worth one retry against fresh state.
 	set(ExitConflict, TransienceTransient, CodeRunStateConflict, CodeApprovalConflict, CodeTriggerCASLost)
 	set(ExitPermission, TransiencePermanent, CodeGrantDenied, CodeAdmissionDenied)
