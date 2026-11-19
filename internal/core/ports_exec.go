@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"net/http"
 
 	"hop.top/flo/spec/node"
 )
@@ -47,6 +48,27 @@ type BuiltinNode interface {
 	Spec() *node.Spec
 	// Execute runs one invocation with its inputs already validated.
 	Execute(ctx context.Context, inv Invocation) (Result, error)
+}
+
+// HTTPDoer is the one method of an HTTP client a built-in needs.
+type HTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+type httpKey struct{}
+
+// WithHTTP returns ctx carrying the HTTP seam of the dispatcher that runs a
+// built-in: built-ins are registered once, the seam is per dispatcher (a
+// recorded run's goes through a tape), so a built-in takes its requests'
+// client from the context of its invocation.
+func WithHTTP(ctx context.Context, d HTTPDoer) context.Context {
+	return context.WithValue(ctx, httpKey{}, d)
+}
+
+// HTTPFrom returns the HTTP seam the dispatcher put on ctx.
+func HTTPFrom(ctx context.Context) (HTTPDoer, bool) {
+	d, ok := ctx.Value(httpKey{}).(HTTPDoer)
+	return d, ok && d != nil
 }
 
 // BuiltinRegistry holds the built-in nodes (flo/dedupe@1, flo/filter@1,

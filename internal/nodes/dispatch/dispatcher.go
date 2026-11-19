@@ -137,6 +137,9 @@ func (x *Dispatcher) run(ctx context.Context, inv core.Invocation) (core.Result,
 		if !ok {
 			return core.Result{}, core.Errorf(core.CodeNodeNotFound, "built-in %s is not registered", inv.Node.Node)
 		}
+		if x.d.HTTP != nil {
+			ctx = core.WithHTTP(ctx, x.d.HTTP)
+		}
 		return executeBuiltin(ctx, b, inv)
 	case node.KindCommand:
 		return x.command.Execute(ctx, inv) //nolint:wrapcheck // the executor's own result

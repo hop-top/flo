@@ -1,0 +1,15 @@
+flow: ai-say
+version: 0.1.0
+description: One model call, to see a recording keep it.
+on:
+  - manual: {}
+run_as: automation
+privacy: local-only
+tasks: none
+steps:
+  - id: say
+    uses: flo/ai.generate@1
+    with:
+      model: ollama://gemma4:e4b
+      prompt: say@1
+      context: { word: hello }

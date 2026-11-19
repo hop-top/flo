@@ -22,9 +22,10 @@ type PriceFunc func(ctx context.Context, scheme, model string) (llm.Price, bool)
 // LLMDeps is what the model-backed backends (the llm generator, the judge
 // classifier) run on.
 type LLMDeps struct {
-	// HTTP carries every request of the model client: the engine's HTTP
-	// seam, so recording and fakes see model calls like any other. Nil
-	// leaves the client on the process default transport.
+	// HTTP carries every request of the model client when the invocation's
+	// context has no seam of its own (the dispatcher puts its own there,
+	// core.WithHTTP, so a recorded run's tape sees model calls like any
+	// other). Nil leaves the client on the process default transport.
 	HTTP llm.Doer
 	// Secrets holds provider keys. Nil is a store with no secret.
 	Secrets core.Secrets
@@ -75,7 +76,11 @@ func (m *modelClients) open(ctx context.Context, model string, uri llm.URI, leve
 		}
 		full += sep + "api_key=" + key
 	}
-	opts := []llm.ResolveOption{llm.Hermetic(), llm.WithTransport(llm.DoerTransport(m.d.HTTP))}
+	doer := m.d.HTTP
+	if h, ok := core.HTTPFrom(ctx); ok {
+		doer = h
+	}
+	opts := []llm.ResolveOption{llm.Hermetic(), llm.WithTransport(llm.DoerTransport(doer))}
 	if localOnly {
 		opts = append(opts, llm.LocalOnly(llm.AllowHosts(m.d.LocalHosts...)))
 	}
