@@ -71,6 +71,10 @@ steps:
   # `judge` asks `model` one question per release, on this machine; `rules`
   # labels without a model and ignores it. Gemma 4 E4B is the target model once
   # ollama serves structured output for it; Qwen3 4B Instruct runs until then.
+  # The model must be on the allow-list (ai.models.allow / FLO_AI_MODELS_ALLOW,
+  # e.g. ollama://qwen3*). `model` may also be an ordered list, tried in order:
+  # [ollama://qwen3:4b-instruct-2507-q4_K_M, jev] falls back to Jev when the
+  # daemon lacks the model; `engine: local` keeps the ollama entries only.
   # The judge sees every item given, so only releases go in: advisories are
   # already `security` above.
   - id: judge

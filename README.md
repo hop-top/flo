@@ -100,14 +100,40 @@ flo run cancel <run> --yes
   with `engine_feature`: no backend stands in for another.
 - Judge engine: `ai.judge.engine` (env `FLO_AI_JUDGE_ENGINE`; `local`, `jev`
   or `auto`, default `auto`) picks what answers the `judge` classifier; a
-  classify step's `engine:` overrides it. `local` is the step's model. `jev`
-  is TypeSafe's Jev through OpenRouter: cloud, key from the secret
-  `openrouter_api_key` of the flow's profile (sent to Jev's endpoint only),
-  refused under `local-only`. `auto` is `local` when the step's `ollama://`
-  model is local and the daemon lists it (`GET /api/tags`), else `jev` (never
-  under `local-only`: `privacy_violation`). The step output's `engine` says which
-  judged. A flow whose recording holds local model calls only pins
-  `engine: local`.
+  classify step's `engine:` overrides it. `local` is the step's non-Jev
+  models. `jev` is TypeSafe's Jev through OpenRouter: cloud, key from the
+  secret `openrouter_api_key` of the flow's profile (sent to Jev's endpoint
+  only), refused under `local-only`. `auto` runs the step's models as listed;
+  a single `ollama://` model that is local and listed by the daemon
+  (`GET /api/tags`) answers, else `jev` (never under `local-only`:
+  `privacy_violation`). An explicit cloud model runs as named, never swapped
+  for Jev. The step output's `engine` and `model` say which judged. A flow
+  whose recording holds local model calls only pins `engine: local`.
+- Model lists: a step's `model:` is a string or an ordered list, for
+  `flo/ai.classify@1` and `flo/ai.generate@1`:
+  `model: [ollama://qwen3:4b-instruct-2507-q4_K_M, jev]`. The first usable
+  model answers: on the allow-list, allowed by the step's privacy ceiling, and
+  available (a local model the daemon lists; a cloud model or `jev` with its
+  key stored). Only unavailability falls through; a call that fails on the
+  chosen model is reported, not retried on the next. `jev` is the default Jev
+  model (`jev://typesafe/jev-1.14`) and is classify only; `engine:` filters the
+  list. When none is usable the error lists each model and why.
+- Model allow-list: `ai.models.allow` (env `FLO_AI_MODELS_ALLOW`,
+  comma-separated) lists the models flows may run, cloud or local, on every
+  engine; anything else is refused with `privacy_violation` before any request
+  or secret read. Entries are exact model URIs, or a prefix with a trailing `*`
+  (`ollama://qwen3*`; `*` allows all; a prefix does not reach past a `?` query).
+  Unset allows nothing: set it before using `judge` or `llm`.
+
+  ```yaml
+  ai:
+    classifier: judge
+    models:
+      allow:
+        - ollama://qwen3*
+        - ollama://gemma4:e4b
+        - jev
+  ```
 - Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
   `flo/ai.generate@1`: `template` (renders the prompt's template over the
   context: no model, no cost) or `llm` (calls the step's model through kit's
@@ -119,7 +145,8 @@ flo run cancel <run> --yes
   profile (`anthropic_api_key`); it is sent only to the scheme's default
   endpoint, never to a host or `base_url` the model URI names. This build
   links the `ollama` scheme only. Unset configures none and a step using the
-  node fails with `engine_feature`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
+  node fails with `engine_feature`. The `llm` backend runs only models on
+  `ai.models.allow`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
   bundle, else in an installed pack: YAML with `system:` and `template:` (Go
   text/template; funcs `join`, `trunc`, `default`; a missing key is an
   error). The ceiling of the step (`privacy`) refuses a cloud model with
@@ -136,7 +163,8 @@ flo run cancel <run> --yes
   wrappers (`wrappers/gh-deps`, `gh-advisories`, `gh-releases`, `gh-lib.sh`) need
   `gh` and `jq` and must be on the `PATH` of the profile the flow runs as.
   The flow labels new releases with the `judge` classifier on the local model
-  `ollama://qwen3:4b-instruct-2507-q4_K_M` (set `FLO_AI_CLASSIFIER=judge`;
+  `ollama://qwen3:4b-instruct-2507-q4_K_M` (set `FLO_AI_CLASSIFIER=judge` and
+  `FLO_AI_MODELS_ALLOW=ollama://qwen3*`;
   Gemma 4 E4B is the target once ollama serves structured output for it).
   `flows/dependency-watch/record/` holds a recording, model calls included:
   `flo flow test dependency-watch` replays it offline. Re-record with
@@ -172,7 +200,7 @@ flo run cancel <run> --yes
   still produced; the three retry once at most, so a brief waits seconds, not
   minutes. The facts handed to the model are cut to the var `context_chars`
   (default 6000; `--var context_chars=N`). The `template` backend renders the prompt
-  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it on
+  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it (on a model of `ai.models.allow`) on
   the model. To run
   it: set `packs.ctxt.url` and `packs.calendar.url` (config file,
   `FLO_PACKS_*` or `-c`), the secret `ctxt_token` when ctxt needs one, grant

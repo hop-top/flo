@@ -12,9 +12,13 @@ import (
 // ClassifyRequest is what flo/ai.classify@1 asks a backend (node.md §6.3).
 // Items is never empty: the node answers an empty list itself.
 type ClassifyRequest struct {
-	Items        []any
-	Labels       []string
+	Items  []any
+	Labels []string
+	// Model is the step's model when it gave a string, Models its models when
+	// it gave a list, in order; at most one is set. The judge backend tries
+	// them in order; others ignore both.
 	Model        string
+	Models       []string
 	Instructions string
 	Pattern      string
 	Strategy     string
@@ -45,8 +49,10 @@ type Label struct {
 	// Extra holds the fields the request's Schema asked for.
 	Extra map[string]any
 	// Engine names what judged, when the backend has engines (the judge
-	// backend: local or jev); empty otherwise.
+	// backend: local or jev); empty otherwise. Model is the model that
+	// answered, as a URI without secrets; empty when the backend has none.
 	Engine string
+	Model  string
 }
 
 // Labels are the answers to a request, one per item, in order.
@@ -95,11 +101,20 @@ func classify(ctx context.Context, c Classifier, inv core.Invocation) (core.Resu
 		return pureFail(core.New(core.CodeEngineFeature, "flo/ai.classify@1 has no backend configured").
 			WithSuggestion("set ai.classifier (env " + EnvClassifier + ") to a backend: rules, judge")), nil
 	}
+	models, listed, merr := modelsOf(inv.In["model"])
+	if merr != nil {
+		return pureFail(merr), nil
+	}
 	req := ClassifyRequest{
-		Items: items, Labels: labels, Model: asString(inv.In["model"]),
+		Items: items, Labels: labels,
 		Instructions: asString(inv.In["instructions"]), Pattern: asString(inv.In["pattern"]),
 		Strategy: asString(inv.In["strategy"]), LocalOnly: inv.Privacy != specrun.PrivacyCloudAllowed,
 		Tenant: inv.Tenant, Profile: inv.RunAs, Engine: asString(inv.In["engine"]), RunID: string(inv.Run.ID),
+	}
+	if listed {
+		req.Models = models
+	} else if len(models) > 0 {
+		req.Model = models[0]
 	}
 	req.Schema, _ = inv.In["schema"].(map[string]any)
 	req.Abstain, _ = inv.In["abstain"].(bool)
@@ -136,9 +151,12 @@ func classify(ctx context.Context, c Classifier, inv core.Invocation) (core.Resu
 		out[i] = row
 	}
 	output := map[string]any{"items": out}
-	// The run shows which engine judged.
+	// The run shows which engine judged, and with which model.
 	if got[0].Engine != "" {
 		output["engine"] = got[0].Engine
+	}
+	if got[0].Model != "" {
+		output["model"] = got[0].Model
 	}
 	res := pureOK(output)
 	res.Cost = cost

@@ -141,7 +141,7 @@ func perMillion(in, out float64) builtin.PriceFunc {
 
 func llmGen(t *testing.T, h *fakeHTTP, s core.Secrets, price builtin.PriceFunc) builtin.Generator {
 	t.Helper()
-	g, err := builtin.NewLLMGenerator(builtin.LLMDeps{HTTP: h, Secrets: s, LocalHosts: listedHosts, Price: price})
+	g, err := builtin.NewLLMGenerator(builtin.LLMDeps{HTTP: h, Secrets: s, LocalHosts: listedHosts, Price: price, Allow: allowAny})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,12 +437,14 @@ func TestLLMCancelledContextIsNotClassified(t *testing.T) {
 }
 
 func TestLLMBadModelURI(t *testing.T) {
-	g := llmGen(t, &fakeHTTP{reply: ollamaReply("x", 1, 1)}, nil, nil)
+	// The key is there: the scheme is what is wrong.
+	keys := &storeSecrets{t: t, vals: map[string]string{"nosuchscheme_api_key": "k"}}
+	g := llmGen(t, &fakeHTTP{reply: ollamaReply("x", 1, 1)}, keys, nil)
 	_, _, err := g.Generate(context.Background(), builtin.GenerateRequest{Prompt: loadPrompt(t, "template: hi\n"), Model: "gemma"})
 	if !core.IsCode(err, core.CodeInputInvalid) {
 		t.Fatalf("%v", err)
 	}
-	_, _, err = g.Generate(context.Background(), builtin.GenerateRequest{Prompt: loadPrompt(t, "template: hi\n"), Model: "nosuchscheme://m"})
+	_, _, err = g.Generate(context.Background(), builtin.GenerateRequest{Prompt: loadPrompt(t, "template: hi\n"), Model: "nosuchscheme://m", Tenant: "default", Profile: "prof"})
 	if !core.IsCode(err, core.CodeInputInvalid) {
 		t.Fatalf("%v", err)
 	}

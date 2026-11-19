@@ -87,6 +87,10 @@ type Config struct {
 	JudgeEngine string
 	// Jev builds the Jev judge of the judge classifier; nil is a build without it.
 	Jev builtin.JevFactory
+	// ModelsAllow is the model allow-list (`ai.models.allow`): the model URIs
+	// the model-backed backends may run, each exact or with a trailing `*`.
+	// Empty allows none.
+	ModelsAllow []string
 	// Generator names the flo/ai.generate@1 backend (`ai.generator`):
 	// "template" is the deterministic one, "llm" calls the step's model
 	// through kit's client. Empty configures none, and a step using the node

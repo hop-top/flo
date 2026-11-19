@@ -35,7 +35,7 @@ func watcherEnv(t *testing.T) *env { return watcherEnvWith(t, "rules") }
 func watcherEnvWith(t *testing.T, classifier string) *env {
 	t.Helper()
 	needJQ(t)
-	e := newEnv(t, "FLO_AI_CLASSIFIER="+classifier)
+	e := newEnv(t, "FLO_AI_CLASSIFIER="+classifier, "FLO_AI_MODELS_ALLOW=ollama://qwen3*")
 	pack := filepath.Join(repoRoot, "packs", "github")
 	if err := os.MkdirAll(filepath.Join(e.root(), "packs"), 0o750); err != nil {
 		t.Fatal(err)

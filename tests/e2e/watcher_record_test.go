@@ -41,7 +41,7 @@ func TestDependencyWatchCommittedRecording(t *testing.T) {
 		}
 	}
 
-	e := newEnv(t, "FLO_AI_CLASSIFIER=judge") // no shims, no model: a call that is not answered from the recording fails
+	e := newEnv(t, "FLO_AI_CLASSIFIER=judge", "FLO_AI_MODELS_ALLOW=ollama://qwen3*") // no shims, no model: a call that is not answered from the recording fails
 	e.installRepoPack("github")
 	e.ok("grant", "set", "automation", "vcs.read", "--yes")
 	bundle := filepath.Join(t.TempDir(), depWatch)

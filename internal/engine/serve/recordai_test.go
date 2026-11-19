@@ -37,7 +37,7 @@ func (m *model) Do(req *http.Request) (*http.Response, error) {
 func TestARecordedRunKeepsTheModelCallsOfItsBuiltins(t *testing.T) {
 	root := t.TempDir()
 	live := &model{}
-	e, err := serve.Open(bg, serve.Config{Root: root, Owner: "jad", NoSync: true, HTTP: live, Generator: "llm"})
+	e, err := serve.Open(bg, serve.Config{Root: root, Owner: "jad", NoSync: true, HTTP: live, Generator: "llm", ModelsAllow: []string{"*"}})
 	if err != nil {
 		t.Fatal(err)
 	}

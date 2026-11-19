@@ -105,7 +105,7 @@ func (f *fakeHTTP) count(sub string) int {
 func engineCls(t *testing.T, h *fakeHTTP, s core.Secrets, engine string) builtin.Classifier {
 	t.Helper()
 	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{
-		HTTP: h, Secrets: s, LocalHosts: listedHosts, JudgeEngine: engine, Jev: fakeJev,
+		HTTP: h, Secrets: s, LocalHosts: listedHosts, JudgeEngine: engine, Jev: fakeJev, Allow: allowAny,
 	})
 	if err != nil || c == nil {
 		t.Fatalf("judge backend: %v %v", c, err)
@@ -267,7 +267,7 @@ func TestEngineAutoUnreachableDaemon(t *testing.T) {
 			Body: nopBody(jevAnswer("noise", 0.7, 0.0001)),
 		}, nil
 	})
-	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{HTTP: d, Secrets: withT(t, jevKeys()), LocalHosts: listedHosts, Jev: fakeJev})
+	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{HTTP: d, Secrets: withT(t, jevKeys()), LocalHosts: listedHosts, Jev: fakeJev, Allow: allowAny})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,6 @@ func TestEngineAutoLocalOnlyNeverPicksJev(t *testing.T) {
 	}{
 		{"ollama down", false, nil, "ollama://gemma4:e4b"},
 		{"model not pulled", true, []string{"other:1b"}, "ollama://gemma4:e4b"},
-		{"model is cloud", true, []string{"gemma4:e4b"}, "fakecloud://big"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, h := newWorld(c.up, c.models...)
@@ -309,6 +308,20 @@ func TestEngineAutoLocalOnlyNeverPicksJev(t *testing.T) {
 	}
 }
 
+// An explicit cloud model under a local-only ceiling is refused as named:
+// Jev does not stand in for it.
+func TestEngineAutoCloudModelUnderLocalOnlyIsRefusedNotSwapped(t *testing.T) {
+	_, h := newWorld(true, "gemma4:e4b")
+	s := withT(t, jevKeys())
+	res := classifyAs(t, engineCls(t, h, s, ""), specrun.PrivacyLocalOnly, engineIn("fakecloud://big", ""))
+	if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodePrivacyViolation {
+		t.Fatalf("%+v", res)
+	}
+	if h.calls() != 0 || len(s.got) != 0 {
+		t.Errorf("calls %v secrets %v", h.urls(), s.got)
+	}
+}
+
 func TestEngineAutoNoLocalNoKeyNamesBothOptions(t *testing.T) {
 	_, h := newWorld(false)
 	res := classifyAs(t, engineCls(t, h, withT(t, &storeSecrets{}), ""), specrun.PrivacyCloudAllowed, engineIn("ollama://gemma4:e4b", ""))
@@ -326,28 +339,31 @@ func TestEngineAutoNoLocalNoKeyNamesBothOptions(t *testing.T) {
 	}
 }
 
-// A model that is not local is not probed: nothing is sent to a host a flow
-// file names, and Jev's key stays with Jev's own endpoint.
+// A model that is not local is not probed: nothing is asked of a host a flow
+// file names beyond the call the flow names, and Jev's key stays with Jev's
+// own endpoint. Auto does not swap it for Jev.
 func TestEngineAutoNeverProbesANonLocalHost(t *testing.T) {
 	_, h := newWorld(true)
 	s := withT(t, jevKeys())
 	for _, model := range []string{
 		"ollama://evil.example.com:11434/m",
 		"ollama://localhost:11434/m?base_url=https://evil.example.com",
-		"fakecloud://big",
 	} {
 		res := classifyAs(t, engineCls(t, h, s, ""), specrun.PrivacyCloudAllowed, engineIn(model, ""))
-		if res.Outcome != core.OutcomeOK || res.Output.(map[string]any)["engine"] != "jev" {
+		if res.Outcome != core.OutcomeOK || res.Output.(map[string]any)["engine"] != "local" {
 			t.Fatalf("%s: %+v", model, res)
 		}
 	}
 	for _, r := range h.reqs {
-		if r.URL.String() != jevURL {
+		if r.URL.Path == "/api/tags" || r.URL.String() == jevURL {
 			t.Errorf("request to %s", r.URL)
 		}
-		if r.Header.Get("Authorization") != "Bearer or-s3cret" {
-			t.Errorf("jev call authorization %q", r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("%s: authorization %q", r.URL, r.Header.Get("Authorization"))
 		}
+	}
+	if len(s.got) != 0 {
+		t.Errorf("secrets read: %v", s.got)
 	}
 }
 
@@ -412,7 +428,7 @@ func TestEngineConfigAndStepOverride(t *testing.T) {
 func TestEngineUnknownValueIsInputInvalid(t *testing.T) {
 	_, h := newWorld(true, "m")
 	// In the engine's configuration.
-	_, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{HTTP: h, JudgeEngine: "remote"})
+	_, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{HTTP: h, JudgeEngine: "remote", Allow: allowAny})
 	if !core.IsCode(err, core.CodeUsage) {
 		t.Errorf("config: %v", err)
 	}
@@ -509,7 +525,7 @@ func nopBody(s string) io.ReadCloser { return io.NopCloser(strings.NewReader(s))
 
 // fakeJev stands in for kit's Jev judge: it posts the case to Jev's endpoint
 // with the key and reads the System One reply for the question "label".
-func fakeJev(key string, rt http.RoundTripper) (judge.Judge, error) {
+func fakeJev(key, _ string, rt http.RoundTripper) (judge.Judge, error) {
 	return fakeJevJudge{key, rt}, nil
 }
 
@@ -564,7 +580,7 @@ func TestKitJevWire(t *testing.T) {
 			`"probabilities":{"security":0.1,"breaking":0.7,"routine":0.1,"noise":0.1}}},"usage":{"input_tokens":120,"output_tokens":12,"cost":0.000042}}`
 	}
 	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{
-		HTTP: h, Secrets: withT(t, jevKeys()), LocalHosts: listedHosts, JudgeEngine: builtin.EngineJev, Jev: builtin.KitJev,
+		HTTP: h, Secrets: withT(t, jevKeys()), LocalHosts: listedHosts, JudgeEngine: builtin.EngineJev, Jev: builtin.KitJev, Allow: allowAny,
 	})
 	if err != nil {
 		t.Fatal(err)

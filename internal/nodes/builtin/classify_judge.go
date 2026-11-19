@@ -33,9 +33,7 @@ const (
 // over the engine's HTTP seam, local-only under a local-only ceiling.
 type JudgeClassifier struct {
 	m      *modelClients
-	local  *node.LocalHosts
 	engine string
-	probes probeCache
 }
 
 // NewJudgeClassifier checks d and returns the backend.
@@ -44,10 +42,6 @@ func NewJudgeClassifier(d LLMDeps) (*JudgeClassifier, error) {
 	if err != nil {
 		return nil, err
 	}
-	local, err := node.NewLocalHosts(d.LocalHosts)
-	if err != nil {
-		return nil, core.Wrap(core.CodeUsage, err)
-	}
 	engine := d.JudgeEngine
 	if engine == "" {
 		engine = EngineAuto
@@ -55,7 +49,7 @@ func NewJudgeClassifier(d LLMDeps) (*JudgeClassifier, error) {
 	if !validEngine(engine) {
 		return nil, core.Errorf(core.CodeUsage, "ai.judge.engine=%s: unknown engine (%s)", engine, strings.Join(engines, ", "))
 	}
-	return &JudgeClassifier{m: m, local: local, engine: engine}, nil
+	return &JudgeClassifier{m: m, engine: engine}, nil
 }
 
 // Classify implements Classifier. Every item is judged, as given: the model
@@ -79,13 +73,70 @@ func (j *JudgeClassifier) Classify(ctx context.Context, req ClassifyRequest) (La
 	if err != nil {
 		return nil, core.Cost{}, err
 	}
+	models, implicit, err := j.candidates(req, engine)
+	if err != nil {
+		return nil, core.Cost{}, err
+	}
+	p, err := j.m.pick(ctx, pickIn{
+		models: models, implicitJev: implicit, jevOK: true, localOnly: req.LocalOnly,
+		run: req.RunID, tenant: req.Tenant, profile: req.Profile,
+	})
+	if err != nil {
+		return nil, core.Cost{}, err
+	}
+	if p.ref.jev {
+		return j.classifyJev(ctx, req, p)
+	}
+	req.Model = p.ref.model
+	return j.classifyLocal(ctx, req, mode)
+}
+
+// candidates are the models the step tries, in order, and whether Jev follows
+// them. The list implies the engine of each entry: a Jev entry is judged by
+// Jev, any other by llmjudge. The engine filters it: local keeps the others,
+// jev keeps the Jev entries (none: the default Jev model, whatever else the
+// step names), auto keeps all. A single model (not a list) under auto that is
+// local, or none, is followed by Jev: auto decides between the two only then;
+// an explicit cloud model runs as named.
+func (j *JudgeClassifier) candidates(req ClassifyRequest, engine string) (models []string, implicitJev bool, err error) {
+	listed := req.Models != nil
+	given := req.Models
+	if !listed && strings.TrimSpace(req.Model) != "" {
+		given = []string{req.Model}
+	}
+	isJev := func(m string) bool { return strings.HasPrefix(canonModel(m), jevPrefix) }
 	switch engine {
 	case EngineLocal:
-		return j.classifyLocal(ctx, req, mode)
+		for _, m := range given {
+			if !isJev(m) {
+				models = append(models, m)
+			}
+		}
+		switch {
+		case len(given) == 0:
+			return nil, false, core.New(core.CodeInputInvalid, "engine local needs a model").
+				WithSuggestion("write model: ollama://<model>, or use engine jev")
+		case len(models) == 0:
+			return nil, false, core.New(core.CodeInputInvalid, "engine local, but model names only jev").
+				WithSuggestion("name a local model, or use engine jev or auto")
+		}
+		return models, false, nil
 	case EngineJev:
-		return j.classifyJev(ctx, req, "")
+		for _, m := range given {
+			if isJev(m) {
+				models = append(models, m)
+			}
+		}
+		return models, len(models) == 0, nil
 	}
-	return j.classifyAuto(ctx, req, mode)
+	if listed || len(given) > 0 && isJev(given[0]) {
+		return given, false, nil
+	}
+	if len(given) == 0 {
+		return nil, true, nil
+	}
+	level, perr := node.ModelPrivacy(canonModel(given[0]), j.m.local)
+	return given, perr == nil && level == node.PrivacyLocal, nil
 }
 
 // classifyLocal judges over the step's model through llmjudge.
@@ -106,7 +157,7 @@ func (j *JudgeClassifier) classifyLocal(ctx context.Context, req ClassifyRequest
 	// The ceiling comes before any client: a refused call reads no secret
 	// and sends nothing. The node's ModelPrivacy and kit's local-only
 	// resolution decide the same set of models.
-	level, perr := node.ModelPrivacy(req.Model, j.local)
+	level, perr := node.ModelPrivacy(req.Model, j.m.local)
 	if errors.Is(perr, node.ErrNotRunnable) {
 		return nil, core.Cost{}, core.Errorf(core.CodePrivacyViolation, "model %q: %v", llm.RedactURI(req.Model), perr).
 			WithSuggestion("write ollama://<model> for the local daemon or scheme://host:port/<model>")
@@ -140,7 +191,7 @@ func (j *JudgeClassifier) classifyLocal(ctx context.Context, req ClassifyRequest
 	var cost core.Cost
 	for i, v := range verdicts {
 		a := v.Answers[judgeQuestion]
-		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineLocal}
+		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineLocal, Model: llm.RedactURI(req.Model)}
 		if !a.Abstained {
 			value := a.Value
 			out[i].Label = &value
