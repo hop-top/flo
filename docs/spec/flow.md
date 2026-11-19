@@ -741,6 +741,19 @@ instruction and the flow's **base**, the version `flo flow show` would show
   Without `--write` no file is touched. A flow applied from a single file
   has no bundle to write to (`usage`).
 
+- **A new flow (`--new <name>`).** A draft of a flow that does not exist
+  yet. The name must be free (`duplicate` otherwise, and `draft_stale` when
+  it is taken between the draft and the apply) and match the flow-name
+  grammar; the model must set `flow:` to it and give a `version`. There is
+  no base, no recording and so no dry run: the report says so, and the
+  apply gate has nothing to block on. There is no flow to read a privacy
+  ceiling from, so the model call is `local-only` (a local model only)
+  unless the person gives `--privacy cloud-allowed`; the ceiling is stored
+  on the draft, and the document's own `privacy` is validated as for any
+  flow. Applying stores the first version. With `--write` a new bundle
+  `<dir>/<name>/flow.yaml` is written (`--dir`, default `flows`, the
+  directory flows are kept in); an existing `<dir>/<name>` is refused
+  (`duplicate`) and nothing is stored.
 Drafts are run data of the tenant: `<tenant dir>/drafts/<id>.json`, readable
 by the owner only.
 

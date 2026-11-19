@@ -21,6 +21,7 @@ flo flow test dependency-watch                 # replay: offline, writes only pl
 flo flow set dependency-watch --state active --yes   # needs a passing test of this version
 flo flow draft create dependency-watch "also watch cli/cli releases"   # a model proposes the next version
 flo flow draft show <draft>                    # proposal, attempts, dry run on the last recording
+flo flow draft create --from <draft> "also run at 6"   # refine a draft; --new <name> drafts a new flow
 flo flow draft apply <draft> --yes [--write]   # next version, unless the flow moved (draft_stale) or the dry run fails (--force)
 flo trigger list                               # next fire of each trigger
 flo engine serve &                             # SIGTERM drains running steps
@@ -74,7 +75,10 @@ flo run cancel <run> --yes
   reports, and no recording means nothing to compare, so it applies.
   `apply --write` also rewrites the bundle's `flow.yaml` (atomically, same
   mode), refused with `draft_stale` when the file changed since the draft.
-  Drafts live in `<tenant dir>/drafts/<id>.json`. The recorded
+  `create --new <name> <instruction>` drafts a flow that does not exist yet
+  (free name; no recording, so no dry run; the model call is local-only unless
+  `--privacy cloud-allowed`; `apply --write` makes `<dir>/<name>/flow.yaml`,
+  `--dir` default `flows`, refused if it exists). Drafts live in `<tenant dir>/drafts/<id>.json`. The recorded
   test of a build on a local model (`internal/engine/serve`,
   `TestDraftOnALocalModelTape`) is re-recorded with `FLO_BUILDER_RECORD=1` on a
   host that runs ollama.

@@ -233,3 +233,31 @@ func TestDraftApplyWriteRefusesAChangedFile(t *testing.T) {
 		t.Fatal("a refused write stored a version")
 	}
 }
+
+const newDoc = "flow: greeter\nversion: 0.1.0\nprivacy: local-only\nsteps:\n  - id: say\n    uses: flo/output@1\n    with:\n      kind: findings\n      title: hello\n      items: []\n"
+
+func TestDraftCreateNewApplyWrite(t *testing.T) {
+	d := newDraftRig(t)
+	d.model.replies = []string{fence(newDoc)}
+	out, _, err := d.run("flow", "draft", "create", "--new", "greeter", "say", "hello", "--format", "json")
+	if err != nil {
+		t.Fatalf("create --new: %v", err)
+	}
+	var got struct {
+		ID  string
+		New bool
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil || got.ID == "" {
+		t.Fatalf("output: %v\n%s", err, out)
+	}
+	_, _, err = d.run("flow", "draft", "create", "--new", "dependency-watch", "x")
+	wantCode(t, err, core.CodeDuplicate)
+	dir := t.TempDir()
+	if _, _, err := d.run("flow", "draft", "apply", got.ID, "--yes", "--write", "--dir", dir); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "greeter", "flow.yaml")) //nolint:gosec // a temp dir
+	if err != nil || !strings.Contains(string(b), "flow: greeter") {
+		t.Fatalf("file: %v\n%s", err, b)
+	}
+}
