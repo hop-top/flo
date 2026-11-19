@@ -211,14 +211,57 @@ flo run cancel <run> --yes
   labels differently fails the replay until the pin is updated with it.
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
-  wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`; they
-  need `jq`) as the flow's profile, so both go on that profile's `PATH`,
-  with the script's credentials, `INBOX_HOME` and `INBOX_RUNS`. The trust
-  provider runs on the engine's own `PATH` and environment, which must name
-  the same directories. `inbox/lanes@1` acts on mail outside the plan and is
-  not used by the flow. Re-record the flow's `record/` with
-  `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` after a
-  change to the flow, its tests or its nodes.
+  wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`,
+  `inbox-rows`, `inbox-decisions`; they need `jq`) as the flow's profile, so
+  both go on that profile's `PATH`, with the script's credentials,
+  `INBOX_HOME` and `INBOX_RUNS`. The trust provider runs on the engine's own
+  `PATH` and environment, which must name the same directories.
+  `inbox/lanes@1` acts on mail outside the plan and is not used by the flow;
+  `inbox/decide@1` is the script's own hosted decider, which the flow no longer
+  uses. Re-record the flow's `record/` with
+  `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` on a host
+  whose ollama has `qwen3:4b-instruct-2507-q4_K_M`, after a change to the flow,
+  its tests or its nodes.
+- `flows/inbox-triage` is the mail triage, every 15 minutes: `inbox/fetch@1`,
+  then the judgment, then the script's plan, an approval with the script's
+  trust, and `inbox/apply@1`. The judgment is two `flo/ai.classify@1` steps
+  over the headers of each undecided message (`inbox/rows@1`: sender, subject,
+  date, flags, folder, sender history; never a body): `label` files it under
+  one of the labels (var `labels`, the script's SOP labels; it may abstain),
+  `weigh` says how much it matters (irrelevant to critical).
+  `inbox/decisions@1` turns both into the script's decisions file by the
+  script's own policy: a label under 0.9 confidence is Needs Review, an
+  abstention stays in the inbox for a person, a message that matters little is
+  also read and archived, mail from what looks like a person is never filed
+  away, nothing is ever trashed, replied to or unsubscribed. Setup: set
+  `FLO_AI_CLASSIFIER=judge` and `FLO_AI_MODELS_ALLOW=ollama://qwen3*`; the
+  engine (`ai.judge.engine`, default `auto`) is configuration. **Privacy:** the
+  flow and both steps are `local-only`; the model list is
+  `[ollama://qwen3:4b-instruct-2507-q4_K_M, jev]`, and under that ceiling the
+  engine skips Jev. With no local model detected the step fails
+  (`privacy_violation`); mail is never sent to Jev unless the owner opts in:
+  set `privacy: cloud-allowed` on the flow and on `label` and `weigh`, put the
+  secret `openrouter_api_key` on the profile, and allow `jev` in
+  `ai.models.allow`. Each approval item names the operation (`capability`
+  `mail.write`, or `mail.send` for a reply, and its `args`), so the engine
+  keeps a proposal under a request digest; trust is the script's, read and
+  recorded through the `inbox` provider, never written by flo. Left for the
+  script: `fetch`, `plan`, `apply` (the executor, with its ledger), the trust
+  counters, sender lanes, contacts, mutes and the check that a label exists in
+  an account (a missing one is an invalid plan item). Tests replay the
+  committed recording offline (synthetic mail, answers of the local model);
+  the live scenarios run against a fake model.
+- Choosing a judge for mail: `go run ./cmd/judge-eval` compares judges on a
+  recorded day over kit's `judge/eval`. `import --step label|weigh --out SET
+  RUN_DIR...` turns run folders of the script into a case set whose references
+  are the verdicts its hosted decider (Jev) recorded: no model is called, and
+  the set must be written outside any git work tree (it is real mail; the tool
+  refuses otherwise). `run --cases SET --model ollama://[host:port/]<model>`
+  replays it through a local candidate and prints the report and a gate
+  (`--min-agreement`, `--min-coverage`, `--at-confidence`, `--min-n`,
+  `--max-ece`; exit 3 on FAIL). `--jev --allow-cloud` makes Jev the candidate
+  (key in `OPENROUTER_API_KEY`) and sends the set to it. `record` writes a
+  candidate's answers as the references, to replay another judge against them.
 - `packs/ctxt`, `packs/heo` and `packs/tlc` hold the read nodes of the meeting
   brief. `ctxt/find@1` posts to `{config.ctxt.url}/api/v1/find`: the server
   `ctxt find` uses (`server.url` or the first `server.urls` entry of the ctxt

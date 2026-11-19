@@ -36,6 +36,8 @@ inputs:
   labels: { type: array, required: true }
   model: { type: [string, array], items: { type: string } }
   instructions: { type: string }
+  abstain: { type: boolean }
+  engine: { type: string, enum: [local, jev, auto] }
 outputs: { schema: { type: object } }
 capabilities: []
 side_effect: none
@@ -153,11 +155,50 @@ func opts(t *testing.T) Options {
 	return Options{Nodes: testLocator(t, nil), AllowAgent: true, AllowSubFlow: true}
 }
 
+// The nodes of inbox-triage's judgment (packs/inbox/nodes/rows.yaml and
+// decisions.yaml, reduced to what the flow check reads).
+var inboxJudgeNodes = map[string]string{
+	"inbox_rows_1.yaml": `node: inbox/rows@1
+kind: command
+lowers_to: engine
+argv: [inbox-rows, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
+inputs: { run_dir: { type: string, required: true } }
+outputs: { from: "file:out.json", format: json, schema: { type: object } }
+side_effect: read
+privacy: local
+capabilities: [mail.read]
+timeout: 60s
+`,
+	"inbox_decisions_1.yaml": `node: inbox/decisions@1
+kind: command
+lowers_to: engine
+argv: [inbox-decisions, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
+stdin: { json: "{{ in.labels }}" }
+inputs:
+  run_dir: { type: string, required: true }
+  labels: { type: array, required: true }
+  weights: { type: array, required: true }
+  sop_labels: { type: array, required: true }
+  engine: { type: [string, 'null'], default: null }
+  model: { type: [string, 'null'], default: null }
+outputs: { from: "file:out.json", format: json, schema: { type: object } }
+side_effect: write-local
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 60s
+`,
+}
+
 // The three worked flows agree with their node specs.
 func TestExampleFlowsClean(t *testing.T) {
 	for _, name := range []string{"dependency-watch", "meeting-brief", "inbox-triage"} {
 		t.Run(name, func(t *testing.T) {
-			if r := Check(exampleFlow(t, name), opts(t)); len(r) > 0 {
+			o := opts(t)
+			if name == "inbox-triage" {
+				o.Nodes = testLocator(t, inboxJudgeNodes)
+			}
+			if r := Check(exampleFlow(t, name), o); len(r) > 0 {
 				t.Errorf("%v", r)
 			}
 		})
