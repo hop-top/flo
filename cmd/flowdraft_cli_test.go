@@ -20,7 +20,7 @@ import (
 	"hop.top/flo/internal/engine/serve"
 )
 
-// scriptedOllama is the engine's HTTP seam: it lists gemma4:e4b and answers
+// scriptedOllama is the engine's HTTP seam: it lists qwen3:4b-instruct-2507-q4_K_M and answers
 // /api/chat with the next scripted reply.
 type scriptedOllama struct {
 	mu      sync.Mutex
@@ -34,7 +34,7 @@ func (m *scriptedOllama) Do(req *http.Request) (*http.Response, error) {
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", "application/json")
 	if req.URL.Path == "/api/tags" {
-		_, _ = io.WriteString(rec, `{"models":[{"name":"gemma4:e4b","model":"gemma4:e4b"}]}`)
+		_, _ = io.WriteString(rec, `{"models":[{"name":"qwen3:4b-instruct-2507-q4_K_M","model":"qwen3:4b-instruct-2507-q4_K_M"}]}`)
 	} else {
 		m.chats++
 		text := "nothing scripted"
@@ -204,4 +204,32 @@ func TestDraftDiscardAsksAndDeletes(t *testing.T) {
 	wantCode(t, err, core.CodeDraftNotFound)
 	_, _, err = d.run("flow", "draft", "show", "nonsense")
 	wantCode(t, err, core.CodeUsage)
+}
+
+func TestDraftApplyWriteRewritesTheBundleFile(t *testing.T) {
+	d := newDraftRig(t)
+	id := d.create(t, "0.1.1")
+	file := filepath.Join(d.bundle, "flow.yaml")
+	out, _, err := d.run("flow", "draft", "apply", id, "--yes", "--write", "--format", "json")
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	got, _ := os.ReadFile(file) //nolint:gosec // a temp copy
+	if !strings.Contains(string(got), "version: 0.1.1") || !strings.Contains(out, file) {
+		t.Fatalf("file:\n%s\nout: %s", got, out)
+	}
+}
+
+func TestDraftApplyWriteRefusesAChangedFile(t *testing.T) {
+	d := newDraftRig(t)
+	id := d.create(t, "0.1.1")
+	file := filepath.Join(d.bundle, "flow.yaml")
+	if err := os.WriteFile(file, []byte(d.base+"# mine\n"), 0o600); err != nil { //nolint:gosec // a temp copy
+		t.Fatal(err)
+	}
+	_, _, err := d.run("flow", "draft", "apply", id, "--yes", "--write")
+	wantCode(t, err, core.CodeDraftStale)
+	if d.stored() != 1 {
+		t.Fatal("a refused write stored a version")
+	}
 }

@@ -57,6 +57,10 @@ type ReplayResult struct {
 	// cassette answered: all of them, or the replay failed.
 	Calls    int `json:"calls" yaml:"calls"`
 	Replayed int `json:"replayed" yaml:"replayed"`
+
+	// blocking is what a dry run of a draft refuses to apply over: see
+	// builder.DryRun.Blocking. Not part of the report of a replay.
+	blocking []string
 }
 
 // ReplayRun runs a recorded run again in a sandbox engine, offline: its flow
@@ -205,13 +209,17 @@ func (e *Engine) replayOn(ctx context.Context, tenant core.TenantID, req ReplayR
 	res := ReplayResult{
 		Schema: ReplaySchemaVersion, Run: string(run.ID), Flow: v.Name, Version: v.Version, Hash: v.Hash,
 		Replay: string(rep.ID), At: e.Config.Clock.Now().UTC(), OriginalStatus: string(run.Status), Status: string(rep.Status),
-		Steps: steps, Problems: []flowtest.Problem{}, Diffs: diffSteps(orig, recs),
+		Steps: steps, Problems: []flowtest.Problem{},
 	}
+	res.Diffs, res.blocking = diffSteps(orig, recs)
 	if run.Status != rep.Status {
-		res.Diffs = append([]string{fmt.Sprintf("the run ended %s, the replay ended %s", run.Status, rep.Status)}, res.Diffs...)
+		msg := fmt.Sprintf("the run ended %s, the replay ended %s", run.Status, rep.Status)
+		res.Diffs = append([]string{msg}, res.Diffs...)
+		res.blocking = append([]string{msg}, res.blocking...)
 	}
 	for _, m := range tape.Misses() {
 		res.Problems = append(res.Problems, flowtest.Problem{Kind: flowtest.ProblemCassette, Message: "no recording for " + m})
+		res.blocking = append(res.blocking, "no recording for "+m)
 	}
 	res.Calls, res.Replayed = tape.Stats()
 	res.Matches = len(res.Diffs) == 0 && len(res.Problems) == 0
@@ -220,8 +228,10 @@ func (e *Engine) replayOn(ctx context.Context, tenant core.TenantID, req ReplayR
 
 // diffSteps lists where the replay's step records differ from the run's: a
 // step on one side only, another status, another output. A step the replay
-// planned instead of running (a write) is not compared.
-func diffSteps(orig, replay []core.StepRun) []string {
+// planned instead of running (a write) is not compared. blocking is the
+// subset a draft is not applied over: a step with another status, and a step
+// that failed in the replay.
+func diffSteps(orig, replay []core.StepRun) (out, blocking []string) {
 	key := func(r core.StepRun) string {
 		if r.Element != nil {
 			return fmt.Sprintf("%s[%d]", r.StepID, r.Element.Index)
@@ -233,7 +243,7 @@ func diffSteps(orig, replay []core.StepRun) []string {
 		byKey[key(r)] = r
 	}
 	seen := map[string]bool{}
-	out := []string{}
+	out = []string{}
 	for _, o := range orig {
 		k := key(o)
 		seen[k] = true
@@ -243,7 +253,13 @@ func diffSteps(orig, replay []core.StepRun) []string {
 			out = append(out, "step "+k+" ran, and the replay did not reach it")
 		case r.Plan != nil:
 		case o.Status != r.Status:
-			out = append(out, fmt.Sprintf("step %s was %s, the replay made it %s", k, o.Status, r.Status))
+			msg := fmt.Sprintf("step %s was %s, the replay made it %s", k, o.Status, r.Status)
+			out, blocking = append(out, msg), append(blocking, msg)
+		case r.Status == core.StepFailed:
+			blocking = append(blocking, fmt.Sprintf("step %s failed, in the run and in the replay", k))
+			if !sameJSON(o.Output, r.Output) {
+				out = append(out, "step "+k+" has another output in the replay")
+			}
 		case !sameJSON(o.Output, r.Output):
 			out = append(out, "step "+k+" has another output in the replay")
 		}
@@ -251,9 +267,12 @@ func diffSteps(orig, replay []core.StepRun) []string {
 	for _, r := range replay {
 		if k := key(r); !seen[k] {
 			out = append(out, "step "+k+" is new in the replay")
+			if r.Plan == nil && r.Status == core.StepFailed {
+				blocking = append(blocking, "step "+k+" is new in the replay and failed")
+			}
 		}
 	}
-	return out
+	return out, blocking
 }
 
 // sameJSON compares two outputs as JSON, with the ids the engine mints

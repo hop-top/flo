@@ -19,7 +19,7 @@ import (
 )
 
 // chatModel is the engine's HTTP seam with a scripted ollama behind it: the
-// daemon lists gemma4:e4b and other, and /api/chat answers the next reply.
+// daemon lists qwen3:4b-instruct-2507-q4_K_M and other, and /api/chat answers the next reply.
 // Nothing reaches a network.
 type chatModel struct {
 	mu      sync.Mutex
@@ -39,7 +39,7 @@ func (m *chatModel) Do(req *http.Request) (*http.Response, error) {
 	rec.Header().Set("Content-Type", "application/json")
 	switch req.URL.Path {
 	case "/api/tags":
-		_, _ = io.WriteString(rec, `{"models":[{"name":"gemma4:e4b","model":"gemma4:e4b"},{"name":"other","model":"other"}]}`)
+		_, _ = io.WriteString(rec, `{"models":[{"name":"qwen3:4b-instruct-2507-q4_K_M","model":"qwen3:4b-instruct-2507-q4_K_M"},{"name":"other","model":"other"}]}`)
 	default:
 		m.bodies = append(m.bodies, string(body))
 		text := "no reply scripted"
@@ -122,7 +122,7 @@ func TestDraftValidOnFirstTry(t *testing.T) {
 	if !strings.Contains(d.Source, "title: dep-watch") || d.Hash == "" || d.Hash == base.Hash || len(d.Attempts) != 1 || d.Cost.Tokens == 0 {
 		t.Fatalf("draft = %+v", d)
 	}
-	if d.Model != "ollama://gemma4:e4b" {
+	if d.Model != "ollama://qwen3:4b-instruct-2507-q4_K_M" {
 		t.Errorf("the default model is local ollama: %q", d.Model)
 	}
 	// the model saw the rules, the instruction and the base document
@@ -383,14 +383,14 @@ func TestDraftDiscard(t *testing.T) {
 
 func TestDraftModelAllowAndDenyLists(t *testing.T) {
 	for name, cfg := range map[string]func(*serve.Config){
-		"deny":  func(c *serve.Config) { c.ModelsDeny = []string{"gemma4:*"} },
+		"deny":  func(c *serve.Config) { c.ModelsDeny = []string{"qwen3:*"} },
 		"allow": func(c *serve.Config) { c.ModelsAllow = []string{"ollama://other"} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newBuilderRig(t, cfg)
 			r.applyBase(t)
 			_, err := r.create(t, "x")
-			if err == nil || !strings.Contains(err.Error(), "gemma4:e4b") {
+			if err == nil || !strings.Contains(err.Error(), "qwen3:4b-instruct-2507-q4_K_M") {
 				t.Fatalf("err = %v, want the model refused", err)
 			}
 			if r.model.calls() != 0 {
@@ -399,7 +399,7 @@ func TestDraftModelAllowAndDenyLists(t *testing.T) {
 		})
 	}
 	// the allowed one works, named per request
-	r := newBuilderRig(t, func(c *serve.Config) { c.ModelsAllow = []string{"ollama://other"}; c.ModelsDeny = []string{"gemma4:*"} })
+	r := newBuilderRig(t, func(c *serve.Config) { c.ModelsAllow = []string{"ollama://other"}; c.ModelsDeny = []string{"qwen3:*"} })
 	r.applyBase(t)
 	r.model.replies = []string{yamlReply(r.next("0.1.1"))}
 	d, err := r.e.CreateDraft(bg, core.DefaultTenant, serve.DraftRequest{Flow: "dependency-watch", Instruction: "x", Model: "ollama://other", Caller: "jad"})

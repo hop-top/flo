@@ -87,6 +87,15 @@ type LoopInput struct {
 	Catalog  string
 	Model    Proposer
 	Validate Validator
+	// New asks for a flow that does not exist yet: Flow is the name it must
+	// carry, Version and Base are empty and any version will do.
+	New bool
+	// Previous is the source of the draft being refined and History the
+	// instructions that led to it, oldest first; both are empty for a first
+	// draft. The new Instruction is on top of them, and Base stays the
+	// original version.
+	Previous string
+	History  []string
 }
 
 // LoopResult is what Run built. On failure it still carries the attempts and
@@ -107,7 +116,11 @@ func Run(ctx context.Context, in LoopInput) (LoopResult, error) {
 	var prev string
 	var errs []Finding
 	for n := 1; n <= 1+MaxFixes; n++ {
-		reply, err := in.Model.Propose(ctx, Request{System: system, User: userPrompt(in, prev, errs)})
+		sys := system
+		if in.New {
+			sys += newFlowRules
+		}
+		reply, err := in.Model.Propose(ctx, Request{System: sys, User: userPrompt(in, prev, errs)})
 		if err != nil {
 			return res, err //nolint:wrapcheck // the model call's classified error
 		}
@@ -143,6 +156,10 @@ func Run(ctx context.Context, in LoopInput) (LoopResult, error) {
 	return res, failure(res.Attempts)
 }
 
+// newFlowRules replace, for a flow that does not exist yet, the rules about
+// keeping the name and changing the version.
+const newFlowRules = "\nThere is no current version: you write a new flow. Instead of keeping `flow:` and changing `version:`, set `flow:` to the name you are given and `version:` to a semver such as 0.1.0.\n"
+
 // identity holds a proposal to being a next version of the same flow.
 func identity(in LoopInput, c Check) []Finding {
 	var out []Finding
@@ -150,7 +167,7 @@ func identity(in LoopInput, c Check) []Finding {
 		out = append(out, Finding{Code: string(core.CodeInvalidFlow), Field: "flow",
 			Message: fmt.Sprintf("flow is %q: keep the name %q", c.Name, in.Flow)})
 	}
-	if c.Version == in.Version {
+	if c.Version == in.Version && !in.New {
 		out = append(out, Finding{Code: string(core.CodeInvalidFlow), Field: "version",
 			Message: fmt.Sprintf("version is still %q: change version so this is a new version", in.Version)})
 	}
@@ -170,9 +187,29 @@ func failure(attempts []Attempt) error {
 
 func userPrompt(in LoopInput, prev string, errs []Finding) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Current flow %q, version %s:\n```yaml\n%s```\n\n", in.Flow, in.Version, ensureNL(string(in.Base)))
+	if in.New {
+		fmt.Fprintf(&b, "New flow to write, named %q.\n\n", in.Flow)
+	} else {
+		fmt.Fprintf(&b, "Current flow %q, version %s:\n```yaml\n%s```\n\n", in.Flow, in.Version, ensureNL(string(in.Base)))
+	}
 	fmt.Fprintf(&b, "Available nodes:\n%s\n\n", ensureNL(in.Catalog))
-	fmt.Fprintf(&b, "Change to make: %s\n", strings.TrimSpace(in.Instruction))
+	if in.Previous != "" {
+		fmt.Fprintf(&b, "Your previous draft of this change:\n```yaml\n%s```\n\n", ensureNL(in.Previous))
+		b.WriteString("Instructions so far, oldest first:\n")
+		for i, h := range in.History {
+			fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(h))
+		}
+		b.WriteString("\n")
+		if in.New {
+			fmt.Fprintf(&b, "Revise that draft: %s\n", strings.TrimSpace(in.Instruction))
+		} else {
+			fmt.Fprintf(&b, "Revise that draft, still as the next version of the current flow above: %s\n", strings.TrimSpace(in.Instruction))
+		}
+	} else if in.New {
+		fmt.Fprintf(&b, "What the flow must do: %s\n", strings.TrimSpace(in.Instruction))
+	} else {
+		fmt.Fprintf(&b, "Change to make: %s\n", strings.TrimSpace(in.Instruction))
+	}
 	if len(errs) > 0 {
 		fmt.Fprintf(&b, "\nYour previous proposal:\n```yaml\n%s```\n\nIt was refused:\n", ensureNL(prev))
 		for _, e := range errs {

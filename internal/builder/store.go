@@ -34,6 +34,11 @@ type DryRun struct {
 	// Matches is true when the replay ended as the run did with no step
 	// differing and no call without a recording.
 	Matches bool `json:"matches" yaml:"matches"`
+	// Blocking are the differences that stop an apply (without --force): a
+	// step that failed or ended with another status, the run's status
+	// changing, and the calls that have no recording. An output that differs
+	// is only in Diffs.
+	Blocking []string `json:"blocking" yaml:"blocking"`
 	// Diffs are where the outcomes differ; Problems the calls that have no
 	// recording.
 	Diffs    []string `json:"diffs" yaml:"diffs"`
@@ -47,6 +52,16 @@ type Draft struct {
 	ID          string `json:"id" yaml:"id"`
 	Flow        string `json:"flow" yaml:"flow"`
 	Instruction string `json:"instruction" yaml:"instruction"`
+	// New is true for a flow that does not exist yet: it has no base, no
+	// head and no dry run, and Ceiling is what its model call ran under.
+	New bool `json:"new,omitempty" yaml:"new,omitempty"`
+	// Parent is the draft this one refines, History the instructions that
+	// led to it (the parent's included), oldest first. The parent is kept.
+	Parent  string   `json:"parent,omitempty" yaml:"parent,omitempty"`
+	History []string `json:"history,omitempty" yaml:"history,omitempty"`
+	// Ceiling is the privacy under which the model was called: the base
+	// flow's own, or for a new flow what the person chose.
+	Ceiling string `json:"ceiling" yaml:"ceiling"`
 	// Base is the version the model was shown (the active one, else the
 	// newest) and Head the newest stored one; the draft is stale when either
 	// moves.
@@ -58,7 +73,12 @@ type Draft struct {
 	Source  string `json:"source" yaml:"source"`
 	// Bundle is the base's bundle directory, which the draft's nodes/ and
 	// trusts/ come from.
-	Bundle    string    `json:"bundle,omitempty" yaml:"bundle,omitempty"`
+	Bundle string `json:"bundle,omitempty" yaml:"bundle,omitempty"`
+	// File is the bundle's flow document on disk, and FileHash its sha256
+	// when the draft was made: --write refuses when the file is another one
+	// by then. Empty for a flow applied from a single file or a new flow.
+	File      string    `json:"file,omitempty" yaml:"file,omitempty"`
+	FileHash  string    `json:"file_hash,omitempty" yaml:"file_hash,omitempty"`
 	Model     string    `json:"model" yaml:"model"`
 	Attempts  []Attempt `json:"attempts" yaml:"attempts"`
 	Warnings  []Finding `json:"warnings" yaml:"warnings"`

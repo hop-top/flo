@@ -715,6 +715,16 @@ instruction and the flow's **base**, the version `flo flow show` would show
   outcome differs from the recorded run: a step on one side only, another
   status, another output, and the calls that have no recording. No
   recording is not an error; the report says so.
+- **Apply gate.** Applying replays again, and refuses with
+  `draft_dry_run_failed` (exit 4, the draft kept) when the replay shows a
+  step that failed (in the replay, whatever the recorded run did), a step
+  with another status than in the recorded run, the run ending with another
+  status, or a call with no recording; the error lists them. `--force`
+  applies anyway and the report lists what it went over. A step that only
+  has another output, a step that appears or does not run, and a replay
+  that was not made (no recording, or one that cannot be replayed) are
+  reported, never blocking: with nothing to compare, the apply is allowed
+  and the report carries the reason.
 - **Apply and `draft_stale`.** Applying stores the draft's document as the
   next version (a draft version, exactly as `flo flow apply` stores it:
   validated again, grants checked, tested and activated as any version) only
@@ -722,6 +732,14 @@ instruction and the flow's **base**, the version `flo flow show` would show
   version is another one than at the time of the draft. Otherwise the apply
   fails with `draft_stale` (exit 4) and the draft is kept to be read. An
   applied draft is spent.
+- **`--write`.** Applying with `--write` also rewrites the `flow.yaml` of
+  the bundle the flow was applied from with the draft's document. The
+  draft records the file's hash when it is made; if the file on disk is
+  another one by then (changed or gone), the apply fails with
+  `draft_stale` before anything is stored. The write is atomic (a
+  temporary file beside it, then a rename) and keeps the file's mode.
+  Without `--write` no file is touched. A flow applied from a single file
+  has no bundle to write to (`usage`).
 
 Drafts are run data of the tenant: `<tenant dir>/drafts/<id>.json`, readable
 by the owner only.

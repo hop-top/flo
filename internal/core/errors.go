@@ -122,6 +122,7 @@ const (
 const (
 	CodeFlowVersionConflict   Code = "flow_version_conflict"
 	CodeDraftStale            Code = "draft_stale"
+	CodeDraftDryRunFailed     Code = "draft_dry_run_failed" // the dry run of a draft shows a step that fails or ends differently
 	CodeGrantProvisioned      Code = "grant_provisioned"
 	CodeRunStateConflict      Code = "run_state_conflict"
 	CodeApprovalConflict      Code = "approval_version_conflict"
@@ -177,7 +178,7 @@ func buildCodeTable() map[Code]codeInfo {
 		CodeTriggerNotFound, CodeTaskNotFound, CodeJobNotFound, CodeTenantNotFound, CodeOutputNotFound, CodeDraftNotFound,
 		CodeSecretNotFound, CodeScopeUnknown)
 	set(ExitConflict, TransiencePermanent,
-		CodeFlowVersionConflict, CodeDraftStale, CodeGrantProvisioned, CodeFlowNotActive, CodeDuplicate,
+		CodeFlowVersionConflict, CodeDraftStale, CodeDraftDryRunFailed, CodeGrantProvisioned, CodeFlowNotActive, CodeDuplicate,
 		CodeNodeConflict, CodeApprovalAlreadyClosed, CodeEpochStale, CodeBaseEpochMismatch)
 	// A lost race is worth one retry against fresh state.
 	set(ExitConflict, TransienceTransient, CodeRunStateConflict, CodeApprovalConflict, CodeTriggerCASLost)

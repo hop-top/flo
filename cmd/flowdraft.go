@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -56,6 +57,10 @@ type draftApplied struct {
 	Draft       string `json:"draft" yaml:"draft"`
 	flowApplied `yaml:",inline"`
 	DryRun      *builder.DryRun `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`
+	// Overridden are the blocking differences --force went over.
+	Overridden []string `json:"overridden,omitempty" yaml:"overridden,omitempty"`
+	// Written is the file --write wrote.
+	Written string `json:"written,omitempty" yaml:"written,omitempty"`
 }
 
 // addFlowDraft registers `flo flow draft`: create, show, list, apply, discard.
@@ -80,7 +85,7 @@ func addFlowDraft(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 
 func draftCreateCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 	c := &cobra.Command{
-		Use:   "create <flow> [instruction...]",
+		Use:   "create <flow> [instruction...] | --new <name> <instruction...> | --from <draft> <instruction...>",
 		Short: "Ask a model for the next version of a flow, as a draft",
 		Long: "Ask a model for the full next version of a flow. The instruction is the rest of the arguments, " +
 			"or standard input when it is `-` or absent and input is piped. The model gets the flow's active " +
@@ -90,12 +95,39 @@ func draftCreateCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 			"local-only flow's document goes to a local model only) and a cloud model's key is read from the " +
 			"secret store. The model is --model, else ai.builder.model, else a local ollama model. A valid " +
 			"proposal is replayed on the flow's last recording (offline, nothing reaches real systems) and the " +
-			"outcome differences are stored with the draft. Nothing is stored as a flow version.",
+			"outcome differences are stored with the draft. Nothing is stored as a flow version. " +
+			"--new <name> drafts a flow that does not exist yet (the name must be free; the model sets flow: and a " +
+			"version); there is no recording, so no dry run, and with no flow to read a privacy ceiling from the " +
+			"model call is local-only unless --privacy cloud-allowed. --from <draft> refines a draft: the model " +
+			"gets the original base, that draft's document, the instructions so far and the new one; the new draft " +
+			"keeps the original base, links to its parent (which is kept) and is stale when the base moves.",
 		Args: cobra.MinimumNArgs(1),
 	}
 	model := c.Flags().String("model", "", "the model: scheme://<model>; default ai.builder.model, else a local ollama model")
+	newName := c.Flags().String("new", "", "draft a flow that does not exist yet, with this name; the arguments are the instruction")
+	from := c.Flags().String("from", "", "refine this draft (multi-turn); the arguments are the new instruction")
+	privacy := c.Flags().String("privacy", "", "with --new, the ceiling of the model call: local-only (default) or cloud-allowed")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
-		instruction := strings.Join(args[1:], " ")
+		if *newName != "" && *from != "" {
+			return core.New(core.CodeUsage, "--new and --from do not go together").
+				WithSuggestion("refine a new flow's draft with --from alone: it stays a new flow")
+		}
+		rest := args
+		flow := ""
+		if *newName == "" && *from == "" {
+			if len(args) == 0 {
+				return core.New(core.CodeUsage, "no flow").WithSuggestion(`flo flow draft create <flow> "what to change"`)
+			}
+			flow, rest = args[0], args[1:]
+		} else if *newName != "" {
+			flow = *newName
+		}
+		if *from != "" {
+			if err := core.CheckID(core.PrefixDraft, *from); err != nil {
+				return err //nolint:wrapcheck // *core.Error
+			}
+		}
+		instruction := strings.Join(rest, " ")
 		if instruction == "" || instruction == "-" {
 			b, err := io.ReadAll(cmd.InOrStdin())
 			if err != nil {
@@ -119,13 +151,17 @@ func draftCreateCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		req := serve.DraftRequest{Flow: args[0], Instruction: instruction, Model: *model, Caller: caller}
+		req := serve.DraftRequest{Flow: flow, Instruction: instruction, Model: *model, Caller: caller, New: *newName != "", Privacy: *privacy, From: *from}
+		target := flow
+		if *from != "" {
+			target = "draft:" + *from
+		}
 		if kitcli.IsDryRun(cmd) {
 			return kitcli.RenderPlan(cmd, kitcli.Plan{
-				Args: map[string]any{"flow": args[0], "instruction": instruction, "model": *model, "by": caller},
+				Args: map[string]any{"flow": flow, "new": *newName != "", "from": *from, "privacy": *privacy, "instruction": instruction, "model": *model, "by": caller},
 				Effects: []kitcli.Effect{
-					{Kind: "model-call", Target: "flow:" + args[0], Reversible: true, Detail: "the flow's document and the instruction go to the model, up to four times"},
-					{Kind: "store", Target: "draft of flow:" + args[0], Reversible: true, Detail: "a draft, not a flow version"},
+					{Kind: "model-call", Target: "flow:" + target, Reversible: true, Detail: "the flow's document and the instruction go to the model, up to four times"},
+					{Kind: "store", Target: "draft of flow:" + target, Reversible: true, Detail: "a draft, not a flow version"},
 				},
 			})
 		}
@@ -142,6 +178,8 @@ func draftCreateCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 	_ = kitcli.SetExamples(c, []kitcli.Example{
 		{Title: "ask for a change", Command: `flo flow draft create dependency-watch "also watch cli/cli releases"`},
 		{Title: "name the model", Command: `flo flow draft create dependency-watch "run at 6" --model ollama://qwen3:4b`},
+		{Title: "a flow that does not exist yet", Command: `flo flow draft create --new pr-digest "every morning list my open PRs"`},
+		{Title: "refine a draft", Command: `flo flow draft create --from drf_01 "also run at 6"`},
 		{Title: "preview", Command: `flo flow draft create dependency-watch "run at 6" --dry-run`},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
@@ -238,12 +276,22 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 			"only when the flow's base version and newest version are the ones the draft was made on; otherwise " +
 			"it fails with draft_stale (exit 4) and keeps the draft. The document is validated again and your " +
 			"grants checked as for `flo flow apply`, and the proposal is replayed on the flow's last recording " +
-			"once more: the report carries the outcome differences. Without --yes it asks for confirmation at " +
+			"once more: the report carries the outcome differences. A dry run that shows a step that failed or " +
+			"ended with another status, or a call with no recording, refuses the apply with " +
+			"draft_dry_run_failed (exit 4) and keeps the draft, unless --force; a different output only " +
+			"reports, and a flow with no recording has nothing to compare, so it applies (the report says why). " +
+			"--write also rewrites the bundle's flow.yaml with the draft's document, atomically and keeping its " +
+			"mode, and refuses with draft_stale when the file is not the one the draft was made on; a new " +
+			"flow's bundle is written to <dir>/<name>/flow.yaml, which must not exist (--dir, default flows). " +
+			"Without --yes it asks for confirmation at " +
 			"a terminal, and fails with confirmation_required without one. The draft is spent. Test the version " +
 			"with `flo flow test`, then activate it with `flo flow set`.",
 		Args: cobra.ExactArgs(1),
 	}
 	yes := c.Flags().Bool("yes", false, "confirm without asking")
+	force := c.Flags().Bool("force", false, "apply although the dry run shows a step that failed or ended differently, or a call with no recording")
+	write := c.Flags().Bool("write", false, "also write the document to the bundle's flow.yaml (a new flow: <dir>/<name>/flow.yaml); refused when the file changed since the draft")
+	dir := c.Flags().String("dir", "flows", "with --write on a new flow, the directory its bundle goes in")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		id, err := draftArg(args)
 		if err != nil {
@@ -257,6 +305,14 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		if err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
+		opts := serve.ApplyDraftOptions{Force: *force, Write: *write}
+		if *write {
+			abs, aerr := filepath.Abs(*dir)
+			if aerr != nil {
+				return core.Wrap(core.CodeUsage, aerr)
+			}
+			opts.Dir = abs
+		}
 		caller, err := accessCaller(root)
 		if err != nil {
 			return err
@@ -266,11 +322,15 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 			if err != nil {
 				return err //nolint:wrapcheck // *core.Error
 			}
+			effects := []kitcli.Effect{{
+				Kind: "store", Target: "flow:" + d.Flow + "@" + d.Hash, Reversible: true, Detail: "a new draft version; the draft is spent",
+			}}
+			if *write {
+				effects = append(effects, kitcli.Effect{Kind: "write", Target: "the flow.yaml of the flow's bundle", Reversible: true, Detail: "rewritten with the draft's document, if it has not changed since the draft"})
+			}
 			return kitcli.RenderPlan(cmd, kitcli.Plan{
-				Args: map[string]any{"draft": d.ID, "flow": d.Flow, "version": d.Version, "hash": d.Hash, "base": d.Base.Hash, "dry_run": d.DryRun},
-				Effects: []kitcli.Effect{{
-					Kind: "store", Target: "flow:" + d.Flow + "@" + d.Hash, Reversible: true, Detail: "a new draft version; the draft is spent",
-				}},
+				Args:    map[string]any{"draft": d.ID, "flow": d.Flow, "version": d.Version, "hash": d.Hash, "base": d.Base.Hash, "dry_run": d.DryRun, "force": *force, "write": *write},
+				Effects: effects,
 			})
 		}
 		d, err := e.CheckDraft(cmd.Context(), tenant, id) // fail before asking
@@ -280,7 +340,7 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		if err := confirmWrite(*yes, fmt.Sprintf("store draft %s as the next version of flow %s?", d.ID, d.Flow)); err != nil {
 			return err
 		}
-		res, err := e.ApplyDraft(cmd.Context(), tenant, caller, id)
+		res, err := e.ApplyDraftWith(cmd.Context(), tenant, caller, id, opts)
 		if err != nil {
 			return err //nolint:wrapcheck // *core.Error
 		}
@@ -293,7 +353,7 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		return output.Dispatch(cmd, root.Viper, draftApplied{
 			Draft:       res.Draft.ID,
 			flowApplied: flowApplied{flowVersionView: flowVersionOf(res.Applied.Version), Changed: res.Applied.Created, Warnings: warn},
-			DryRun:      res.DryRun,
+			DryRun:      res.DryRun, Overridden: res.Overridden, Written: res.Written,
 		})
 	}
 	kitcli.SetSideEffect(c, kitcli.SideEffectWriteLocal)
@@ -302,6 +362,8 @@ func draftApplyCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 	_ = kitcli.SetOutputSchema(c, kitcli.OutputSchema{Type: &draftApplied{}, Version: flowSchemaVersion})
 	_ = kitcli.SetExamples(c, []kitcli.Example{
 		{Title: "apply a draft", Command: "flo flow draft apply drf_01 --yes"},
+		{Title: "apply and rewrite the bundle's flow.yaml", Command: "flo flow draft apply drf_01 --yes --write"},
+		{Title: "apply over a dry run that shows a failing step", Command: "flo flow draft apply drf_01 --yes --force"},
 		{Title: "preview", Command: "flo flow draft apply drf_01 --dry-run"},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
