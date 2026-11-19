@@ -296,13 +296,16 @@ func TestInboxPackDeclaresHonestEffects(t *testing.T) {
 	}
 	want := map[string]node.SideEffect{
 		"inbox/fetch@1":     node.SideEffectWriteLocal,
-		"inbox/decide@1":    node.SideEffectWriteLocal,
 		"inbox/rows@1":      node.SideEffectRead,
 		"inbox/senders@1":   node.SideEffectRead,
 		"inbox/decisions@1": node.SideEffectWriteLocal,
 		"inbox/plan@1":      node.SideEffectWriteLocal,
 		"inbox/apply@1":     node.SideEffectIrreversible,
 		"inbox/lanes@1":     node.SideEffectIrreversible,
+	}
+	// The script's hosted decider sends headers to a cloud model: never a node.
+	if byType["inbox/decide@1"] != nil {
+		t.Error("inbox/decide@1 is in the pack")
 	}
 	for ref, se := range want {
 		n := byType[ref]

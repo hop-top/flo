@@ -253,9 +253,8 @@ flo run cancel <run> --yes
   both go on that profile's `PATH`, with the script's credentials,
   `INBOX_HOME` and `INBOX_RUNS`. The trust provider runs on the engine's own
   `PATH` and environment, which must name the same directories.
-  `inbox/lanes@1` acts on mail outside the plan and is not used by the flow;
-  `inbox/decide@1` is the script's own hosted decider, which the flow no longer
-  uses. Re-record the flow's `record/` with
+  `inbox/lanes@1` acts on mail outside the plan and is not used by the flow.
+  The script's hosted decider has no node: mail headers stay local. Re-record the flow's `record/` with
   `FLO_E2E_RECORD=1 go test ./tests/e2e -run TestRecordInboxTriage` on a host
   whose ollama has `qwen3:4b-instruct-2507-q4_K_M`, after a change to the flow,
   its tests or its nodes.
