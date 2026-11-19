@@ -33,6 +33,8 @@ func TestModelPrivacy(t *testing.T) {
 		{"anthropic", "anthropic://claude-sonnet-5-5", nil, PrivacyCloud},
 		{"openrouter", "openrouter://openai/gpt-5", nil, PrivacyCloud},
 		{"unknown scheme", "acme://m", nil, PrivacyCloud},
+		{"jev shorthand is the hosted Jev model", "jev", nil, PrivacyCloud},
+		{"jev model", "jev://typesafe/jev-1.14", nil, PrivacyCloud},
 		// host:port
 		{"ollama localhost", "ollama://localhost:11434/gemma", nil, PrivacyLocal},
 		{"ollama loopback", "ollama://127.5.5.5:11434/gemma", nil, PrivacyLocal},
