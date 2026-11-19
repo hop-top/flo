@@ -24,11 +24,13 @@ import (
 const DefaultBuilderModel = "ollama://gemma4:e4b"
 
 // builderPrompt is the shape the model client takes a prompt in: the builder
-// builds its own text, so the template only passes it through.
+// builds its own text, so the template only passes the user message through.
+// The system text of a prompt is sent as written, not rendered, so each call
+// sets it.
 var builderPrompt = mustPrompt()
 
 func mustPrompt() *prompts.Prompt {
-	doc, err := yaml.Marshal(map[string]string{"system": "{{ .system }}", "template": "{{ .user }}"})
+	doc, err := yaml.Marshal(map[string]string{"template": "{{ .user }}"})
 	if err != nil {
 		panic(err)
 	}
@@ -64,8 +66,10 @@ type modelProposer struct {
 }
 
 func (m modelProposer) Propose(ctx context.Context, r builder.Request) (builder.Reply, error) {
+	p := *builderPrompt
+	p.System = r.System
 	got, cost, err := m.gen.Generate(ctx, builtin.GenerateRequest{
-		Prompt: builderPrompt, Context: map[string]any{"system": r.System, "user": r.User},
+		Prompt: &p, Context: map[string]any{"user": r.User},
 		Model: m.model, LocalOnly: m.localOnly, Level: m.level, Tenant: m.tenant, Profile: m.profile,
 	})
 	if err != nil {

@@ -125,7 +125,10 @@ func TestDraftValidOnFirstTry(t *testing.T) {
 	if d.Model != "ollama://gemma4:e4b" {
 		t.Errorf("the default model is local ollama: %q", d.Model)
 	}
-	// the model saw the instruction and the base document
+	// the model saw the rules, the instruction and the base document
+	if !strings.Contains(r.model.bodies[0], "You write flo flow documents") {
+		t.Errorf("the system prompt did not reach the model: %s", r.model.bodies[0])
+	}
 	if body := r.model.bodies[0]; !strings.Contains(body, "rename the findings title") || !strings.Contains(body, "gh/advisories@1") {
 		t.Errorf("request body lacks the instruction or the document: %s", body)
 	}
@@ -205,7 +208,7 @@ func TestDraftDryRunOnTheLastRecording(t *testing.T) {
 		t.Fatal(err)
 	}
 	dr := same.DryRun
-	if dr == nil || !dr.Ran || dr.Run != string(run.ID) || dr.Recorded.Hash != base.Hash || dr.Status != "succeeded" || dr.Replayed == 0 {
+	if dr == nil || !dr.Ran || dr.Run != string(run.ID) || dr.Recorded.Hash != base.Hash || dr.Status != "succeeded" || !dr.Matches || dr.Replayed == 0 {
 		t.Fatalf("dry run = %+v", dr)
 	}
 
