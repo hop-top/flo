@@ -1,7 +1,7 @@
 xrr: "1"
 adapter: exec
 fingerprint: 3ab58515
-recorded_at: "2026-11-19T07:30:39Z"
+recorded_at: "2026-11-19T07:36:18Z"
 payload:
     exit_code: 0
     stdout: |

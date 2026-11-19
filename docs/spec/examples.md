@@ -858,7 +858,6 @@ tasks: per-run
 concurrency: { on_overlap: skip }
 vars:
   labels: { type: list, default: [Action Required, Waiting, Finance, Legal, Customers, Sales, Marketing, Operations, Vendors, People, Projects, Travel, Subscriptions, Reference] }
-  security_label: { type: string, default: security }
 steps:
   # No lanes: fetch only reads and snapshots. The script's own state (seen
   # mail, pending locks, trust) lives between the steps, so they are ordered
@@ -917,7 +916,7 @@ steps:
       weights: "{{ results.weigh.items }}"
       sop_labels: "{{ vars.labels }}"
       senders: "{{ results.senders.rows }}"
-      security_label: "{{ vars.security_label }}"
+      security_label: security
 
   - id: plan
     uses: inbox/plan@1

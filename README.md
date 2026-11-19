@@ -276,7 +276,7 @@ flo run cancel <run> --yes
   never filed away unless the script mutes it or it was ruled out; mail from a
   customer vendor (a signup and a receipt for the same address) never gets a
   delete action; a login code, reset or magic link is treated as unrequested
-  and labelled `security` and archived (var `security_label`) only for a
+  and labelled `security` and archived (the step's `security_label`) only for a
   customer vendor whose mail authenticates, else kept in the inbox, flagged;
   mail claiming a customer vendor that fails authentication is flagged too. A
   row without facts falls back to the address. Nothing is ever trashed, replied

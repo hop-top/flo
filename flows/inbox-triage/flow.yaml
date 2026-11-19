@@ -40,12 +40,6 @@ vars:
       - Travel
       - Subscriptions
       - Reference
-  # The label for unrequested auth mail (login code, reset, magic link) from an
-  # authenticated customer vendor, which is then archived. It must exist in the
-  # account (labels are never created); null keeps every auth mail in the inbox.
-  security_label:
-    type: string
-    default: security
 steps:
   # No lanes: fetch only reads and snapshots. The script's own state (seen
   # mail, pending locks, trust) lives between the steps, so they are ordered
@@ -116,7 +110,11 @@ steps:
       weights: "{{ results.weigh.items }}"
       sop_labels: "{{ vars.labels }}"
       senders: "{{ results.senders.rows }}"
-      security_label: "{{ vars.security_label }}"
+      # Label for unrequested auth mail (login code, reset, magic link) from an
+      # authenticated customer vendor, which is then archived. It must exist in
+      # the account (labels are never created). Null keeps every auth mail in
+      # the inbox, flagged.
+      security_label: security
       engine: "{{ has(results.label.engine) ? results.label.engine : '' }}"
       model: "{{ has(results.label.model) ? results.label.model : '' }}"
 
