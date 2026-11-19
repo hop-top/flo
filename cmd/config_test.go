@@ -53,6 +53,7 @@ var settingCases = []struct {
 	{"engine.approval_poll", EnvApprovalPoll, "1s", "2s", "3s", func(c serve.Config) string { return c.ApprovalPoll.String() }},
 	{"ai.classifier", "FLO_AI_CLASSIFIER", "cfile", "cenv", "cflag", func(c serve.Config) string { return c.Classifier }},
 	{"ai.generator", "FLO_AI_GENERATOR", "gfile", "genv", "gflag", func(c serve.Config) string { return c.Generator }},
+	{"ai.builder.model", "FLO_AI_BUILDER_MODEL", "bfile", "benv", "bflag", func(c serve.Config) string { return c.BuilderModel }},
 	{"ai.models.allow", "FLO_AI_MODELS_ALLOW", "ollama://file*", "ollama://env*,jev", "ollama://flag*", func(c serve.Config) string { return strings.Join(c.ModelsAllow, ",") }},
 	{"ai.models.deny", "FLO_AI_MODELS_DENY", "ollama://dfile*", "ollama://denv*,jev", "ollama://dflag*", func(c serve.Config) string { return strings.Join(c.ModelsDeny, ",") }},
 	{"privacy.local_hosts", EnvLocalHosts, "file.example", "env.example,env2.example", "flag.example", func(c serve.Config) string { return strings.Join(c.LocalHosts, ",") }},
