@@ -1,9 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 5257a7e4
-recorded_at: "2026-11-19T01:47:00Z"
-payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T01:47:00.92165Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"routine\", \"why\": \"The release includes a new feature (`gh event` command) that enhances functionality without introducing breaking changes or security vulnerabilities, indicating it is a routine update for teams using the CLI.\"}}"},"done":true,"done_reason":"stop","total_duration":1514303500,"load_duration":1567166,"prompt_eval_count":301,"prompt_eval_cached_count":87,"prompt_eval_duration":153326000,"eval_count":59,"eval_duration":516306000}'
-    headers:
-        Content-Type: application/json; charset=utf-8
-    status: 200

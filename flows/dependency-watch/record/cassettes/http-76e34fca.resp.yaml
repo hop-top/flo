@@ -1,9 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 76e34fca
-recorded_at: "2026-11-19T01:47:05Z"
-payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T01:47:05.438461Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"routine\", \"why\": \"The release is a regular version update (v0.62.0) with no indication of breaking changes or security vulnerabilities, and it is part of a stable, ongoing dependency chain used by multiple services.\"}}"},"done":true,"done_reason":"stop","total_duration":2991144000,"load_duration":494625,"prompt_eval_count":249,"prompt_eval_cached_count":140,"prompt_eval_duration":88369000,"eval_count":66,"eval_duration":578109000}'
-    headers:
-        Content-Type: application/json; charset=utf-8
-    status: 200

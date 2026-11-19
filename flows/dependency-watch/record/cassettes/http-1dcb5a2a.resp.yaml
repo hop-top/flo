@@ -1,9 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 1dcb5a2a
-recorded_at: "2026-11-19T01:47:00Z"
-payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T01:47:00.244871Z","message":{"role":"assistant","content":"{\n  \"label\": {\"confidence\": 0.95, \"value\": \"routine\", \"why\": \"The release introduces a safety warning about deleting private repositories and their forks, which is a standard, non-disruptive improvement in workflow safety rather than a breaking change or security vulnerability.\"}\n}"},"done":true,"done_reason":"stop","total_duration":837612042,"load_duration":3126583,"prompt_eval_count":288,"prompt_eval_cached_count":1,"prompt_eval_duration":226034000,"eval_count":67,"eval_duration":592359000}'
-    headers:
-        Content-Type: application/json; charset=utf-8
-    status: 200

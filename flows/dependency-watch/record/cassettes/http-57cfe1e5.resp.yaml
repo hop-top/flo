@@ -1,9 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 57cfe1e5
-recorded_at: "2026-11-19T01:47:02Z"
-payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T01:47:02.441373Z","message":{"role":"assistant","content":"{\n  \"label\": {\n    \"confidence\": 0.95,\n    \"value\": \"breaking\",\n    \"why\": \"The release notes explicitly state ''BREAKING: new API'', indicating significant changes that may break existing integrations for dependent teams.\"\n  }\n}"},"done":true,"done_reason":"stop","total_duration":3033992959,"load_duration":890834,"prompt_eval_count":242,"prompt_eval_cached_count":84,"prompt_eval_duration":113515000,"eval_count":61,"eval_duration":543836000}'
-    headers:
-        Content-Type: application/json; charset=utf-8
-    status: 200
