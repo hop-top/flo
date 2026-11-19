@@ -10,7 +10,7 @@ vars:
     type: list
   lookback: { default: 14d, type: duration }
 run_as: automation
-privacy: cloud-allowed          # only public package data leaves the machine; the judge model is local
+privacy: cloud-allowed          # gh nodes reach GitHub; only public package data leaves the machine
 budget: { usd: 0.50 }
 tasks: none
 state:
@@ -75,6 +75,7 @@ steps:
   # already `security` above.
   - id: judge
     uses: flo/ai.classify@1
+    privacy: local-only          # release text stays on the machine; refuses a cloud model
     with:
       model: ollama://qwen3:4b-instruct-2507-q4_K_M
       labels: [security, breaking, routine, noise]
