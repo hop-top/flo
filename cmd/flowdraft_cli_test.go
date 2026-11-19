@@ -261,3 +261,21 @@ func TestDraftCreateNewApplyWrite(t *testing.T) {
 		t.Fatalf("file: %v\n%s", err, b)
 	}
 }
+
+func TestDraftCreateFromRefines(t *testing.T) {
+	d := newDraftRig(t)
+	id := d.create(t, "0.1.1")
+	d.model.replies = []string{fence(d.doc("0.1.2"))}
+	out, _, err := d.run("flow", "draft", "create", "--from", id, "and", "more", "--format", "json")
+	if err != nil || !strings.Contains(out, id) { // the parent link
+		t.Fatalf("create --from: %v\n%s", err, out)
+	}
+	_, _, err = d.run("flow", "draft", "create", "--from", id, "--new", "x", "y")
+	wantCode(t, err, core.CodeUsage)
+	_, _, err = d.run("flow", "draft", "create", "--from", "nonsense", "y")
+	wantCode(t, err, core.CodeUsage)
+	_, _, err = d.run("flow", "draft", "show", id) // the parent is kept
+	if err != nil {
+		t.Fatal(err)
+	}
+}

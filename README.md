@@ -78,7 +78,11 @@ flo run cancel <run> --yes
   `create --new <name> <instruction>` drafts a flow that does not exist yet
   (free name; no recording, so no dry run; the model call is local-only unless
   `--privacy cloud-allowed`; `apply --write` makes `<dir>/<name>/flow.yaml`,
-  `--dir` default `flows`, refused if it exists). Drafts live in `<tenant dir>/drafts/<id>.json`. The recorded
+  `--dir` default `flows`, refused if it exists). `create --from <draft>
+  <instruction>` refines a draft: the model gets the original base, the draft
+  and the instructions so far; the base stays the original version (so
+  `draft_stale` as before), the new draft links to its `parent`, and the
+  parent is kept. Drafts live in `<tenant dir>/drafts/<id>.json`. The recorded
   test of a build on a local model (`internal/engine/serve`,
   `TestDraftOnALocalModelTape`) is re-recorded with `FLO_BUILDER_RECORD=1` on a
   host that runs ollama.

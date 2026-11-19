@@ -754,6 +754,18 @@ instruction and the flow's **base**, the version `flo flow show` would show
   `<dir>/<name>/flow.yaml` is written (`--dir`, default `flows`, the
   directory flows are kept in); an existing `<dir>/<name>` is refused
   (`duplicate`) and nothing is stored.
+- **Refining (`--from <draft>`).** A new draft made from an earlier one,
+  for several turns. The model gets the original base document, the
+  earlier draft's document, the instructions so far (oldest first) and the
+  new instruction. The base stays the original flow version: the new draft
+  has the same `base` and `head`, and the staleness rules are unchanged: a
+  refinement of a draft whose base has moved fails with `draft_stale`
+  before any model call, and so does its apply. The new draft links to its
+  `parent` and carries the `history`; the earlier draft is kept (discard it
+  by hand), so a refinement can be abandoned for the one before. Refining
+  a new flow's draft stays a new flow under the same ceiling; `--new`,
+  `--privacy` and a flow name do not go with `--from`.
+
 Drafts are run data of the tenant: `<tenant dir>/drafts/<id>.json`, readable
 by the owner only.
 
