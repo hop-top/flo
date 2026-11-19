@@ -16,6 +16,10 @@
 #       fail-all       no account is fetched (exit 3)
 #       invalid        the plan holds one invalid item (exit 3)
 #       fail-apply     the apply fails on message m2 (exit 3)
+#       sender-muted-m3     sender facts: message m3's sender is muted
+#       sender-ruled-m3     sender facts: message m3's sender is ruled out
+#       sender-contact-m1   sender facts: message m1's sender is a contact
+#       sender-nofacts      sender facts: no message is in the store
 td="$FLO_E2E_TESTDATA/inbox"
 st="$FLO_E2E_DIR/inbox"
 mkdir -p "$st/runs" "$st/flags"
@@ -67,6 +71,20 @@ case $cmd in
     fi
     emit decide 0 "$(jq -c -n --arg run "$run" --arg rd "$rd" --argjson rows "$(jq '.rows | length' "$rd/snapshot.json")" \
       '{run: $run, run_dir: $rd, engine: "model", already_decided: false, rows: $rows, carried: 0, asked: $rows, answered: 0, attention: 0, needs_review: 0, cost: 0.0123, files: [$rd + "/decisions.json"]}')"
+    exit 0 ;;
+  senders)
+    run=$1; rd=$(rundir "$run")
+    [ -f "$rd/snapshot.json" ] || { echo "no such run: $run" >&2; exit 1; }
+    rows=$(jq -c --slurpfile f "$td/senders.json" --argjson nofacts "$(flag sender-nofacts && echo true || echo false)" \
+      --argjson m3 "$(flag sender-muted-m3 && echo true || echo false)" --argjson r3 "$(flag sender-ruled-m3 && echo true || echo false)" \
+      --argjson c1 "$(flag sender-contact-m1 && echo true || echo false)" '
+      [ .rows[] | . as $r | {n, account, message_id, from: .from.email}
+        + (if $nofacts or ($f[0][$r.message_id] == null) then {in_store: false}
+           else {in_store: true} + $f[0][$r.message_id]
+                | if $r.message_id == "<m3@example.org>" then .muted = $m3 | .ruled_out = $r3 | .must_show = (.person and ($m3 | not) and ($r3 | not)) else . end
+                | if $r.message_id == "<m1@example.org>" and $c1 then .is_contact = true | .must_show = true else . end end) ]' "$rd/snapshot.json")
+    emit senders 0 "$(jq -c -n --arg run "$run" --arg rd "$rd" --argjson rows "$rows" \
+      '{run: $run, run_dir: $rd, rows: $rows, count: ($rows | length), missing: ([$rows[] | select(.in_store | not)] | length)}')"
     exit 0 ;;
   plan)
     run=$1; rd=$(rundir "$run")

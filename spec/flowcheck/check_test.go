@@ -169,6 +169,17 @@ privacy: local
 capabilities: [mail.read]
 timeout: 60s
 `,
+	"inbox_senders_1.yaml": `node: inbox/senders@1
+kind: command
+lowers_to: engine
+argv: [inbox, senders, "{{ in.run }}", --json]
+inputs: { run: { type: string, required: true } }
+outputs: { from: stdout, format: json, schema: { type: object } }
+side_effect: read
+privacy: local
+capabilities: [mail.read]
+timeout: 60s
+`,
 	"inbox_decisions_1.yaml": `node: inbox/decisions@1
 kind: command
 lowers_to: engine
@@ -179,6 +190,7 @@ inputs:
   labels: { type: array, required: true }
   weights: { type: array, required: true }
   sop_labels: { type: array, required: true }
+  senders: { type: array, default: [] }
   engine: { type: [string, 'null'], default: null }
   model: { type: [string, 'null'], default: null }
 outputs: { from: "file:out.json", format: json, schema: { type: object } }

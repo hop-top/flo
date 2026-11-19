@@ -875,6 +875,13 @@ steps:
     depends_on: [fetch]
     with: { run_dir: "{{ results.fetch.run_dir }}" }
 
+  # What the script knows about each sender (contact, mute, ruled out, person):
+  # headers and addresses from its local store, no model.
+  - id: senders
+    uses: inbox/senders@1
+    depends_on: [fetch]
+    with: { run: "{{ results.fetch.run }}" }
+
   - id: label
     uses: flo/ai.classify@1
     privacy: local-only
@@ -898,7 +905,9 @@ steps:
 
   # The script's decider policy over the verdicts: low confidence is Needs
   # Review, an abstention stays in the inbox, quiet mail is also read and
-  # archived, mail from a person is never filed away. Writes decisions.json.
+  # archived, mail from a person is never filed away (a contact or a
+  # person-looking sender the script neither mutes nor has ruled out, by the
+  # facts of `senders`). Writes decisions.json.
   - id: decisions
     uses: inbox/decisions@1
     with:
@@ -906,6 +915,7 @@ steps:
       labels: "{{ results.label.items }}"
       weights: "{{ results.weigh.items }}"
       sop_labels: "{{ vars.labels }}"
+      senders: "{{ results.senders.rows }}"
 
   - id: plan
     uses: inbox/plan@1

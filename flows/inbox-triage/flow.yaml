@@ -53,7 +53,8 @@ steps:
   # how much it matters; `decisions` turns both into the script's decisions
   # file by the script's own policy (low confidence is Needs Review, an
   # abstention stays in the inbox for a person, quiet mail is also read and
-  # archived, mail from a person is never filed away). The classifier backend
+  # archived, mail from a person is never filed away, by the script's own
+  # contacts, mutes and ruled-out senders from `senders`). The classifier backend
   # is configuration (ai.classifier=judge / FLO_AI_CLASSIFIER=judge); the engine
   # defaults to auto (ai.judge.engine). The model is the local Qwen3 4B
   # Instruct; Jev is listed after it and skipped under the local-only ceiling
@@ -63,6 +64,14 @@ steps:
     uses: inbox/rows@1
     depends_on: [fetch]
     with: { run_dir: "{{ results.fetch.run_dir }}" }
+
+  # What the script knows about each sender (contact, mute, ruled out, person):
+  # headers and addresses from its local store, no model. The guard "mail from
+  # a person is never filed away" is read from these facts.
+  - id: senders
+    uses: inbox/senders@1
+    depends_on: [fetch]
+    with: { run: "{{ results.fetch.run }}" }
 
   - id: label
     uses: flo/ai.classify@1
@@ -100,6 +109,7 @@ steps:
       labels: "{{ results.label.items }}"
       weights: "{{ results.weigh.items }}"
       sop_labels: "{{ vars.labels }}"
+      senders: "{{ results.senders.rows }}"
       engine: "{{ has(results.label.engine) ? results.label.engine : '' }}"
       model: "{{ has(results.label.model) ? results.label.model : '' }}"
 

@@ -15,6 +15,8 @@ expect:
   # questions each; the decisions file is the script's policy over its answers
   - step: rows
     output: { run: "20261118-090001", decided: false }
+  - step: senders
+    output: { run: "20261118-090001", count: 4, missing: 0 }
   - step: label
   - step: weigh
   - step: decisions

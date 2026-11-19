@@ -246,7 +246,8 @@ flo run cancel <run> --yes
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
   wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`,
-  `inbox-rows`, `inbox-decisions`; they need `jq`) as the flow's profile, so
+  `inbox-rows`, `inbox-decisions`; they need `jq`; `inbox/senders@1` runs
+  `inbox senders RUN --json`) as the flow's profile, so
   both go on that profile's `PATH`, with the script's credentials,
   `INBOX_HOME` and `INBOX_RUNS`. The trust provider runs on the engine's own
   `PATH` and environment, which must name the same directories.
@@ -263,11 +264,14 @@ flo run cancel <run> --yes
   date, flags, folder, sender history; never a body): `label` files it under
   one of the labels (var `labels`, the script's SOP labels; it may abstain),
   `weigh` says how much it matters (irrelevant to critical).
+  `inbox/senders@1` asks the script who each sender is (contact, muted, ruled
+  out, person-looking, org; its local store, no body, no model).
   `inbox/decisions@1` turns both into the script's decisions file by the
   script's own policy: a label under 0.9 confidence is Needs Review, an
   abstention stays in the inbox for a person, a message that matters little is
-  also read and archived, mail from what looks like a person is never filed
-  away, nothing is ever trashed, replied to or unsubscribed. Setup: set
+  also read and archived, mail from a contact or a person-looking sender is
+  never filed away unless the script mutes it or it was ruled out (a row
+  without facts falls back to the address), nothing is ever trashed, replied to or unsubscribed. Setup: set
   `FLO_AI_CLASSIFIER=judge` and `FLO_AI_MODELS_ALLOW=ollama://qwen3*`; the
   engine (`ai.judge.engine`, default `auto`) is configuration. **Privacy:** the
   flow and both steps are `local-only`; the model list is

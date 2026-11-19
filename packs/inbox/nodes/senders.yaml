@@ -1,0 +1,48 @@
+node: inbox/senders@1
+kind: command
+lowers_to: engine
+description: >-
+  What the script knows about each undecided sender of a run: contact card,
+  active mute, ruled out (sender lane or "not a person"), person-looking, org.
+  Headers and address only, from the script's local store; never a body.
+# `inbox senders RUN --json` over the script's own contacts, mutes, lanes and
+# person judgment, so the guard in inbox/decisions@1 is the script's, not a
+# guess from the address. A row whose message is not in the script's store has
+# in_store false and no facts. Runs nothing on mail and calls no model.
+argv: [inbox, senders, "{{ in.run }}", --json]
+inputs:
+  run: { type: string, required: true, description: "The run's stamp, from inbox/fetch@1." }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: object
+    required: [run, rows, count, missing]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      count: { type: integer }
+      missing: { type: integer, description: Rows whose message is not in the script's store. }
+      rows:
+        type: array
+        items:
+          type: object
+          required: [n, in_store]
+          properties:
+            n: { type: integer }
+            account: { type: string }
+            message_id: { type: [string, 'null'] }
+            from: { type: [string, 'null'] }
+            in_store: { type: boolean }
+            is_contact: { type: boolean, description: The address is on a contact card. }
+            muted: { type: boolean, description: An active mute matches. }
+            ruled_out: { type: boolean, description: A sender lane or a "not a person" ruling. }
+            person: { type: boolean, description: "The script's judgment: no bulk headers, not a role or sending address, or a contact." }
+            org: { type: [string, 'null'], description: Org slug of the sender's domain; null for free-mail. }
+            must_show: { type: boolean, description: "The script's own guard: person and not muted or ruled out." }
+side_effect: read               # the script's local store and state files
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

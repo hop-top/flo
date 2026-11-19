@@ -9,15 +9,16 @@ description: >-
 # The policy is the script's decider (`inbox decide`), applied to verdicts the
 # flow got from flo/ai.classify@1 instead of from the script's hosted decider.
 # inbox-decisions (wrappers/) writes decisions.json, the input of `inbox plan`,
-# and keeps one that exists. A message from what looks like a person is never
-# filed away, whatever the verdict; that check sees the address only (role names
-# and sending domains), not the script's contact cards, mutes or ruled-out
-# senders, so it can only err towards leaving mail for a person.
+# and keeps one that exists. A message from a person is never filed away,
+# whatever the verdict: a contact or a person-looking sender, by the facts of
+# inbox/senders@1, unless the script mutes it or Jad ruled it out (those follow
+# the normal policy). A row without facts falls back to the address alone (role
+# names and sending domains), which can only err towards leaving mail for a person.
 argv: [inbox-decisions, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
 stdin:
   json: >-
     {{ {'labels': in.labels, 'weights': in.weights, 'sop_labels': in.sop_labels,
-        'hold_labels': in.hold_labels, 'quiet_weights': in.quiet_weights,
+        'hold_labels': in.hold_labels, 'senders': in.senders, 'quiet_weights': in.quiet_weights,
         'min_confidence': in.min_confidence, 'engine': in.engine, 'model': in.model} }}
 inputs:
   run_dir: { type: string, required: true }
@@ -32,6 +33,10 @@ inputs:
   sop_labels:  { type: array, items: { type: string }, required: true, description: The labels a row may be filed under. }
   hold_labels: { type: array, items: { type: string }, default: [Action Required, Waiting], description: Labels that are never also archived. }
   quiet_weights: { type: array, items: { type: string }, default: [irrelevant, low], description: Weights at which a filed message is also read and archived. }
+  senders:
+    type: array
+    default: []
+    description: "One sender-facts row per message, from inbox/senders@1 (its rows): is_contact, person, muted, ruled_out. A row without facts falls back to the address."
   min_confidence: { type: number, default: 0.9, description: A label under it is Needs Review. }
   engine: { type: [string, 'null'], default: null, description: Which engine judged (local or jev); recorded in the why of each decision. }
   model: { type: [string, 'null'], default: null }

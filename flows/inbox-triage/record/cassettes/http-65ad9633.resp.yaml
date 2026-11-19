@@ -1,9 +1,9 @@
 xrr: "1"
 adapter: http
 fingerprint: 65ad9633
-recorded_at: "2026-11-19T05:18:17Z"
+recorded_at: "2026-11-19T06:35:53Z"
 payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T05:18:17.010541Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"People\", \"why\": \"The subject ''Lunch on Friday?'' suggests a personal, social interaction with a colleague, and the sender is named ''Sam'' with a personal email address, indicating a personal or interpersonal communication, which best fits the ''People'' label.\"}}"},"done":true,"done_reason":"stop","total_duration":10040167000,"load_duration":4845400084,"prompt_eval_count":393,"prompt_eval_cached_count":277,"prompt_eval_duration":89457000,"eval_count":72,"eval_duration":634725000}'
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T06:35:53.48232Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"People\", \"why\": \"The subject ''Lunch on Friday?'' suggests a personal, social interaction between individuals, which aligns best with the ''People'' label, indicating interpersonal communication.\"}}"},"done":true,"done_reason":"stop","total_duration":13301312708,"load_duration":5083831958,"prompt_eval_count":393,"prompt_eval_cached_count":169,"prompt_eval_duration":215559000,"eval_count":59,"eval_duration":885620000}'
     headers:
         Content-Type: application/json; charset=utf-8
     status: 200

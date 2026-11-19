@@ -6,15 +6,20 @@
 #   { labels:  [{item, label, confidence, why}],   one per row; label null = abstained
 #     weights: [{item, label}],                    how much each row matters
 #     sop_labels: [...], hold_labels: [...], quiet_weights: [...],
+#     senders: [{n, in_store, is_contact, person, muted, ruled_out, ...}],
 #     min_confidence, engine, model }
 # The policy is the script's own decider: a label under min_confidence is
 # `Needs Review`, an abstention is left in the inbox for the owner, a row that
 # matters little (quiet_weights) and is not held (hold_labels, Needs Review)
 # is also marked read and archived. Nothing is ever trashed, replied to or
-# unsubscribed here. Mail from what looks like a person is never filed away:
-# it is left in the inbox for the owner, whatever the verdict. That check reads
-# the address alone (role names and sending domains, as the script does); the
-# script's contact cards, mutes and ruled-out senders are not visible here.
+# unsubscribed here. Mail from a person is never filed away: it is left in the
+# inbox for the owner, whatever the verdict. "A person" is what the script says
+# (stdin `senders`, from `inbox senders`: is_contact, person, muted, ruled_out
+# per row): a contact or a person-looking sender that is neither muted nor
+# ruled out. A muted or ruled-out sender follows the normal policy. Only a row
+# with no facts (the message is not in the script's store, or `senders` is
+# absent) falls back to the address alone (role names and sending domains),
+# which can only err towards leaving mail for the owner.
 #
 # An existing decisions file is kept, never rewritten. Writes {run, run_dir,
 # engine, model, already_decided, rows, asked, answered, attention,
@@ -54,6 +59,11 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
   def person($a):
     ($a | ascii_downcase | split("@")) as $p
     | ($p | length) == 2 and (($p[0] | test(role; "i")) | not) and (($p[1] | test(sending; "i")) | not);
+  def guard($it; $fs):
+    ($fs[$it.n | tostring]) as $f
+    | if $f != null and ($f.in_store // false)
+      then (($f.is_contact // false) or ($f.person // false)) and (($f.muted // false) | not) and (($f.ruled_out // false) | not)
+      else person($it.sender.address // "") end;
   def score: {irrelevant: 0, low: 0.25, normal: 0.5, high: 0.75, critical: 1};
   . as $in
   | ($in.min_confidence // 0.9) as $min
@@ -61,6 +71,7 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
   | ($in.hold_labels // ["Action Required", "Waiting"]) as $hold
   | ($in.quiet_weights // ["irrelevant", "low"]) as $quiet
   | ($in.engine // "model") as $eng
+  | ([ ($in.senders // [])[] | {key: (.n | tostring), value: .} ] | from_entries) as $fs
   | ([ $in.weights[] | {key: (.item.n | tostring), value: .label} ] | from_entries) as $w
   | ([ $in.labels[] | . as $l | $l.item as $it
        | ($w[$it.n | tostring] // "normal") as $wt
@@ -76,7 +87,7 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
        | if $rule == "needs_you" then
            {kind: "attention", n: $it.n, actions: [ {attention: "importance \($wt); the judge could not settle routine handling, needs your judgment; left in INBOX"} ],
             why: "Judge (\($eng)): needs_you, importance \($wt)", why_fields: $fields}
-         elif person($it.sender.address // "") then
+         elif guard($it; $fs) then
            {kind: "attention", n: $it.n, actions: [ {attention: "from a person, not ruled out: \($rule) \($l.label) conf \($conf), importance \($wt); left in INBOX"} ],
             why: "Judge (\($eng)): from a person, not ruled out",
             why_fields: ($fields | .rule = {kind: "person", name: "from a person, not ruled out", text: "a person you have not ruled out: left in INBOX for you"})}

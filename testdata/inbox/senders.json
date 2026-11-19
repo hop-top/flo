@@ -1,0 +1,6 @@
+{
+  "<m1@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": false, "org": "example", "must_show": false},
+  "<m2@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": false, "org": "example", "must_show": false},
+  "<m3@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": true, "org": "example", "must_show": true},
+  "<m5@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": true, "org": "example", "must_show": true}
+}

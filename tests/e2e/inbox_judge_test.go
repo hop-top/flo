@@ -319,6 +319,76 @@ func TestInboxRowsAndDecisions(t *testing.T) {
 	}
 }
 
+// TestInboxDecisionsUseSenderFacts: the guard "mail from a person is never
+// filed away" follows the script's facts (contact, muted, ruled out, person);
+// only a row without facts falls back to the address. Synthetic senders.
+func TestInboxDecisionsUseSenderFacts(t *testing.T) {
+	e := triageEnv(t)
+	dir := snapshotDir(t)
+	item := func(n int, from string) map[string]any {
+		return map[string]any{"n": n, "sender": map[string]any{"address": from}}
+	}
+	lab := func(n int, from string) map[string]any {
+		return map[string]any{"item": item(n, from), "label": "Reference", "confidence": 0.99, "why": "w"}
+	}
+	wt := func(n int, from string) map[string]any {
+		return map[string]any{"item": item(n, from), "label": "irrelevant"}
+	}
+	facts := func(n int, f map[string]any) map[string]any {
+		f["n"], f["in_store"] = n, true
+		return f
+	}
+	from := map[int]string{
+		1: "role@example.org",    // role address, but a contact: guarded
+		2: "pat@example.org",     // person-looking and muted: filed
+		3: "sam@example.org",     // person-looking and ruled out: filed
+		4: "alex@example.org",    // person: guarded
+		5: "robot@example.org",   // unknown, not a person: filed
+		6: "kim@example.org",     // no facts, person-looking address: guarded
+		7: "noreply@example.org", // no facts, role address: filed
+		8: "lee@example.org",     // facts say not a person (bulk headers), person-looking address: filed
+	}
+	var labels, weights []any
+	for n := 1; n <= 8; n++ {
+		labels, weights = append(labels, lab(n, from[n])), append(weights, wt(n, from[n]))
+	}
+	senders := []any{
+		facts(1, map[string]any{"is_contact": true, "person": false, "muted": false, "ruled_out": false}),
+		facts(2, map[string]any{"is_contact": false, "person": true, "muted": true, "ruled_out": false}),
+		facts(3, map[string]any{"is_contact": false, "person": true, "muted": false, "ruled_out": true}),
+		facts(4, map[string]any{"is_contact": false, "person": true, "muted": false, "ruled_out": false}),
+		facts(5, map[string]any{"is_contact": false, "person": false, "muted": false, "ruled_out": false}),
+		map[string]any{"n": 6, "in_store": false},
+		map[string]any{"n": 7, "in_store": false},
+		facts(8, map[string]any{"is_contact": false, "person": false, "muted": false, "ruled_out": false}),
+	}
+	body, _ := json.Marshal(map[string]any{
+		"labels": labels, "weights": weights, "senders": senders,
+		"sop_labels": []any{"Reference"}, "quiet_weights": []any{"irrelevant"},
+		"min_confidence": 0.9, "engine": "local",
+	})
+	sum := filepath.Join(t.TempDir(), "sum.json")
+	if r := e.runShim(string(body), "inbox-decisions", "--out", sum, dir); r.Exit != 0 {
+		t.Fatalf("inbox-decisions: %+v", r)
+	}
+	var d decisionsFile
+	b, err := os.ReadFile(filepath.Join(dir, "decisions.json")) //nolint:gosec // a temp file
+	if err != nil || json.Unmarshal(b, &d) != nil || len(d.Decisions) != 8 {
+		t.Fatalf("decisions: %v %s", err, b)
+	}
+	guarded := map[int]bool{1: true, 4: true, 6: true}
+	for _, dec := range d.Decisions {
+		got, _ := json.Marshal(dec.Actions)
+		held := strings.HasPrefix(string(got), `[{"attention":"from a person, not ruled out:`)
+		if held != guarded[dec.N] {
+			t.Errorf("decision %d (%s): %s, guarded want %v", dec.N, from[dec.N], got, guarded[dec.N])
+		}
+		if !guarded[dec.N] && string(got) != `[{"label":"Reference"},"read","archive"]` {
+			t.Errorf("decision %d is not filed by the normal policy: %s", dec.N, got)
+		}
+	}
+}
+
 // TestInboxTriageJudgesLocally: the run asks the model two questions per
 // message, over headers only, and the decisions the script plans from are the
 // script's policy over the answers.
@@ -374,6 +444,74 @@ func TestInboxTriageJudgesLocally(t *testing.T) {
 	for _, n := range []int{3, 4} {
 		if !strings.HasPrefix(got[n], `[{"attention":`) {
 			t.Errorf("message %d was filed away: %s", n, got[n])
+		}
+	}
+}
+
+// TestInboxTriageGuardFollowsScriptFacts: the flow asks the script who the
+// senders are and the person guard follows its answer. Message 1 (a role
+// address) is a contact, so it is left in the inbox; message 3 (person-looking)
+// is muted, so the normal policy files it; message 4 is a person.
+func TestInboxTriageGuardFollowsScriptFacts(t *testing.T) {
+	e := triageEnv(t)
+	e.triageActive()
+	eng := e.startEngine()
+	defer eng.stop()
+	e.inboxFlag("sender-contact-m1", true)
+	e.inboxFlag("sender-muted-m3", true)
+	c, _ := e.startTriage()
+
+	calls := e.inboxCalls("senders")
+	if len(calls) != 1 || !strings.Contains(calls[0], "--json") || !strings.Contains(calls[0], "20261118-090") {
+		t.Errorf("senders calls: %v", calls)
+	}
+	_, out := e.stepOf(c.Run, "senders")
+	if fmt.Sprint(out["count"]) != "4" || fmt.Sprint(out["missing"]) != "0" {
+		t.Errorf("senders output: %v", out)
+	}
+	var d decisionsFile
+	b, err := os.ReadFile(filepath.Join(e.scratch, "inbox", "runs", "20261118-090001", "decisions.json")) //nolint:gosec // the fake's state
+	if err != nil || json.Unmarshal(b, &d) != nil || len(d.Decisions) != 4 {
+		t.Fatalf("decisions file: %v %s", err, b)
+	}
+	got := map[int]string{}
+	for _, dec := range d.Decisions {
+		a, _ := json.Marshal(dec.Actions)
+		got[dec.N] = string(a)
+	}
+	for _, n := range []int{1, 4} {
+		if !strings.HasPrefix(got[n], `[{"attention":"from a person, not ruled out:`) {
+			t.Errorf("message %d was filed away: %s", n, got[n])
+		}
+	}
+	if got[3] != `[{"label":"Reference"}]` || got[2] != `[{"label":"Finance"}]` {
+		t.Errorf("muted and unknown senders follow the normal policy: %v", got)
+	}
+}
+
+// TestInboxTriageWithoutFactsFallsBackToTheAddress: a message the script's
+// store does not hold has no facts; the address decides, towards the inbox.
+func TestInboxTriageWithoutFactsFallsBackToTheAddress(t *testing.T) {
+	e := triageEnv(t)
+	e.triageActive()
+	eng := e.startEngine()
+	defer eng.stop()
+	e.inboxFlag("sender-nofacts", true)
+	c, _ := e.startTriage()
+	_, out := e.stepOf(c.Run, "senders")
+	if fmt.Sprint(out["missing"]) != "4" {
+		t.Errorf("senders output: %v", out)
+	}
+	var d decisionsFile
+	b, err := os.ReadFile(filepath.Join(e.scratch, "inbox", "runs", "20261118-090001", "decisions.json")) //nolint:gosec // the fake's state
+	if err != nil || json.Unmarshal(b, &d) != nil || len(d.Decisions) != 4 {
+		t.Fatalf("decisions file: %v %s", err, b)
+	}
+	for _, dec := range d.Decisions {
+		a, _ := json.Marshal(dec.Actions)
+		held := strings.HasPrefix(string(a), `[{"attention":`)
+		if held != (dec.N == 3 || dec.N == 4) {
+			t.Errorf("message %d: %s", dec.N, a)
 		}
 	}
 }

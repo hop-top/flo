@@ -298,6 +298,7 @@ func TestInboxPackDeclaresHonestEffects(t *testing.T) {
 		"inbox/fetch@1":     node.SideEffectWriteLocal,
 		"inbox/decide@1":    node.SideEffectWriteLocal,
 		"inbox/rows@1":      node.SideEffectRead,
+		"inbox/senders@1":   node.SideEffectRead,
 		"inbox/decisions@1": node.SideEffectWriteLocal,
 		"inbox/plan@1":      node.SideEffectWriteLocal,
 		"inbox/apply@1":     node.SideEffectIrreversible,
@@ -347,13 +348,13 @@ func TestInboxTriageReplaysOffline(t *testing.T) {
 	if r.Exit != 0 || !res.Passed {
 		t.Fatalf("replay: exit %d, %+v\n%s", r.Exit, res, r.Stderr)
 	}
-	// 4 script calls (fetch, rows, decisions, plan), the daemon's model list
+	// 5 script calls (fetch, rows, senders, decisions, plan), the daemon's model list
 	// (asked once per classify step: the two run side by side and may both
 	// ask) and 8 model answers: two questions for each of four messages
-	if res.Mode != "replay" || res.Calls < 13 || res.Calls > 14 || res.Replayed != res.Calls {
+	if res.Mode != "replay" || res.Calls < 14 || res.Calls > 15 || res.Replayed != res.Calls {
 		t.Errorf("replay made %d calls, %d from cassettes (mode %s)", res.Calls, res.Replayed, res.Mode)
 	}
-	if res.Expected != 8 || res.Held != res.Expected {
+	if res.Expected != 9 || res.Held != res.Expected {
 		t.Errorf("expectations held %d of %d", res.Held, res.Expected)
 	}
 	planned := map[string]bool{}
@@ -640,7 +641,7 @@ func TestInboxTriagePartialExit3(t *testing.T) {
 		if st, _ := v.step("fetch"); st != "failed" {
 			t.Errorf("fetch is %s", st)
 		}
-		for _, s := range []string{"rows", "label", "weigh", "decisions", "plan", "approve", "apply"} {
+		for _, s := range []string{"rows", "senders", "label", "weigh", "decisions", "plan", "approve", "apply"} {
 			if st, reason := v.step(s); st != "skipped" || reason != "upstream_failed" {
 				t.Errorf("%s: %s %s", s, st, reason)
 			}
