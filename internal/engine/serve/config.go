@@ -97,6 +97,9 @@ type Config struct {
 	// through kit's client. Empty configures none, and a step using the node
 	// fails.
 	Generator string
+	// BuilderModel is the model of the chat builder (`ai.builder.model`); empty
+	// is DefaultBuilderModel, local through ollama.
+	BuilderModel string
 	// LocalHosts are the hosts and CIDRs treated as local when a model URI
 	// is read (`privacy.local_hosts`); empty lists none.
 	LocalHosts []string
