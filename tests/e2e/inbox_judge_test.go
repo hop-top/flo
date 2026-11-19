@@ -69,15 +69,17 @@ func fakeTriageModel(t *testing.T) *triageModel {
 		}
 		prompt := req.Messages[len(req.Messages)-1].Content
 		subject := triageSubjectOf(prompt)
-		kind, value, conf := "label", "Reference", 0.97
+		// the question is named label in both steps; the weigh one offers "irrelevant"
+		var value string
+		conf := 0.97
 		if strings.Contains(prompt, "- irrelevant\n") {
-			kind, value = "label", triageWeightOf(subject) // the question is named label in both
+			value = triageWeightOf(subject)
 			m.record("weigh", subject)
 		} else {
 			value, conf = triageLabelOf(subject)
 			m.record("label", subject)
 		}
-		answer, _ := json.Marshal(map[string]any{kind: map[string]any{"value": value, "confidence": conf, "why": "fake model: " + subject}})
+		answer, _ := json.Marshal(map[string]any{"label": map[string]any{"value": value, "confidence": conf, "why": "fake model: " + subject}})
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"model": triageModelName, "done": true, "done_reason": "stop",
 			"message":           map[string]any{"role": "assistant", "content": string(answer)},
@@ -179,7 +181,7 @@ func snapshotDir(t *testing.T) string {
 	}
 	dir := t.TempDir()
 	snap := fmt.Sprintf(`{"run": "20261118-090001", "rows": %s}`, rows)
-	if err := os.WriteFile(filepath.Join(dir, "snapshot.json"), []byte(snap), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "snapshot.json"), []byte(snap), 0o600); err != nil { //nolint:gosec // a temp dir
 		t.Fatal(err)
 	}
 	return dir
