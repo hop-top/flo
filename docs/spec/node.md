@@ -386,6 +386,23 @@ installed pack that lists it. The file is YAML: `system:` (optional text) and
 `template` renders the template over `context` (no model, no cost, no
 `schema`); `llm` calls the model.
 
+The `llm` backend builds its model client per invocation from the model URI
+alone: no environment variable and no `llm.yaml` is read, and every request
+goes through the engine's HTTP seam. The messages are the prompt's `system`
+text, when it has one, then the rendered template. With `schema` the output is
+requested as JSON of that schema, validated and re-asked up to twice; output
+that still does not match fails `output_invalid`. Under a `local-only`
+ceiling the client is also built local-only: it refuses, before any request, an
+endpoint that is not local by the rules of §9, so the check of the node and the
+client agree. A cloud model's key is the secret `<scheme>_api_key` of the
+flow's profile (`anthropic_api_key` for `anthropic://`); a missing one fails
+`secret_not_found` before any request. The key goes only to the scheme's own
+default endpoint: a model URI that names an endpoint (`host:port` or `base_url`)
+is sent none, and a local model needs none. Cost: the tokens used, and for a
+cloud model dollars at the catalog price of the model (zero when it has none);
+a local model costs no dollars. The build links the `ollama` scheme; other
+schemes fail `input_invalid` until their adapters are linked.
+
 ### 6.6 `flo/approval@1`
 
 | Input | Type | Meaning |

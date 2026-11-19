@@ -98,13 +98,21 @@ flo run cancel <run> --yes
   with `engine_feature`: no backend stands in for another.
 - Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
   `flo/ai.generate@1`: `template` (renders the prompt's template over the
-  context: no model, no cost) or `llm` (refused until a model client lands).
-  Unset configures none and a step using the node fails with
-  `engine_feature`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
+  context: no model, no cost) or `llm` (calls the step's model through kit's
+  model client: prompt `system` text then the rendered template as messages;
+  `schema` gives validated `data`; tokens and, for a cloud model, dollars
+  count against the run's budget). The `llm` client reads no environment
+  variable and no `llm.yaml`; its requests go through the engine's HTTP seam.
+  A cloud model's API key is the secret `<scheme>_api_key` of the flow's
+  profile (`anthropic_api_key`); it is sent only to the scheme's default
+  endpoint, never to a host or `base_url` the model URI names. This build
+  links the `ollama` scheme only. Unset configures none and a step using the
+  node fails with `engine_feature`. A prompt `name@N` is `prompts/name@N.yaml` in the flow
   bundle, else in an installed pack: YAML with `system:` and `template:` (Go
   text/template; funcs `join`, `trunc`, `default`; a missing key is an
   error). The ceiling of the step (`privacy`) refuses a cloud model with
-  `privacy_violation`.
+  `privacy_violation`; under `local-only` the `llm` client is also resolved
+  local-only, so kit enforces the same refusal at the endpoint.
 - Local hosts: `privacy.local_hosts` (env `FLO_PRIVACY_LOCAL_HOSTS`,
   comma-separated host names and CIDRs; default none) lists hosts a model URI
   may name under a local-only ceiling beyond localhost and private addresses.
@@ -144,8 +152,9 @@ flo run cancel <run> --yes
   gives its section the line `source unavailable: <source>` and the brief is
   still produced; the three retry once at most, so a brief waits seconds, not
   minutes. The facts handed to the model are cut to the var `context_chars`
-  (default 6000; `--var context_chars=N`). Today the `template` backend renders
-  the prompt (`ai.generator: template` or `FLO_AI_GENERATOR=template`). To run
+  (default 6000; `--var context_chars=N`). The `template` backend renders the prompt
+  (`ai.generator: template` or `FLO_AI_GENERATOR=template`); `llm` runs it on
+  the model. To run
   it: set `packs.ctxt.url` and `packs.calendar.url` (config file,
   `FLO_PACKS_*` or `-c`), the secret `ctxt_token` when ctxt needs one, grant
   `knowledge.read`, `mail.read`, `tasks.read` and `calendar.read` to the
