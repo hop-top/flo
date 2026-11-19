@@ -90,7 +90,8 @@ replace hop.top/flo/spec => ./spec
 
 // kit pinned to a poly-kit next commit (beta.14 plus the llm transport,
 // local-only, structured output, prompt, judge, judge/llmjudge, judge/jev,
-// judge/eval, grounding, strategy and llmxrr packages). The commit is not in
+// judge/eval, grounding, strategy and llmxrr packages, and the project-layer
+// config rules). The commit is not in
 // hop-top/kit, so it is fetched from the poly-kit repository, where it is
 // reachable through its next branch.
-replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119031747-276efdd425d8
+replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119070132-53a15bf7ef56
