@@ -26,7 +26,7 @@ const runnableHint = "write ollama://<model> for the local daemon or scheme://ho
 //  2. else the URI's host, in the host:port/<model> form;
 //  3. else the scheme's declared default endpoint (defaultLocal).
 //
-// A host is local when it is localhost, a *.localhost name, a loopback
+// A host is local when it is localhost, a loopback
 // address (127.0.0.0/8, ::1), a private one (RFC 1918, fc00::/7), or listed
 // in local (privacy.local_hosts). Tailnet addresses (100.64.0.0/10,
 // *.ts.net) and every other named host are cloud unless listed.
@@ -151,7 +151,7 @@ func IsLocalHost(h string, local *LocalHosts) bool {
 	if h == "" {
 		return false
 	}
-	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
+	if h == "localhost" {
 		return true
 	}
 	ip := net.ParseIP(h)

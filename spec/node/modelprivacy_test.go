@@ -44,6 +44,7 @@ func TestModelPrivacy(t *testing.T) {
 		{"ollama public ip", "ollama://8.8.8.8:11434/gemma", nil, PrivacyCloud},
 		{"ollama 172.32 is public", "ollama://172.32.0.1:11434/gemma", nil, PrivacyCloud},
 		{"mdns name is a named host", "ollama://box.local:11434/gemma", nil, PrivacyCloud},
+		{"a *.localhost name is a named host, as kit reads it", "ollama://foo.localhost:11434/gemma", nil, PrivacyCloud},
 		{"lookalike of localhost", "ollama://localhost.example.com:11434/gemma", nil, PrivacyCloud},
 		{"lmstudio remote host", "lmstudio://example.com:1234/m", nil, PrivacyCloud},
 		// base_url wins over host and default

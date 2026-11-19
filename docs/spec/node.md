@@ -542,12 +542,12 @@ Rules:
   local, or when the scheme's default is (`ollama`, `lmstudio`); `cloud` for
   every other host and default (`openai`, `anthropic`, `openrouter`, ...). So
   `openai://localhost:8000/m?base_url=https://api.openai.com/v1` is `cloud`.
-  A host is local when it is `localhost`, `*.localhost`, loopback (127.0.0.0/8,
+  A host is local when it is `localhost`, loopback (127.0.0.0/8,
   `::1`), private (RFC 1918, `fc00::/7`), or listed in `privacy.local_hosts`
   (config; env `FLO_PRIVACY_LOCAL_HOSTS`, comma-separated; host names and
   CIDRs; default empty). Tailnet addresses (100.64.0.0/10, `*.ts.net`), `.local`
-  names and every other named host are `cloud` unless listed. Forms the model
-  client cannot run are refused (V19, and `privacy_violation` at run time, under
+  and `*.localhost` names and every other named host are `cloud` unless listed.
+  Forms the model client cannot run are refused (V19, and `privacy_violation` at run time, under
   any ceiling): an empty authority (`ollama:///x`), a unix socket, a portless
   host (`ollama://localhost/x`, which the client reads as the model
   `localhost/x`) and a non-numeric port. Write `ollama://<model>` for the
