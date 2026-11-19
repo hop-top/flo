@@ -2,7 +2,6 @@ package run_test
 
 import (
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -249,10 +248,11 @@ steps:
 func TestAttemptTimeoutIsAnUnknownOutcome(t *testing.T) {
 	h := newH(t)
 	h.node(&node.Spec{Node: "t/slow@1", SideEffect: node.SideEffectRead, Timeout: "10s"})
-	var calls atomic.Int32
 	h.fx.Runner.Handle(func(inv core.Invocation) bool { return inv.StepID == "s" },
 		func(inv core.Invocation) (core.Result, error) {
-			if calls.Add(1) == 1 {
+			// The attempt number, not a count of handler entries: an
+			// abandoned first attempt may enter after the second one.
+			if inv.Attempt == 1 {
 				if inv.Timeout != 10*time.Second {
 					t.Errorf("invocation timeout = %v, want the node's default", inv.Timeout)
 				}
