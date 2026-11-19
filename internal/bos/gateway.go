@@ -25,10 +25,12 @@ const DefaultBin = "bos"
 // DefaultTimeout bounds one bos call.
 const DefaultTimeout = 30 * time.Second
 
-// EnvActor is the variable bos reads the asserted acting principal from. The
-// credential that proves it is the profile's own (the aps profile the call
-// runs under holds it in its environment); flo never takes one on a flag.
-const EnvActor = "BOS_ACTOR"
+// EnvAgentToken is the variable bos reads the agent's credential from: a bearer
+// token of the profile's bos agent principal, which also fixes who the agent
+// acts for. It lives in the environment of the aps profile the call runs
+// under, so flo never sets, reads or logs it, and passes no actor or
+// acting-for of its own (bos refuses another principal than the token's).
+const EnvAgentToken = "BOS_AGENT_TOKEN" //nolint:gosec // the name of a variable, not a credential
 
 // Codes of the bos.flo/v1 error vocabulary.
 const (
@@ -167,7 +169,7 @@ type TransitionRecorded struct {
 
 // Gateway runs the bos verbs flo needs, over CLI exec with JSON, as the
 // profile that acts: the command runs under that profile (aps run), so the
-// profile's own environment carries its credential.
+// profile's own environment carries its credential (BOS_AGENT_TOKEN).
 type Gateway struct {
 	run core.CommandRunner
 	cfg Config
@@ -180,19 +182,13 @@ func NewGateway(run core.CommandRunner, cfg Config) *Gateway { return &Gateway{r
 func (g *Gateway) Config() Config { return g.cfg }
 
 // call runs one bos verb as profile and returns its standard output.
-func (g *Gateway) call(ctx context.Context, profile, actor, actingFor string, stdin []byte, argv ...string) ([]byte, error) {
+func (g *Gateway) call(ctx context.Context, profile string, stdin []byte, argv ...string) ([]byte, error) {
 	full := append([]string{g.cfg.bin()}, argv...)
 	full = append(full, "--format", "json")
 	if g.cfg.Scope != "" {
 		full = append(full, "--scope", g.cfg.Scope)
 	}
-	if actingFor != "" {
-		full = append(full, "--acting-for", actingFor)
-	}
 	spec := core.CommandSpec{Argv: full, Profile: profile, Stdin: stdin, Timeout: g.cfg.timeout()}
-	if actor != "" {
-		spec.Env = map[string]string{EnvActor: actor}
-	}
 	res, err := g.run.Run(ctx, spec)
 	if err != nil {
 		return nil, core.Errorf(core.CodeEngineUnreachable, "bos %s: %w", argv[0], err)
@@ -299,83 +295,55 @@ func BosCode(err error) string {
 	return ""
 }
 
-// proposalRow is a row of `bos agent propose` and `bos agent proposal show`.
-type proposalRow struct {
-	ID             string          `json:"id"`
-	Status         string          `json:"status"`
-	Digest         string          `json:"request_digest"`
-	ApprovedDigest string          `json:"approved_digest"`
-	ExecutionKey   string          `json:"execution_key"`
-	Request        json.RawMessage `json:"request"`
-	Expires        string          `json:"expires_at"`
+// proposeRow is the row `bos agent propose` prints (one in a list).
+type proposeRow struct {
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	Digest  string `json:"request_digest"`
+	Expires string `json:"expires_at"`
 }
 
 // Propose opens the proposal for the request, as the agent: idempotent by
-// digest, so the same request returns the same proposal.
+// digest, so the same request returns the same proposal. Only its id and
+// status are read here; the state flo decides on is the proposal-state
+// document, read by digest.
 func (g *Gateway) Propose(ctx context.Context, r Request) (ProposalState, error) {
 	argv := []string{"agent", "propose", "--operation", r.Operation, "--input", "-", "--purpose", r.Purpose}
-	out, err := g.call(ctx, r.Profile, r.Actor, r.ActingFor, r.Input, argv...)
+	out, err := g.call(ctx, r.Profile, r.Input, argv...)
 	if err != nil {
 		return ProposalState{}, err
 	}
-	return readProposal(out, "")
+	rs, err := rows[proposeRow](out)
+	if err != nil || len(rs) != 1 || rs[0].ID == "" || rs[0].Status == "" || rs[0].Digest == "" {
+		return ProposalState{}, core.Errorf(core.CodeOutputInvalid, "bos agent propose: want one row with id, status and request_digest: %v", err)
+	}
+	return ProposalState{ID: rs[0].ID, Digest: rs[0].Digest, Status: rs[0].Status, ExpiresAt: rs[0].Expires}, nil
 }
 
-// ProposalByDigest reads the newest proposal for a request digest.
+// ProposalByDigest reads the newest proposal for a request digest: the
+// bos.flo/v1 proposal-state document, one object.
 func (g *Gateway) ProposalByDigest(ctx context.Context, r Request) (ProposalState, error) {
-	out, err := g.call(ctx, r.Profile, r.Actor, r.ActingFor, nil, "agent", "proposal", "show", "--digest", r.Digest)
+	out, err := g.call(ctx, r.Profile, nil, "agent", "proposal", "show", "--digest", r.Digest)
 	if err != nil {
 		return ProposalState{}, err
 	}
-	return readProposal(out, r.Digest)
-}
-
-// readProposal reads the one row a proposal verb prints and maps it to the
-// proposal-state document. asked is the digest the proposal was looked up by,
-// "" when it was just opened.
-func readProposal(out []byte, asked string) (ProposalState, error) {
-	rows, err := rows[proposalRow](out)
-	if err != nil {
-		return ProposalState{}, core.Errorf(core.CodeOutputInvalid, "bos proposal: %w", err)
+	var st ProposalState
+	if err := json.Unmarshal(out, &st); err != nil {
+		return ProposalState{}, core.Errorf(core.CodeOutputInvalid, "bos agent proposal show: want one proposal-state document: %w", err)
 	}
-	if len(rows) != 1 {
-		return ProposalState{}, core.Errorf(core.CodeOutputInvalid, "bos proposal: want one row, got %d", len(rows))
-	}
-	r := rows[0]
-	st := ProposalState{ID: r.ID, Digest: r.Digest, Status: r.Status, ApprovedDigest: r.ApprovedDigest,
-		ExecutionKey: r.ExecutionKey, Request: r.Request, ExpiresAt: r.Expires}
 	if st.ID == "" || st.Status == "" || st.Digest == "" {
-		return ProposalState{}, core.New(core.CodeOutputInvalid, "bos proposal: a row needs id, status and request_digest")
-	}
-	switch st.Status {
-	case "approved":
-		if st.ApprovedDigest == "" {
-			st.ApprovedDigest = st.Digest // approved as asked
-		}
-	case "approved_corrected":
-		// A correction changes the proposal's own digest, not the one flo asked
-		// with: bos finds the proposal by the digest it was first made with.
-		if asked != "" && st.Digest != asked {
-			if st.ApprovedDigest == "" {
-				st.ApprovedDigest = st.Digest
-			}
-			st.Digest = asked
-		}
+		return ProposalState{}, core.New(core.CodeOutputInvalid, "bos agent proposal show: the document needs id, digest and status")
 	}
 	return st, nil
 }
 
-// rows decodes what a bos list verb prints: a JSON array, or a single object.
+// rows decodes what a bos verb prints as a list.
 func rows[T any](out []byte) ([]T, error) {
 	var list []T
-	if err := json.Unmarshal(out, &list); err == nil {
-		return list, nil
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("not a JSON list: %w", err)
 	}
-	var one T
-	if err := json.Unmarshal(out, &one); err != nil {
-		return nil, fmt.Errorf("not JSON rows: %w", err)
-	}
-	return []T{one}, nil
+	return list, nil
 }
 
 // TrustLevels reads the agent's level in each class, as the agent. Classes bos
@@ -385,7 +353,7 @@ func (g *Gateway) TrustLevels(ctx context.Context, profile, agent string, classe
 	for _, c := range classes {
 		argv = append(argv, "--class", c)
 	}
-	out, err := g.call(ctx, profile, "", "", nil, argv...)
+	out, err := g.call(ctx, profile, nil, argv...)
 	if err != nil {
 		return nil, err
 	}
@@ -412,61 +380,27 @@ func (g *Gateway) TrustLevels(ctx context.Context, profile, agent string, classe
 	return res, nil
 }
 
-type stageRow struct {
-	ID           string `json:"id"`
-	State        string `json:"state"`
-	StateVersion int64  `json:"state_version"`
-	Quorum       string `json:"quorum"`
-	// Transitions is read when bos prints them as a list (the contract's form).
-	Transitions []StageTransition `json:"transitions"`
-	InstanceID  string            `json:"instance_id"`
-}
-
-// Stage reads a subject's workflow instance (`bos workflow status`), as the
-// profile that reads it.
-func (g *Gateway) Stage(ctx context.Context, profile, actor, instance string) (Stage, error) {
-	out, err := g.call(ctx, profile, actor, "", nil, "workflow", "status", instance)
+// Stage reads a subject's workflow instance (`bos workflow status`): the
+// bos.flo/v1 stage document, one object, as the profile that reads it.
+func (g *Gateway) Stage(ctx context.Context, profile, instance string) (Stage, error) {
+	out, err := g.call(ctx, profile, nil, "workflow", "status", instance)
 	if err != nil {
 		return Stage{}, err
 	}
-	rs, err := rows[stageRow](out)
-	if err != nil || len(rs) != 1 {
-		return Stage{}, core.Errorf(core.CodeOutputInvalid, "bos workflow status: want one instance row: %v", err)
+	var st Stage
+	if err := json.Unmarshal(out, &st); err != nil {
+		return Stage{}, core.Errorf(core.CodeOutputInvalid, "bos workflow status: want one stage document: %w", err)
 	}
-	r := rs[0]
-	st := Stage{InstanceID: firstOf(r.InstanceID, r.ID), State: r.State, StateVersion: r.StateVersion, Transitions: r.Transitions}
 	if st.InstanceID == "" || st.State == "" || st.StateVersion < 1 {
-		return Stage{}, core.New(core.CodeOutputInvalid, "bos workflow status: a row needs id, state and state_version")
-	}
-	if len(st.Transitions) == 0 && r.Quorum != "" {
-		st.Transitions = parseQuorum(r.Quorum)
+		return Stage{}, core.New(core.CodeOutputInvalid, "bos workflow status: the document needs instance_id, state and state_version")
 	}
 	return st, nil
-}
-
-// quorumPart is one "action: status accepted/required" of the quorum column.
-var quorumPart = regexp.MustCompile(`^\s*([^:]+):\s*(\w+)\s+(\d+)/(\d+)\s*$`)
-
-// parseQuorum reads the quorum column bos prints ("approve: pending 1/2; ..."),
-// for a bos that does not list the transitions as JSON.
-func parseQuorum(q string) []StageTransition {
-	var out []StageTransition
-	for _, part := range strings.Split(q, ";") {
-		m := quorumPart.FindStringSubmatch(part)
-		if m == nil {
-			continue
-		}
-		acc, _ := strconv.Atoi(m[3])
-		req, _ := strconv.Atoi(m[4])
-		out = append(out, StageTransition{Action: strings.TrimSpace(m[1]), Status: m[2], Accepted: acc, Required: req})
-	}
-	return out
 }
 
 // RequestTransition asks for the transition out of the instance's current
 // state. It is the one write flo makes to a stage and never a decision: bos
 // records the request and the people the definition names decide.
-func (g *Gateway) RequestTransition(ctx context.Context, profile, actor string, t TransitionRequest) (TransitionRecorded, error) {
+func (g *Gateway) RequestTransition(ctx context.Context, profile string, t TransitionRequest) (TransitionRecorded, error) {
 	argv := []string{"workflow", "request-transition", t.Instance, "--reason", t.Reason}
 	if t.Action != "" {
 		argv = append(argv, "--action", t.Action)
@@ -477,7 +411,7 @@ func (g *Gateway) RequestTransition(ctx context.Context, profile, actor string, 
 	if t.Key != "" {
 		argv = append(argv, "--idempotency-key", t.Key)
 	}
-	out, err := g.call(ctx, profile, actor, "", nil, argv...)
+	out, err := g.call(ctx, profile, nil, argv...)
 	if err != nil {
 		return TransitionRecorded{}, err
 	}
@@ -486,11 +420,4 @@ func (g *Gateway) RequestTransition(ctx context.Context, profile, actor string, 
 		return TransitionRecorded{}, core.Errorf(core.CodeOutputInvalid, "bos workflow request-transition: want one row: %v", err)
 	}
 	return rs[0], nil
-}
-
-func firstOf(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }

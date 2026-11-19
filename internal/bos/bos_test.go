@@ -134,14 +134,19 @@ func TestProposeRendersBosIdsAndOpensAsTheAgent(t *testing.T) {
 	if c.Profile != "noor" {
 		t.Errorf("ran as %q, want the acting profile", c.Profile)
 	}
-	if c.Env[bos.EnvActor] != agent {
-		t.Errorf("BOS_ACTOR = %q", c.Env[bos.EnvActor])
+	// who the call is, and for whom, is the profile's credential (BOS_AGENT_TOKEN
+	// in its own environment): flo sets neither an actor nor an acting-for
+	if len(c.Env) != 0 {
+		t.Errorf("flo set an environment: %v", c.Env)
+	}
+	if hasArg(c.Argv, "--acting-for") || hasArg(c.Argv, "--actor") {
+		t.Errorf("flo names a principal on the command line: %v", c.Argv)
 	}
 	if string(c.Stdin) != `{"args":["bdoc_1"],"flags":{"amount":"100.00"}}` {
 		t.Errorf("stdin = %s", c.Stdin)
 	}
 	for _, want := range [][]string{{"--operation", "billing.pay"}, {"--input", "-"}, {"--purpose", "flow pay@1 step pay"},
-		{"--acting-for", person}, {"--scope", scope}, {"--format", "json"}} {
+		{"--scope", scope}, {"--format", "json"}} {
 		if !hasArg(c.Argv, want...) {
 			t.Errorf("argv lacks %v: %v", want, c.Argv)
 		}
@@ -240,11 +245,10 @@ func TestFinalStatusesDenyAndStaySettled(t *testing.T) {
 func TestAnotherDigestIsNotAnApproval(t *testing.T) {
 	f := newFake(t)
 	f.reply([]string{"agent", "propose"}, "propose-proposed.json", 0)
-	// a corrected row may carry another digest (read as the asked one); a plain
-	// approval with another digest is refused
+	// a document for another digest than the one asked is no approval
 	other := "sha256:" + strings.Repeat("e", 64)
 	f.fx.Commands.On([]string{"bos", "agent", "proposal", "show"}, func(core.CommandSpec) (core.CommandResult, error) {
-		return core.CommandResult{Stdout: []byte(`[{"id":"p","status":"approved","request_digest":"` + other + `","execution_key":"k"}]`)}, nil
+		return core.CommandResult{Stdout: []byte(`{"id":"p","status":"approved","digest":"` + other + `","approved_digest":"` + other + `","execution_key":"k"}`)}, nil
 	})
 	adm := f.admission()
 	if _, err := adm.Admit(bg, request()); err != nil {
@@ -373,12 +377,12 @@ func TestStageAndTransitionRequest(t *testing.T) {
 	f := newFake(t)
 	f.reply([]string{"workflow", "status"}, "status.json", 0)
 	f.reply([]string{"workflow", "request-transition"}, "request.json", 0)
-	st, err := f.gateway().Stage(bg, "noor", agent, "workflow_instances_01h455vb4pex5vsknk084sn02q")
+	st, err := f.gateway().Stage(bg, "noor", "workflow_instances_01h455vb4pex5vsknk084sn02q")
 	if err != nil || st.State != "pending" || st.StateVersion != 1 || len(st.Transitions) != 1 ||
 		st.Transitions[0].Action != "approve" || st.Transitions[0].Required != 2 || st.Transitions[0].Accepted != 1 {
 		t.Fatalf("stage = %+v %v", st, err)
 	}
-	rec, err := f.gateway().RequestTransition(bg, "noor", agent, bos.TransitionRequest{
+	rec, err := f.gateway().RequestTransition(bg, "noor", bos.TransitionRequest{
 		Instance: "workflow_instances_01h455vb4pex5vsknk084sn02q", Reason: "checks passed", StateVersion: st.StateVersion, Key: "rt-1"})
 	if err != nil || rec.To != "approved" || rec.StateVersion != 1 {
 		t.Fatalf("recorded = %+v %v", rec, err)
@@ -393,7 +397,7 @@ func TestStageAndTransitionRequest(t *testing.T) {
 func TestStaleStateVersionIsAConflictWithBosCode(t *testing.T) {
 	f := newFake(t)
 	f.reply([]string{"workflow", "request-transition"}, "error-stale.json", 1)
-	_, err := f.gateway().RequestTransition(bg, "noor", agent, bos.TransitionRequest{Instance: "i", Reason: "r", StateVersion: 1})
+	_, err := f.gateway().RequestTransition(bg, "noor", bos.TransitionRequest{Instance: "i", Reason: "r", StateVersion: 1})
 	if !core.IsCode(err, core.CodeRunStateConflict) || bos.BosCode(err) != bos.CodeStateVersionMismatch {
 		t.Fatalf("err = %v (bos code %q)", err, bos.BosCode(err))
 	}
@@ -423,5 +427,34 @@ func TestProfileDeclaresOperationGrantsAndExpiry(t *testing.T) {
 	}
 	if len(p.Represents) != 2 || p.Represents[0] != "operation_grant" || p.Represents[1] != "expiry" {
 		t.Fatalf("represents = %v", p.Represents)
+	}
+}
+
+// Opening a request bos already decided answers with its proposal: flo then
+// reads the state document, which carries the approved digest and the key.
+func TestOpeningADecidedRequestReadsTheStateDocument(t *testing.T) {
+	f := newFake(t)
+	f.reply([]string{"agent", "propose"}, "propose-approved.json", 0)
+	f.reply([]string{"agent", "proposal", "show"}, "show-approved.json", 0)
+	d, err := f.admission().Admit(bg, request())
+	if err != nil || d.Result != core.AdmissionAllow || d.Receipt.ExecutionKey == "" {
+		t.Fatalf("decision = %+v %v", d, err)
+	}
+}
+
+// bos prints one document, not a list, for the state flo reads.
+func TestProposalAndStageMustBeOneDocument(t *testing.T) {
+	f := newFake(t)
+	f.fx.Commands.On([]string{"bos", "agent", "proposal", "show"}, func(core.CommandSpec) (core.CommandResult, error) {
+		return core.CommandResult{Stdout: []byte(`[{"id":"p","status":"proposed","digest":"x"}]`)}, nil
+	})
+	f.fx.Commands.On([]string{"bos", "workflow", "status"}, func(core.CommandSpec) (core.CommandResult, error) {
+		return core.CommandResult{Stdout: []byte(`[{"id":"i","state":"s","state_version":1}]`)}, nil
+	})
+	if _, err := f.gateway().ProposalByDigest(bg, bos.Request{Digest: wantDigest(), Profile: "noor"}); !core.IsCode(err, core.CodeOutputInvalid) {
+		t.Errorf("a list for a proposal = %v", err)
+	}
+	if _, err := f.gateway().Stage(bg, "noor", "i"); !core.IsCode(err, core.CodeOutputInvalid) {
+		t.Errorf("a list for a stage = %v", err)
 	}
 }

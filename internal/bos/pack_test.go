@@ -1,6 +1,7 @@
 package bos_test
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -97,5 +98,29 @@ func TestRequestTransitionNodeCarriesTheApproval(t *testing.T) {
 	argv := planBound(t, s, in, &core.AdmissionBinding{Proposal: "agent_proposals_1", ExecutionKey: "exec_1"})
 	if argv[0] != "bos" || !strings.Contains(strings.Join(argv, " "), "--proposal agent_proposals_1 --idempotency-key exec_1") {
 		t.Errorf("argv = %v", argv)
+	}
+}
+
+// The status node reshapes the stage document bos prints (one object).
+func TestStatusNodeReshapesTheStageDocument(t *testing.T) {
+	s := loadPack(t)["bos/workflow.status@1"]
+	raw, err := os.ReadFile("testdata/status.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newFake(t)
+	f.fx.Commands.On([]string{"bos", "workflow", "status"}, func(core.CommandSpec) (core.CommandResult, error) {
+		return core.CommandResult{Stdout: raw}, nil
+	})
+	x := &command.Executor{Commands: f.fx.Commands}
+	res, xerr := x.Execute(bg, core.Invocation{Node: s, In: map[string]any{"instance": "i"}, RunAs: "noor",
+		Config: map[string]any{"bos": map[string]any{"scope": scope}}})
+	if xerr != nil || res.Outcome != core.OutcomeOK {
+		t.Fatalf("result = %+v %v", res, xerr)
+	}
+	out, _ := res.Output.(map[string]any)
+	ts, _ := out["transitions"].([]any)
+	if out["state"] != "pending" || fmt.Sprint(out["state_version"]) != "1" || len(ts) != 1 {
+		t.Fatalf("output = %v", out)
 	}
 }

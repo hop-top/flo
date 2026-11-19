@@ -17,26 +17,37 @@ exit_codes: { ok: [0] }
 outputs:
   from: stdout
   format: json
-  # bos prints one row per instance; the step's output is that row, with the
-  # state version a later request passes back (flags.state-version of
-  # bos/workflow.request-transition@1).
+  # bos prints the bos.flo/v1 stage as one document; the step's output is the
+  # state, the state version a later request passes back (flags.state-version
+  # of bos/workflow.request-transition@1) and the quorum of each transition.
   map: >-
-    {{ {'instance_id': out[0].id,
-        'state': out[0].state,
-        'state_version': out[0].state_version,
-        'subject_id': out[0].subject_id,
-        'subject_revision': out[0].subject_revision,
-        'quorum': has(out[0].quorum) ? out[0].quorum : ''} }}
+    {{ {'instance_id': out.instance_id,
+        'state': out.state,
+        'state_version': out.state_version,
+        'subject_id': out.subject_id,
+        'subject_revision': out.subject_revision,
+        'transitions': out.transitions} }}
   schema:
     type: object
-    required: [instance_id, state, state_version]
+    required: [instance_id, state, state_version, transitions]
     properties:
       instance_id: { type: string }
       state: { type: string }
       state_version: { type: integer }
       subject_id: { type: string }
       subject_revision: { type: integer }
-      quorum: { type: string, description: 'Per transition out of the state: "action: status accepted/required", separated by ;.' }
+      transitions:
+        type: array
+        items:
+          type: object
+          required: [action, to, status]
+          properties:
+            action: { type: string }
+            to: { type: string }
+            required: { type: integer }
+            accepted: { type: integer }
+            rejected: { type: integer }
+            status: { type: string }
 side_effect: read
 privacy: local
 idempotent: true

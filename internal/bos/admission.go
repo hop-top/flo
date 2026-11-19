@@ -172,7 +172,12 @@ func (a *Admission) Admit(ctx context.Context, req core.AdmissionRequest) (core.
 // ask opens the proposal when there is none yet, else reads it by digest.
 func (a *Admission) ask(ctx context.Context, r Request, have *core.Receipt) (ProposalState, error) {
 	if have == nil || have.Proposal == "" {
-		return a.gw.Propose(ctx, r)
+		st, err := a.gw.Propose(ctx, r)
+		if err != nil || st.Status == statusProposed {
+			return st, err
+		}
+		// opening an already decided request answers with its proposal: read
+		// the state document, which carries the approved digest and the key
 	}
 	return a.gw.ProposalByDigest(ctx, r)
 }

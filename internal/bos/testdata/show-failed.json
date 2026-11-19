@@ -1,1 +1,1 @@
-[{"id":"agent_proposals_01h455vb4pex5vsknk084sn02q","status":"failed","operation_key":"billing.pay","agent_principal_id":"principals_1","class_keys":"billing_payment","revision_no":1,"approvals":"0/1","expires_at":"2026-11-15T10:00:00.000Z","request_digest":"@DIGEST@"}]
+{"id":"agent_proposals_01h455vb4pex5vsknk084sn02q","digest":"@DIGEST@","status":"failed"}
