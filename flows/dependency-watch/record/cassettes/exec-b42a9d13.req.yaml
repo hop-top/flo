@@ -1,7 +1,7 @@
 xrr: "1"
 adapter: exec
 fingerprint: b42a9d13
-recorded_at: "2026-11-19T03:20:11Z"
+recorded_at: "2026-11-19T04:24:03Z"
 payload:
     argv:
         - aps
