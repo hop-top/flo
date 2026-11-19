@@ -106,6 +106,7 @@ func TestRuleCodes(t *testing.T) {
 		{"general: required with default", strings.Replace(nodeHead, "q: { type: string }", "q: { type: string, required: true, default: a }", 1), "", CodeInvalidNode},
 		{"general: builtin outside flo", strings.Replace(nodeHead, "kind: command\nargv: [x]\n", "kind: builtin\n", 1), "", CodeInvalidNode},
 		{"general: flo namespace for a command", strings.Replace(nodeHead, "acme/x@1", "flo/x@1", 1), "", CodeInvalidNode},
+		{"general: input named admission", strings.Replace(nodeHead, "q: { type: string }", "admission: { type: string }", 1), "", CodeInvalidNode},
 		{"general: reserved isolation", nodeHead + "placement: { isolation: container }\n", "", CodeReservedKey},
 		{"general: local node on a remote runner", nodeHead + "placement: { runner: farm }\n", "", CodePrivacyViolation},
 	}

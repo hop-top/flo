@@ -251,7 +251,7 @@ var (
 var reservedVarNames = map[string]bool{
 	nsSubject: true, nsResults: true, nsRun: true, nsSteps: true, nsVars: true,
 	nsTrigger: true, nsState: true, nsItem: true, nsIndex: true, nsConfig: true,
-	nsIn: true, nsResult: true, nsDecisions: true,
+	nsIn: true, nsResult: true, nsDecisions: true, nsAdmission: true,
 }
 
 // engineNamespaces are bound by the engine at run start or dispatch. A
@@ -260,7 +260,7 @@ var reservedVarNames = map[string]bool{
 // (flow spec §9).
 var engineNamespaces = map[string]bool{
 	nsTrigger: true, nsState: true, nsItem: true, nsIndex: true, nsConfig: true,
-	nsIn: true, nsResult: true, nsDecisions: true,
+	nsIn: true, nsResult: true, nsDecisions: true, nsAdmission: true,
 }
 
 // Template namespaces: {{<namespace>.<field>}}. A bare {{name}} is a var.
@@ -279,6 +279,9 @@ const (
 	nsIn        = "in"
 	nsResult    = "result"
 	nsDecisions = "decisions"
+	// nsAdmission is bound by the engine from the admission backend's
+	// approval (node.md §10.2); flow data cannot set or shadow it.
+	nsAdmission = "admission"
 )
 
 // Field names shared by the template scope, the validator and the

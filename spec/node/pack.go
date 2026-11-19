@@ -91,6 +91,9 @@ func CheckPack(p *Pack) Errors {
 		if !nsRe.MatchString(ns) {
 			c.invalid("", "config."+ns, "config namespace %q must match %s", ns, nsRe)
 		}
+		if ns == ReservedAdmission {
+			c.invalid("", "config."+ns, "config namespace %q is reserved: admission is bound by the engine (node.md §10.2)", ns)
+		}
 		c.defs("config."+ns, defs)
 	}
 	for _, l := range []struct {

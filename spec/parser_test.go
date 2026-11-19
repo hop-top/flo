@@ -130,6 +130,7 @@ func TestValidateFlow_Rules(t *testing.T) {
 		{"no steps", "flow: x\nversion: 1\n", "steps"},
 		{"bad subject", "flow: x\nversion: 1\nrequires: {subject: sprint}\nsteps:\n  - id: a\n", "subject"},
 		{"reserved var", "flow: x\nversion: 1\nvars:\n  subject: {default: 1}\nsteps:\n  - id: a\n", "reserved"},
+		{"admission var", "flow: x\nversion: 1\nvars:\n  admission: {default: 1}\nsteps:\n  - id: a\n", "reserved"},
 		{"required with default", "flow: x\nversion: 1\nvars:\n  pr: {required: true, default: 1}\nsteps:\n  - id: a\n", "contradict"},
 		{"duplicate id", "flow: x\nversion: 1\nsteps:\n  - id: a\n  - id: a\n", "duplicate"},
 		{"slash in id", "flow: x\nversion: 1\nsteps:\n  - id: a/b\n", "id"},

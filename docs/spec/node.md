@@ -687,6 +687,9 @@ also the step's idempotency key and `FLO_IDEMPOTENCY_KEY`). Both are `""`
 when the step has no approval, as with the local backend, so a template
 can test `admission.proposal != ''`. When the approver corrected the
 request, the step's `in` is the corrected input, never its own.
+`admission` is reserved: the engine alone binds it, and validation refuses a
+flow var, a node input, a pack config key or a config namespace named
+`admission`, so flow data cannot shadow or forge it.
 
 ### 10.3 Trust
 

@@ -19,6 +19,10 @@ const (
 	// CodeOutOfScope is N04 and N14: a placeholder reads a namespace the
 	// field does not have.
 	CodeOutOfScope = "out_of_scope"
+	// ReservedAdmission is the template namespace of the admission binding; no
+	// input or config key, and no config namespace, may carry the name.
+	ReservedAdmission = "admission"
+
 	// CodeReservedKey is a reserved value (container isolation, ...).
 	CodeReservedKey = "reserved_key"
 	// CodePrivacyViolation is a local node placed on a remote runner.
@@ -146,6 +150,9 @@ func (c *checker) defs(field string, defs map[string]InputDef) {
 		f := field + "." + name
 		if !inputNameRe.MatchString(name) {
 			c.invalid("", f, "name %q must match %s", name, inputNameRe)
+		}
+		if name == ReservedAdmission {
+			c.invalid("", f, "name %q is reserved: admission is bound by the engine (node.md §10.2)", name)
 		}
 		c.def(f, d)
 		if field == "inputs" && d.Required.Flag && d.HasDefault() {

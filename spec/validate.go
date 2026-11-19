@@ -56,7 +56,7 @@ func validateFlowVars(r *Flow) error {
 	for name, def := range r.Vars {
 		switch {
 		case reservedVarNames[name]:
-			return fmt.Errorf("var %q is reserved (namespaces: subject, results, run, steps, vars, trigger, state, item, index, config, in, result, decisions)", name)
+			return fmt.Errorf("var %q is reserved (namespaces: subject, results, run, steps, vars, trigger, state, item, index, config, in, result, decisions, admission)", name)
 		case !varNameRe.MatchString(name):
 			return fmt.Errorf("var %q must match %s", name, varNameRe)
 		case !validVarTypes[def.Type]:
