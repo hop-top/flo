@@ -1,0 +1,47 @@
+node: heo/inbox.list@1
+kind: command
+lowers_to: engine
+description: >-
+  The messages in one account's inbox as envelopes, newest first, read only.
+  Input of inbox/ingest@1.
+# heo-inbox-list (wrappers/) runs `heo conversation list` and `heo message list`
+# for the inbox and joins them: public mail from others, in a conversation not
+# archived or trashed. Run it under a read-only heo profile (viewer role,
+# read-only provider grant): the provider then refuses a write even if a bug
+# slipped one in. A failed account is data (`accounts.<name>.error`, exit 3),
+# never a failed step: inbox/ingest@1 turns it into that account's error in the
+# run; the node fails only on a missing daemon (exit 70, retried).
+argv:
+  - heo-inbox-list
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --account
+  - "{{ in.account }}"
+  - --inbox
+  - "{{ in.inbox }}"
+  - --email
+  - "{{ in.email }}"
+  - --limit
+  - "{{ in.limit }}"
+inputs:
+  account: { type: string, required: true, description: "The script's account name: the key of the envelopes in the output." }
+  inbox:   { type: string, default: "", description: "heo inbox id (or key); empty is the account name." }
+  email:   { type: string, default: "", description: "The account's own address, written as To of every message (heo keeps no To list); empty leaves To out." }
+  limit:   { type: integer, default: 50, minimum: 1, maximum: 500, description: At most this many messages. }
+exit_codes: { ok: [0, 3], retry: [6, 70] }    # 3: the account failed (data); 70: heo's daemon is not running; 6: transient
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [accounts]
+    properties:
+      accounts:
+        type: object
+        description: "{name: {envelopes: [...]} | {error: text}}: the --envelopes document of `inbox fetch`."
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [mail.read]
+timeout: 120s
+retry: { max_attempts: 3, backoff: 5s }

@@ -1,0 +1,104 @@
+#!/bin/sh
+# heo-inbox-list --out FILE --account NAME [--inbox ID] [--email ADDR] [--limit N]
+#                [--max-pages N]
+#
+# The messages of one account's INBOX as envelopes, for `inbox fetch
+# --envelopes`. Read only: it runs `heo conversation list --inbox` and `heo
+# message list --inbox` and nothing else. Same join as the script's own heo
+# backend:
+#   - a message counts when it is public, its author is not self/desk/agent,
+#     and its conversation is not archived or trashed at the provider;
+#   - newest first, at most N;
+#   - id is heo's message id; message-id, subject, from name, in-reply-to come
+#     from the mail metadata heo kept; flags are seen (conversation read) and
+#     flagged (starred); to is ADDR (heo keeps no To list), absent when ADDR is
+#     not given.
+# Writes {accounts: {NAME: {envelopes: [...]}}} to FILE, or, when heo fails for
+# a reason other than a missing daemon, {accounts: {NAME: {error: TEXT}}} and
+# exit 3: a failed account is data, the run goes on. TEXT is heo's error code
+# and message, never mail content.
+#
+# - Exit 70 (heo's daemon is not running) and 6 (transient) are passed through:
+#   the node retries them. 64 is a usage error.
+# - Subjects and addresses are written to FILE only, never to stderr.
+# - Needs heo and jq.
+command -v jq > /dev/null 2>&1 || { echo "heo-inbox-list: jq is required" >&2; exit 69; }
+
+out= account= inbox= email= limit=50 maxpages=20
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --account) account=$2; shift 2 ;;
+    --inbox) inbox=$2; shift 2 ;;
+    --email) email=$2; shift 2 ;;
+    --limit) limit=$2; shift 2 ;;
+    --max-pages) maxpages=$2; shift 2 ;;
+    *) echo "heo-inbox-list: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] && [ -n "$account" ] || { echo "heo-inbox-list: --out and --account are required" >&2; exit 64; }
+[ -n "$inbox" ] || inbox=$account
+case $limit$maxpages in *[!0-9]* | '') echo "heo-inbox-list: --limit and --max-pages are numbers" >&2; exit 64 ;; esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# fail MSG: the account as an error, exit 3.
+fail() {
+  jq -n --arg a "$account" --arg e "$1" '{accounts: {($a): {error: $e}}}' > "$out"
+  exit 3
+}
+
+# pages KIND FILE: every item of `heo KIND list --inbox INBOX` into FILE (a JSON array).
+pages() {
+  _kind=$1 _file=$2
+  echo '[]' > "$_file"
+  _cursor= _n=0
+  while :; do
+    set -- "$_kind" list --inbox "$inbox" --limit 100
+    [ -z "$_cursor" ] || set -- "$@" --cursor "$_cursor"
+    heo "$@" --format json --no-hints < /dev/null > "$tmp/page.json" 2> "$tmp/page.err"
+    _rc=$?
+    if [ "$_rc" -ne 0 ]; then
+      case $_rc in 70 | 6) cat "$tmp/page.err" >&2; exit "$_rc" ;; esac
+      fail "heo $_kind list failed: $(jq -r '[.code, .message] | map(select(. != null)) | join(": ")' "$tmp/page.err" 2> /dev/null | cut -c1-200)"
+    fi
+    jq -e '.items | type == "array"' "$tmp/page.json" > /dev/null 2>&1 || fail "heo $_kind list: unreadable page"
+    jq --slurpfile acc "$_file" '$acc[0] + .items' "$tmp/page.json" > "$tmp/acc.json" && mv "$tmp/acc.json" "$_file"
+    _cursor=$(jq -r 'if .complete == false then (.next // "") else "" end' "$tmp/page.json")
+    _n=$((_n + 1))
+    [ -n "$_cursor" ] && [ "$_n" -lt "$maxpages" ] || break
+  done
+}
+
+pages conversation "$tmp/convs.json"
+pages message "$tmp/msgs.json"
+
+jq -n --arg a "$account" --arg email "$email" --argjson limit "$limit" \
+  --slurpfile convs "$tmp/convs.json" --slurpfile msgs "$tmp/msgs.json" '
+  def meta:
+    ([.metadata[]? | select((.data | type) == "object" and ((.name // "") | startswith("mail"))) | .data][0])
+    // ([.content.parts[]? | select(((.structured.data // null) | type) == "object"
+                                    and ((.structured.name // "") | startswith("mail"))) | .structured.data][0])
+    // {};
+  def inbox_conv: ((.provider_state // []) | any(.archived or .trashed)) | not;
+  def flags: [ (if ((.provider_state // []) | any(.read)) then "seen" else empty end),
+               (if ((.provider_state // []) | any((.flags // []) | any(IN("star", "starred", "flagged")))) then "flagged" else empty end) ]
+             | map({iana: .});
+  ($convs[0] | map({key: .ref.id, value: .}) | from_entries) as $c
+  | {accounts: {($a): {envelopes:
+      ([$msgs[0][]
+        | select(((.audience.visibility) // "public") == "public"
+                 and ((.author.kind // "") | IN("self", "desk", "agent") | not)
+                 and ($c[.ref.conversation.id] != null)
+                 and ($c[.ref.conversation.id] | inbox_conv))]
+       | sort_by(.occurred_at // "") | reverse | .[:$limit]
+       | map(. as $m | (meta) as $h | {
+           id: $m.ref.id, "message-id": $h.message_id, date: $m.occurred_at,
+           from: {name: $h.from_name, email: ($m.author.external.id // null)},
+           to: (if $email == "" then [] else [{email: $email}] end),
+           subject: ($h.subject // ""),
+           flags: ($c[$m.ref.conversation.id] | flags),
+           "has-attachment": (([$m.content.parts[]? | select(.attachment)] | length) > 0),
+           "in-reply-to": $h.in_reply_to,
+           conversation: $m.ref.conversation.id}))}}}' > "$out" || fail "heo listing: unreadable record"

@@ -1,0 +1,4 @@
+{"items": [
+  {"ref": {"id": "c1", "inbox": {"id": "ib-acme"}}, "status": "open", "provider_state": [{"read": false, "archived": false}]},
+  {"ref": {"id": "c2", "inbox": {"id": "ib-acme"}}, "status": "open", "provider_state": [{"read": true, "archived": true}]}
+ ], "next": "cur2", "complete": false}

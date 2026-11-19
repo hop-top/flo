@@ -1,0 +1,47 @@
+node: inbox/ingest@1
+kind: command
+lowers_to: engine               # needs stdin
+description: >-
+  Snapshot envelopes a step listed (heo/inbox.list@1) into a new run, as
+  inbox/fetch@1 does for the accounts it reads itself. No network, no mail
+  server.
+# `inbox fetch --envelopes -` reads the envelopes from stdin and builds the run
+# exactly as a fetch does (snapshot, carried decisions, locks, seen, mutes,
+# rules, store rows), without calling a backend. Exit 3 means some account was
+# not listed: the run exists and the summary says which.
+argv:
+  - inbox
+  - fetch
+  - --json
+  - --envelopes
+  - "-"
+  - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
+  - "{{ in.limit > 0 ? ['--limit', string(in.limit)] : [] }}"
+stdin:
+  json: "{{ in.envelopes }}"
+inputs:
+  envelopes: { type: object, required: true, description: "The --envelopes document: {accounts: {name: {envelopes: [...]} | {error: text}}}, as heo/inbox.list@1 writes it." }
+  accounts:  { type: array, items: { type: string }, default: [], description: Account names to keep; none means every account in the document. }
+  limit:     { type: integer, default: 0, minimum: 0, description: Rows per account; 0 keeps the script's own setting. }
+exit_codes: { ok: [0, 3] }
+outputs:
+  from: stdout
+  format: json
+  fail_when: "{{ size(out.accounts) > 0 && size(out.failed_accounts) == size(out.accounts) }}"
+  schema:
+    type: object
+    required: [run, run_dir, rows, new, carried, accounts, failed_accounts]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      rows: { type: integer }
+      new: { type: integer }
+      carried: { type: integer }
+      locked: { type: integer }
+      accounts: { type: object }
+      failed_accounts: { type: array, items: { type: string } }
+side_effect: write-local        # a new run folder and the local mail store; reads no mail server
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 120s

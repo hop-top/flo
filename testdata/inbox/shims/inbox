@@ -47,6 +47,23 @@ case $cmd in
     n=$(( $(cat "$st/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$st/n"
     run=$(printf '20261118-0900%02d' $n)
     rd=$(rundir "$run"); mkdir -p "$rd"
+    case " $* " in *" --envelopes - "*)
+      # the offline seam: the envelopes on stdin are the whole listing; no backend, no fixtures
+      cat > "$st/envelopes.json"
+      jq -n --arg run "$run" --slurpfile d "$st/envelopes.json" '
+        [ $d[0].accounts | to_entries[] ] as $a
+        | {run: $run, created: "2026-11-18T09:00:00-05:00", limit: 200, since: null, locked: 0, seen: 0, muted: 0, invites: 0, carried: 0,
+           accounts: ($a | map({key, value: (if .value.error then {status: "error", error: .value.error} else {status: "ok", count: (.value.envelopes | length)} end)}) | from_entries),
+           rows: [ $a[] | select(.value.envelopes) | .key as $acct | .value.envelopes[]
+                   | {account: $acct, id: .id, message_id: ."message-id", date: .date, from: .from, to: [.to[]?.email], subject: .subject,
+                      flags: [.flags[]?.iana], has_attachment: ."has-attachment"} ]
+                 | to_entries | map({n: (.key + 1)} + .value)}' > "$rd/snapshot.json"
+      failed=$(jq -c '[.accounts | to_entries[] | select(.value.status != "ok") | .key] | sort' "$rd/snapshot.json")
+      rc=0; [ "$failed" != '[]' ] && rc=3
+      emit fetch $rc "$(jq -c --arg rd "$rd" --argjson failed "$failed" \
+        '{run: .run, run_dir: $rd, accounts: .accounts, failed_accounts: $failed, rows: (.rows | length), new: (.rows | length), carried: 0, locked: 0, seen: 0, muted: 0, files: [$rd + "/snapshot.json"]}' "$rd/snapshot.json")"
+      exit $rc ;;
+    esac
     if flag no-rows; then rows='[]'; else rows=$(cat "$td/rows.json"); fi
     flag no-guard && rows=$(printf '%s' "$rows" | jq -c 'map(select(.message_id != "<m5@example.org>"))')
     if flag fail-all; then rows='[]'; accts='{"acme":{"status":"error","error":"login failed"},"beta":{"status":"error","error":"login failed"}}'

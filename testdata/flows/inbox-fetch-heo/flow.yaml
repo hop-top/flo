@@ -1,0 +1,20 @@
+flow: inbox-fetch-heo
+version: 0.1.0
+description: One account listed through heo and snapshotted by the script's envelope seam, for the pack tests.
+on:
+  - manual: {}
+run_as: automation
+privacy: local-only
+tasks: none
+steps:
+  - id: list
+    uses: heo/inbox.list@1
+    with:
+      account: acme
+      inbox: ib-acme
+      email: me@acme.example
+
+  - id: ingest
+    uses: inbox/ingest@1
+    with:
+      envelopes: "{{ results.list }}"

@@ -1,0 +1,21 @@
+{"items": [
+  {"ref": {"id": "msg_3", "conversation": {"id": "c3"}}, "occurred_at": "2026-11-18T09:30:00Z",
+   "author": {"kind": "contact", "external": {"id": "pat@client.example"}},
+   "content": {"parts": [{"kind": "structured", "structured": {"name": "mail.headers", "data": {"message_id": "<a3@client.example>", "subject": "Contract draft", "from_name": "Pat"}}},
+                         {"kind": "file", "attachment": {"name": "draft.pdf"}}]}},
+  {"ref": {"id": "msg_4", "conversation": {"id": "c1"}}, "occurred_at": "2026-11-18T09:00:00Z",
+   "author": {"kind": "self", "external": {"id": "me@acme.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<own@acme.example>", "subject": "Own reply"}}]},
+  {"ref": {"id": "msg_5", "conversation": {"id": "c3"}}, "occurred_at": "2026-11-18T09:10:00Z",
+   "author": {"kind": "desk", "external": {"id": "desk@acme.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<desk@acme.example>", "subject": "Desk note"}}]},
+  {"ref": {"id": "msg_6", "conversation": {"id": "c1"}}, "occurred_at": "2026-11-18T09:20:00Z", "audience": {"visibility": "internal"},
+   "author": {"kind": "contact", "external": {"id": "x@vendor.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<int@vendor.example>", "subject": "Internal"}}]},
+  {"ref": {"id": "msg_7", "conversation": {"id": "c4"}}, "occurred_at": "2026-11-18T06:00:00Z",
+   "author": {"kind": "contact", "external": {"id": "t@vendor.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<trash@vendor.example>", "subject": "Trashed one"}}]},
+  {"ref": {"id": "msg_8", "conversation": {"id": "c9"}}, "occurred_at": "2026-11-18T06:30:00Z",
+   "author": {"kind": "contact", "external": {"id": "u@vendor.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<unk@vendor.example>", "subject": "Unknown conversation"}}]}
+ ], "complete": true}

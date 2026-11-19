@@ -1,0 +1,4 @@
+{"items": [
+  {"ref": {"id": "c3", "inbox": {"id": "ib-acme"}}, "status": "open", "provider_state": [{"read": true, "flags": ["star"]}]},
+  {"ref": {"id": "c4", "inbox": {"id": "ib-acme"}}, "status": "open", "provider_state": [{"trashed": true}]}
+ ], "complete": true}

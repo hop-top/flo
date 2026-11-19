@@ -1,0 +1,9 @@
+{"items": [
+  {"ref": {"id": "msg_1", "conversation": {"id": "c1"}}, "occurred_at": "2026-11-18T08:00:00Z",
+   "author": {"kind": "contact", "external": {"id": "billing@vendor.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<a1@vendor.example>", "subject": "Invoice 42", "from_name": "Vendor Billing", "in_reply_to": "<z0@acme.example>"}}],
+   "content": {"parts": [{"kind": "text", "text": "body is never read"}]}},
+  {"ref": {"id": "msg_2", "conversation": {"id": "c2"}}, "occurred_at": "2026-11-18T07:00:00Z",
+   "author": {"kind": "contact", "external": {"id": "old@vendor.example"}},
+   "metadata": [{"name": "mail", "data": {"message_id": "<a2@vendor.example>", "subject": "Archived one"}}]}
+ ], "next": "cur2", "complete": false}

@@ -14,6 +14,7 @@ requires: { flo: ">=0.1" }
 # deliberately not a node: mail headers stay on the host.
 nodes:
   - nodes/fetch.yaml
+  - nodes/ingest.yaml
   - nodes/rows.yaml
   - nodes/senders.yaml
   - nodes/lanes.yaml

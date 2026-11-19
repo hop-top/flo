@@ -1,0 +1,28 @@
+#!/bin/sh
+# Fake heo for the inbox fetch tests: serves testdata/inbox/heo, a page per
+# cursor (<kind>_<cursor or first>.json). Every call is logged to
+# $FLO_E2E_DIR/heo.log. Only the two listings exist: any other verb is a
+# failure (exit 64) and is logged like the rest, so a test can prove the
+# fetch never wrote.
+#   $FLO_E2E_DIR/heo-down   exit 70, as heo does with no daemon
+#   $FLO_E2E_DIR/heo-fail   exit 4 with heo's JSON error envelope on stderr
+echo "heo $*" >> "$FLO_E2E_DIR/heo.log"
+td="$FLO_E2E_TESTDATA/inbox/heo"
+[ -e "$FLO_E2E_DIR/heo-down" ] && { echo "heo: no daemon is running for profile default (PREREQUISITE)" >&2; exit 70; }
+[ -e "$FLO_E2E_DIR/heo-fail" ] && { echo '{"code":"CONFLICT","message":"inbox is being rebuilt"}' >&2; exit 4; }
+group=$1 verb=$2
+shift 2
+cursor=first inbox=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --cursor) cursor=$2; shift 2 ;;
+    --inbox) inbox=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$group $verb" in
+  "conversation list" | "message list")
+    [ "$inbox" = ib-acme ] || { echo '{"code":"NOT_FOUND","message":"inbox not found"}' >&2; exit 3; }
+    cat "$td/${group}s_$cursor.json" ;;
+  *) echo "fake heo: unsupported: $group $verb" >&2; exit 64 ;;
+esac
