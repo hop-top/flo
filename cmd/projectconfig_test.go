@@ -100,11 +100,13 @@ func TestFlowsDirDefault(t *testing.T) {
 	}
 }
 
-func TestFlowsDirGlobalRelativeToCwd(t *testing.T) {
+// A relative value in the user config resolves against that file's directory,
+// not the cwd: the same global setting names one directory everywhere.
+func TestFlowsDirGlobalRelativeToFile(t *testing.T) {
 	s := newSandbox(t)
 	s.global("flows:\n  dir: wf\n")
 	got, src := s.dir("work")
-	if want := filepath.Join(s.home, "work", "wf"); got != want {
+	if want := filepath.Join(s.xdg, "flo", "wf"); got != want {
 		t.Errorf("dir = %q, want %q", got, want)
 	}
 	if want := "file " + filepath.Join(s.xdg, "flo", "config.yaml"); src != want {
@@ -165,7 +167,7 @@ func TestFlowsDirCFileOverProject(t *testing.T) {
 	extra := filepath.Join(s.home, "extra.yaml")
 	s.write(extra, "flows:\n  dir: xflows\n")
 	got, src := s.dir("proj", "-c", extra)
-	if want := filepath.Join(s.home, "proj", "xflows"); got != want {
+	if want := filepath.Join(s.home, "xflows"); got != want {
 		t.Errorf("dir = %q, want %q", got, want)
 	}
 	if src != "file "+extra {

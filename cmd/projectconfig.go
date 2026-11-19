@@ -61,6 +61,7 @@ type configDoc = map[string]any
 func loadFiles(opts kitconfig.Options) (doc configDoc, origin kitconfig.KeyOrigin, set bool, err error) {
 	opts.Project = projectRules
 	opts.DeepMergeMaps = true
+	opts.PathKeys = []string{flowsDirKey}
 	origins, err := kitconfig.LoadWithOrigins(&doc, opts, flowsDirKey)
 	if err != nil {
 		var ne *kitconfig.ErrNarrowEmpty
@@ -75,27 +76,6 @@ func loadFiles(opts kitconfig.Options) (doc configDoc, origin kitconfig.KeyOrigi
 	}
 	origin, set = origins[flowsDirKey]
 	return doc, origin, set, nil
-}
-
-// projectRoot is the directory a project config file belongs to: the one that
-// holds the marker.
-func projectRoot(file string) string {
-	for _, m := range projectMarkers {
-		if dir, ok := strings.CutSuffix(file, string(filepath.Separator)+m); ok {
-			return dir
-		}
-	}
-	return filepath.Dir(file)
-}
-
-// resolveFlowsDir makes the flows.dir of the project config absolute against
-// the project root, the one path-typed key a project sets: a relative path in
-// a file reads relative to that file, not to the directory a command runs in.
-func resolveFlowsDir(doc configDoc, root string) {
-	flows, _ := doc["flows"].(map[string]any)
-	if p, _ := flows["dir"].(string); p != "" && !filepath.IsAbs(p) {
-		flows["dir"] = filepath.Join(root, p)
-	}
 }
 
 // flowsSource is where the effective flows.dir came from, highest layer
@@ -117,8 +97,9 @@ func flowsSource(origin kitconfig.KeyOrigin, set, cOverride bool) string {
 }
 
 // flowsDir is the directory flows live in, absolute, and where the setting
-// came from (see flowsSource). The project value is already absolute; any
-// other source is relative to the working directory.
+// came from (see flowsSource). A file value is already absolute, against the
+// file that set it (a project .flo/config.yaml: the project root); env and -c
+// key=value are relative to the working directory.
 func flowsDir(root *kitcli.Root) (dir, source string) {
 	v, source := defaultFlowsDir, "default"
 	if root != nil && root.Viper != nil {

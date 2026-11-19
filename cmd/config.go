@@ -130,9 +130,6 @@ func (l *configLoader) load(root *kitcli.Root) error {
 	cSet := flatten("", overrides)
 	_, cFlows := cSet[flowsDirKey]
 	l.flowsFrom = flowsSource(origin, set, cFlows)
-	if strings.HasPrefix(l.flowsFrom, "project ") {
-		resolveFlowsDir(doc, projectRoot(opts.ProjectConfigPath))
-	}
 	// The files are the config layer: the environment and -c key=value, set
 	// as overrides, sit above them.
 	if err := root.Viper.MergeConfigMap(doc); err != nil {
