@@ -81,7 +81,7 @@ flo run cancel <run> --yes
     claim_ttl: 2m
     shutdown_grace: 30s
     approval_poll: 1m
-  ai: { classifier: rules, generator: template }  # FLO_AI_*
+  ai: { classifier: rules, generator: template, judge: { engine: auto } }  # FLO_AI_*
   eva: { url: http://127.0.0.1:9000 }             # FLO_EVA_URL
   packs:                        # config.<pack>.<key> in node specs and triggers
     ctxt: { url: http://127.0.0.1:8080 }          # FLO_PACKS_CTXT_URL
@@ -98,6 +98,16 @@ flo run cancel <run> --yes
   tokens and, for a cloud model, dollars count against the run's budget;
   no `schema`). It reads the same model client rules as the generator. Unset configures none and a step using the node fails
   with `engine_feature`: no backend stands in for another.
+- Judge engine: `ai.judge.engine` (env `FLO_AI_JUDGE_ENGINE`; `local`, `jev`
+  or `auto`, default `auto`) picks what answers the `judge` classifier; a
+  classify step's `engine:` overrides it. `local` is the step's model. `jev`
+  is TypeSafe's Jev through OpenRouter: cloud, key from the secret
+  `openrouter_api_key` of the flow's profile (sent to Jev's endpoint only),
+  refused under `local-only`. `auto` is `local` when the step's `ollama://`
+  model is local and the daemon lists it (`GET /api/tags`), else `jev` (never
+  under `local-only`: `privacy_violation`). The step output's `engine` says which
+  judged. A flow whose recording holds local model calls only pins
+  `engine: local`.
 - Generator: `ai.generator` (env `FLO_AI_GENERATOR`) picks the backend of
   `flo/ai.generate@1`: `template` (renders the prompt's template over the
   context: no model, no cost) or `llm` (calls the step's model through kit's

@@ -27,6 +27,7 @@ import (
 	"hop.top/kit/go/storage/secret"
 
 	"hop.top/flo/internal/core"
+	"hop.top/flo/internal/nodes/builtin"
 	"hop.top/flo/internal/store/tenants"
 	"hop.top/flo/internal/tasks/tlccli"
 )
@@ -80,6 +81,12 @@ type Config struct {
 	// "rules" is the deterministic one, "judge" is kit's and not yet
 	// available. Empty configures none, and a step using the node fails.
 	Classifier string
+	// JudgeEngine is the default engine of the judge classifier
+	// (`ai.judge.engine`): local, jev or auto. Empty is auto. A step's
+	// `engine` input overrides it.
+	JudgeEngine string
+	// Jev builds the Jev judge of the judge classifier; nil is a build without it.
+	Jev builtin.JevFactory
 	// Generator names the flo/ai.generate@1 backend (`ai.generator`):
 	// "template" is the deterministic one, "llm" calls the step's model
 	// through kit's client. Empty configures none, and a step using the node

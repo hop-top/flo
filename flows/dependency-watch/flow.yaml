@@ -78,6 +78,7 @@ steps:
     privacy: local-only          # release text stays on the machine; refuses a cloud model
     with:
       model: ollama://qwen3:4b-instruct-2507-q4_K_M
+      engine: local                # the recording holds the model calls alone
       labels: [security, breaking, routine, noise]
       instructions: "Label each release by what it means for a team that depends on it."
       items: "{{ results.fresh.items }}"

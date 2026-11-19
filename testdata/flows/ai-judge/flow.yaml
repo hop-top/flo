@@ -1,0 +1,16 @@
+flow: ai-judge
+version: 0.1.0
+description: One classification, to see a recording keep the engine's calls.
+on:
+  - manual: {}
+run_as: automation
+privacy: cloud-allowed
+tasks: none
+steps:
+  - id: judge
+    uses: flo/ai.classify@1
+    with:
+      model: ollama://gemma4:e4b
+      labels: [security, breaking, routine, noise]
+      items:
+        - { package: net, version: 0.9.0 }

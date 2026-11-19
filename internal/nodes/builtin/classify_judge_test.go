@@ -62,7 +62,7 @@ func bodyOf(r *http.Request) string {
 func judgeCls(t *testing.T, h *fakeHTTP, s core.Secrets, price builtin.PriceFunc, pats prompt.PatternSource) builtin.Classifier {
 	t.Helper()
 	c, err := builtin.ClassifierFor(builtin.BackendJudge, builtin.LLMDeps{
-		HTTP: h, Secrets: s, LocalHosts: listedHosts, Price: price, Patterns: pats,
+		HTTP: h, Secrets: s, LocalHosts: listedHosts, Price: price, Patterns: pats, JudgeEngine: builtin.EngineLocal,
 	})
 	if err != nil || c == nil {
 		t.Fatalf("judge backend: %v %v", c, err)

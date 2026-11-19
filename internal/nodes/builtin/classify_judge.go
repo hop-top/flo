@@ -32,8 +32,10 @@ const (
 // built per invocation by the same rules as the llm generator: hermetic,
 // over the engine's HTTP seam, local-only under a local-only ceiling.
 type JudgeClassifier struct {
-	m     *modelClients
-	local *node.LocalHosts
+	m      *modelClients
+	local  *node.LocalHosts
+	engine string
+	probes probeCache
 }
 
 // NewJudgeClassifier checks d and returns the backend.
@@ -46,21 +48,48 @@ func NewJudgeClassifier(d LLMDeps) (*JudgeClassifier, error) {
 	if err != nil {
 		return nil, core.Wrap(core.CodeUsage, err)
 	}
-	return &JudgeClassifier{m: m, local: local}, nil
+	engine := d.JudgeEngine
+	if engine == "" {
+		engine = EngineAuto
+	}
+	if !validEngine(engine) {
+		return nil, core.Errorf(core.CodeUsage, "ai.judge.engine=%s: unknown engine (%s)", engine, strings.Join(engines, ", "))
+	}
+	return &JudgeClassifier{m: m, local: local, engine: engine}, nil
 }
 
 // Classify implements Classifier. Every item is judged, as given: the model
 // sees the whole item (an advisory's fields included) and the instructions;
-// nothing is decided for it by item shape.
+// nothing is decided for it by item shape. The engine (local, jev or auto)
+// is the step's, else the configured default; see engine.go.
 func (j *JudgeClassifier) Classify(ctx context.Context, req ClassifyRequest) (Labels, core.Cost, error) {
 	if req.Schema != nil {
 		return nil, core.Cost{}, core.New(core.CodeEngineFeature, "the judge backend cannot return schema fields").
 			WithSuggestion("drop schema, or use a backend that returns extra fields")
 	}
+	engine := req.Engine
+	if engine == "" {
+		engine = j.engine
+	}
+	if !validEngine(engine) {
+		return nil, core.Cost{}, core.Errorf(core.CodeInputInvalid, "engine %q is not known to the judge backend", engine).
+			WithSuggestion("use " + strings.Join(engines, ", "))
+	}
 	mode, err := modeOf(req.Strategy)
 	if err != nil {
 		return nil, core.Cost{}, err
 	}
+	switch engine {
+	case EngineLocal:
+		return j.classifyLocal(ctx, req, mode)
+	case EngineJev:
+		return j.classifyJev(ctx, req, "")
+	}
+	return j.classifyAuto(ctx, req, mode)
+}
+
+// classifyLocal judges over the step's model through llmjudge.
+func (j *JudgeClassifier) classifyLocal(ctx context.Context, req ClassifyRequest, mode llmjudge.ModeKind) (Labels, core.Cost, error) {
 	pat, err := j.patternOf(req.Pattern)
 	if err != nil {
 		return nil, core.Cost{}, err
@@ -111,7 +140,7 @@ func (j *JudgeClassifier) Classify(ctx context.Context, req ClassifyRequest) (La
 	var cost core.Cost
 	for i, v := range verdicts {
 		a := v.Answers[judgeQuestion]
-		out[i] = Label{Confidence: a.Confidence, Why: a.Why}
+		out[i] = Label{Confidence: a.Confidence, Why: a.Why, Engine: EngineLocal}
 		if !a.Abstained {
 			value := a.Value
 			out[i].Label = &value

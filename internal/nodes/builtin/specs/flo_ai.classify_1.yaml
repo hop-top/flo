@@ -8,6 +8,7 @@ inputs:
   instructions: { type: string, description: Extra guidance. }
   pattern: { type: string, description: Named prompt pattern (judge backend; needs a pattern source). }
   strategy: { type: string, description: "Multi-call strategy: verbalized (default), votes or votes:<n> (judge backend)." }
+  engine: { type: string, enum: [local, jev, auto], description: "Judge engine (judge backend): local (the step's model), jev (TypeSafe Jev through OpenRouter; cloud, ignores model) or auto (local when the model is a local ollama model the daemon lists, else jev). Default: the ai.judge.engine setting, else auto." }
   schema: { type: object, description: Extra fields per item the model must return; the judge backend refuses it. }
   abstain: { type: boolean, default: false, description: Allow no label. }
 outputs:
@@ -15,6 +16,7 @@ outputs:
     type: object
     required: [items]
     properties:
+      engine: { type: string, description: "The judge engine that answered (judge backend only)." }
       items:
         type: array
         items:

@@ -3,10 +3,12 @@ package builtin
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	"hop.top/flo/internal/core"
 	"hop.top/flo/spec/node"
+	"hop.top/kit/go/ai/judge"
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
 	"hop.top/kit/go/ai/prompt"
@@ -37,7 +39,19 @@ type LLMDeps struct {
 	// Patterns resolves the judge's `pattern` input. Nil means no pattern
 	// is available: a step that names one fails rather than loses it.
 	Patterns prompt.PatternSource
+	// JudgeEngine is the engine default of the judge classifier: local, jev
+	// or auto (the default when empty). A step's `engine` input overrides it.
+	JudgeEngine string
+	// Jev builds the Jev judge (kit go/ai/judge/jev) from the OpenRouter key
+	// and the transport of the invocation; the key is for Jev's default
+	// endpoint only. Nil is a build without Jev: engine jev fails
+	// engine_feature and auto never falls back to it.
+	Jev JevFactory
 }
+
+// JevFactory builds a Jev judge that sends key to Jev's own endpoint over rt
+// (nil is the process default transport) and reads no environment or file.
+type JevFactory func(key string, rt http.RoundTripper) (judge.Judge, error)
 
 // SecretNameOf is the secret that holds the API key of a model scheme, read
 // from the secret store as the profile the step acts as: anthropic_api_key
@@ -76,11 +90,7 @@ func (m *modelClients) open(ctx context.Context, model string, uri llm.URI, leve
 		}
 		full += sep + "api_key=" + key
 	}
-	doer := m.d.HTTP
-	if h, ok := core.HTTPFrom(ctx); ok {
-		doer = h
-	}
-	opts := []llm.ResolveOption{llm.Hermetic(), llm.WithTransport(llm.DoerTransport(doer))}
+	opts := []llm.ResolveOption{llm.Hermetic(), llm.WithTransport(llm.DoerTransport(m.doer(ctx)))}
 	if localOnly {
 		opts = append(opts, llm.LocalOnly(llm.AllowHosts(m.d.LocalHosts...)))
 	}
@@ -99,6 +109,16 @@ func (m *modelClients) open(ctx context.Context, model string, uri llm.URI, leve
 	return c, nil
 }
 
+// doer is the HTTP seam of one invocation: the dispatcher's on ctx (a
+// recorded run's goes through a tape), else the engine's. Nil is the process
+// default.
+func (m *modelClients) doer(ctx context.Context) llm.Doer {
+	if h, ok := core.HTTPFrom(ctx); ok {
+		return h
+	}
+	return m.d.HTTP
+}
+
 // keyed reports whether the store's key goes with this model: a cloud model
 // on its scheme's own default endpoint. A model that names an endpoint (host
 // or base_url) gets none: the key is for the provider, not for a host a flow
@@ -112,6 +132,18 @@ func keyed(level node.Privacy, uri llm.URI) bool {
 }
 
 func (m *modelClients) key(ctx context.Context, tenant core.TenantID, profile, scheme string) (string, error) {
+	key, err := m.secret(ctx, tenant, profile, scheme)
+	if err != nil {
+		return "", err
+	}
+	if strings.ContainsAny(key, "&?#") {
+		return "", core.Errorf(core.CodeInputInvalid, "secret %q holds a character a model URI cannot carry (& ? #)", SecretNameOf(scheme))
+	}
+	return key, nil
+}
+
+// secret reads the API key of scheme as the profile the step acts as.
+func (m *modelClients) secret(ctx context.Context, tenant core.TenantID, profile, scheme string) (string, error) {
 	name := SecretNameOf(scheme)
 	missing := func() error {
 		return core.Errorf(core.CodeSecretNotFound, "secret %q not found for profile %q", name, profile).
@@ -127,9 +159,6 @@ func (m *modelClients) key(ctx context.Context, tenant core.TenantID, profile, s
 	key := strings.TrimSpace(string(v))
 	if key == "" {
 		return "", missing()
-	}
-	if strings.ContainsAny(key, "&?#") {
-		return "", core.Errorf(core.CodeInputInvalid, "secret %q holds a character a model URI cannot carry (& ? #)", name)
 	}
 	return key, nil
 }

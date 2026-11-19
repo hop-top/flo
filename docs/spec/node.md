@@ -351,8 +351,9 @@ Output `{items}`.
 | `pattern`, `strategy` | string | named prompt pattern / multi-call strategy, resolved through kit |
 | `schema` | object | extra fields per item the model must return |
 | `abstain` | boolean, default false | allow no label |
+| `engine` | `local` \| `jev` \| `auto` | judge engine of this step (judge backend); default is the `ai.judge.engine` setting, else `auto`; any other value is `input_invalid` |
 
-Output `{items: [{item, label, confidence, why, …schema fields}]}`, one
+Output `{items: [{item, label, confidence, why, …schema fields}], engine?}`, one
 per input item, in order; `cost` reported. `label` is always in `labels`
 (or null when `abstain`); the model call uses structured output and a
 validated repair loop. Privacy follows the model URI scheme (§9). Empty
@@ -376,6 +377,30 @@ and its spend is not reported. The model client follows §6.5 (hermetic, the
 engine's HTTP seam, local-only under a `local-only` ceiling, the key as
 `<scheme>_api_key`); `labels` needs two or more distinct labels, none of them
 `abstain`, else `input_invalid`. Cost: as §6.5, summed over the calls.
+
+Judge engines (`engine` input, else `ai.judge.engine`, env
+`FLO_AI_JUDGE_ENGINE`, else `auto`); the output's `engine` names the one that
+answered (`local` or `jev`), so a run shows who judged:
+
+- `local`: the behaviour above, over the step's model; under a `local-only`
+  ceiling the model must be local.
+- `jev`: kit's `go/ai/judge/jev` (TypeSafe Jev through OpenRouter), one
+  choice question per item over `labels`; confidence and probabilities are
+  the service's, `why` is empty, cost is the service's reported USD. `model`,
+  `strategy` are ignored; `pattern` and `schema` fail `engine_feature`. It is
+  hermetic like §6.5: the key is the secret `openrouter_api_key` of the step's
+  profile, sent only to Jev's own endpoint; requests go through the run's HTTP
+  seam (a recording keeps them); no environment variable, no `llm.yaml`. A
+  missing key is `secret_not_found`, a `local-only` ceiling is
+  `privacy_violation`, both before any request.
+- `auto` (default): `local` when detected, else `jev`. Detected is: `model`
+  is an `ollama://` model on a local endpoint (§9) and the daemon answers
+  `GET /api/tags` (2 s timeout, through the HTTP seam, remembered per run)
+  listing it (a name without a tag is `:latest`). Under a `local-only` ceiling
+  `auto` never picks `jev`: no detected local model is `privacy_violation`.
+  Otherwise, with no local model and no key, `secret_not_found` names both
+  ways out. A `cloud` or other non-ollama `model` is not local, so `auto`
+  uses `jev`.
 
 ### 6.4 Built-in nodes that evaluate expressions per item
 

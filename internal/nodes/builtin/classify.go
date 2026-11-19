@@ -18,8 +18,12 @@ type ClassifyRequest struct {
 	Instructions string
 	Pattern      string
 	Strategy     string
-	Schema       map[string]any
-	Abstain      bool
+	// Engine is the step's judge engine (local, jev, auto); empty takes the
+	// engine's configured default. The judge backend reads it; others
+	// ignore it.
+	Engine  string
+	Schema  map[string]any
+	Abstain bool
 	// LocalOnly is set when the step runs under a local-only ceiling (the
 	// ceiling is absent or local-only). A model-backed backend must stay
 	// local, whatever the model URI says.
@@ -28,6 +32,9 @@ type ClassifyRequest struct {
 	// tenant and the aps profile the step acts as.
 	Tenant  core.TenantID
 	Profile string
+	// RunID scopes what a backend remembers for one run (the judge's
+	// detection of a local model). Empty remembers nothing.
+	RunID string
 }
 
 // Label is one backend answer. Label nil is an abstention.
@@ -37,6 +44,9 @@ type Label struct {
 	Why        string
 	// Extra holds the fields the request's Schema asked for.
 	Extra map[string]any
+	// Engine names what judged, when the backend has engines (the judge
+	// backend: local or jev); empty otherwise.
+	Engine string
 }
 
 // Labels are the answers to a request, one per item, in order.
@@ -89,7 +99,7 @@ func classify(ctx context.Context, c Classifier, inv core.Invocation) (core.Resu
 		Items: items, Labels: labels, Model: asString(inv.In["model"]),
 		Instructions: asString(inv.In["instructions"]), Pattern: asString(inv.In["pattern"]),
 		Strategy: asString(inv.In["strategy"]), LocalOnly: inv.Privacy != specrun.PrivacyCloudAllowed,
-		Tenant: inv.Tenant, Profile: inv.RunAs,
+		Tenant: inv.Tenant, Profile: inv.RunAs, Engine: asString(inv.In["engine"]), RunID: string(inv.Run.ID),
 	}
 	req.Schema, _ = inv.In["schema"].(map[string]any)
 	req.Abstain, _ = inv.In["abstain"].(bool)
@@ -125,7 +135,12 @@ func classify(ctx context.Context, c Classifier, inv core.Invocation) (core.Resu
 		}
 		out[i] = row
 	}
-	res := pureOK(map[string]any{"items": out})
+	output := map[string]any{"items": out}
+	// The run shows which engine judged.
+	if got[0].Engine != "" {
+		output["engine"] = got[0].Engine
+	}
+	res := pureOK(output)
 	res.Cost = cost
 	return res, nil
 }
