@@ -4,6 +4,7 @@ go 1.27.4
 
 require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 	hop.top/flo/spec v0.0.0
 	hop.top/kit v0.5.0-beta.14
@@ -60,7 +61,6 @@ require (
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
@@ -87,7 +87,8 @@ require (
 
 replace hop.top/flo/spec => ./spec
 
-// kit pinned to the merge of the sqldb busy-open fix (tree identical to
-// af1ec58a, on beta.14). The commit is not in hop-top/kit, so it is fetched
-// from the poly-kit repository, where it is reachable through its next branch.
-replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261117165918-183253c78788
+// kit pinned to a poly-kit next commit (beta.14 plus the llm transport,
+// local-only, structured output, prompt, judge and price packages). The commit
+// is not in hop-top/kit, so it is fetched from the poly-kit repository, where
+// it is reachable through its next branch.
+replace hop.top/kit => github.com/hop-top/poly-kit v0.0.0-20261119004910-2c04e9c16c94
