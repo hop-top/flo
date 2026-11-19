@@ -63,6 +63,8 @@ func build(svc ServicesFunc, eng EngineFunc, real bool) *kitcli.Root {
 	addApproval(root, svc)
 	addBrief(root, svc)
 	addGrant(root, svc)
+	addAccess(root, svc)
+	addCapabilities(root)
 	addTrigger(root, svc)
 	addEngine(root, eng)
 	addFlow(root, svc, eng)
