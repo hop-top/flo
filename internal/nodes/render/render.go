@@ -63,14 +63,17 @@ func Shared() (*Env, error) {
 	return shared, sharedErr
 }
 
-// Scope is what a node template reads (node.md §3.1): `in`, `config` and
-// `run`, and nothing else.
+// Scope is what a node template reads (node.md §3.1): `in`, `config`, `run`
+// and `admission`, and nothing else.
 type Scope struct {
 	In     map[string]any
 	Config map[string]any
 	Run    core.RunContext
 	// StepDir is `run.step_dir`, the scratch directory of one attempt.
 	StepDir string
+	// Admission is the approval an external admission backend bound the step
+	// to; nil reads as empty strings in `admission`.
+	Admission *core.AdmissionBinding
 }
 
 // Activation returns the CEL activation of the scope.
@@ -91,7 +94,11 @@ func (s Scope) Activation() cel.Activation {
 	if cfg == nil {
 		cfg = map[string]any{}
 	}
-	return cel.Activation{"in": in, "config": cfg, "run": run}
+	admission := map[string]any{"proposal": "", "idempotency_key": ""}
+	if s.Admission != nil {
+		admission["proposal"], admission["idempotency_key"] = s.Admission.Proposal, s.Admission.ExecutionKey
+	}
+	return cel.Activation{"in": in, "config": cfg, "run": run, "admission": admission}
 }
 
 // Value renders a data tree: string leaves are templates; a leaf that is

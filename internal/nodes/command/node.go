@@ -71,7 +71,7 @@ func (x *Executor) render(inv core.Invocation, stepDir string) (Request, *core.E
 		return Request{}, core.Wrap(core.CodeInternal, err)
 	}
 	spec := inv.Node
-	sc := render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, StepDir: stepDir}
+	sc := render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, StepDir: stepDir, Admission: inv.Admission}
 	act := sc.Activation()
 	var req Request
 	if req.Argv, err = env.Argv(spec.Argv, act); err != nil {
@@ -85,12 +85,6 @@ func (x *Executor) render(inv core.Invocation, stepDir string) (Request, *core.E
 			req.Env = map[string]string{}
 		}
 		req.Env["FLO_IDEMPOTENCY_KEY"] = inv.IdempotencyKey
-	}
-	if inv.Admission != nil {
-		if req.Env == nil {
-			req.Env = map[string]string{}
-		}
-		req.Env["FLO_ADMISSION_PROPOSAL"] = inv.Admission.Proposal
 	}
 	if req.Cwd, err = env.String(spec.Cwd, act); err != nil {
 		return Request{}, render.Fail("cwd", err)
@@ -174,7 +168,7 @@ func (x *Executor) Execute(ctx context.Context, inv core.Invocation) (core.Resul
 		return failWith(out, perr, core.EffectDone), nil
 	}
 	env, _ := render.Shared()
-	value, failed, rerr := env.Reshape(spec.Outputs, parsed, render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, StepDir: stepDir})
+	value, failed, rerr := env.Reshape(spec.Outputs, parsed, render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, StepDir: stepDir, Admission: inv.Admission})
 	if rerr != nil {
 		return failWith(out, rerr, core.EffectDone), nil
 	}
@@ -252,7 +246,7 @@ func (x *Executor) readFile(path, stepDir string, inv core.Invocation) ([]byte, 
 	if err != nil {
 		return nil, core.Wrap(core.CodeInternal, err)
 	}
-	rendered, err := env.String(path, render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, StepDir: stepDir}.Activation())
+	rendered, err := env.String(path, render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, StepDir: stepDir, Admission: inv.Admission}.Activation())
 	if err != nil {
 		return nil, render.Fail("outputs.from", err)
 	}

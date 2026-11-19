@@ -113,7 +113,7 @@ func render1(inv core.Invocation) (Request, *core.Error) {
 		return Request{}, core.Errorf(core.CodeInvalidNode, "%s: an http node needs request", spec.Node)
 	}
 	rq := spec.Request
-	act := render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run}.Activation()
+	act := render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, Admission: inv.Admission}.Activation()
 	req := Request{Method: strings.ToUpper(rq.Method), Auth: rq.Auth, IdempotencyKey: inv.IdempotencyKey}
 	raw, err := env.String(rq.URL, act)
 	if err != nil {
@@ -255,7 +255,7 @@ func (x *Executor) Execute(ctx context.Context, inv core.Invocation) (core.Resul
 		"status": int64(resp.StatusCode), "headers": headers, "body": parsed,
 	})
 	env, _ := render.Shared()
-	value, failed, rerr := env.Reshape(inv.Node.Outputs, value, render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run})
+	value, failed, rerr := env.Reshape(inv.Node.Outputs, value, render.Scope{In: inv.In, Config: inv.Config, Run: inv.Run, Admission: inv.Admission})
 	if rerr != nil {
 		return fail(out, rerr, core.EffectDone), nil
 	}

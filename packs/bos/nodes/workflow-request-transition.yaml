@@ -7,24 +7,22 @@ description: >-
   the definition names decide in bos.
 # The input is the request as bos states it (args, flags), so the digest flo
 # binds an approval to is the one bos computes for this command. An agent's
-# write needs an approved proposal: flo passes it as FLO_ADMISSION_PROPOSAL and
-# the execution key as FLO_IDEMPOTENCY_KEY, and the shell line turns them into
-# --proposal and --idempotency-key.
+# write needs an approved proposal: the engine hands it to the step as
+# admission.proposal and admission.idempotency_key (the execution key).
 argv:
-  - sh
-  - -c
-  - >-
-    exec bos workflow request-transition "$@" --format json
-    ${FLO_IDEMPOTENCY_KEY:+--idempotency-key "$FLO_IDEMPOTENCY_KEY"}
-    ${FLO_ADMISSION_PROPOSAL:+--proposal "$FLO_ADMISSION_PROPOSAL"}
   - bos
+  - workflow
+  - request-transition
   - "{{ in.args }}"
   - --scope
   - "{{ config.bos.scope }}"
+  - --format
+  - json
   - --reason
   - "{{ in.flags.reason }}"
   - "{{ 'state-version' in in.flags ? ['--state-version', in.flags['state-version']] : [] }}"
   - "{{ 'action' in in.flags ? ['--action', in.flags.action] : [] }}"
+  - "{{ admission.proposal != '' ? ['--proposal', admission.proposal, '--idempotency-key', admission.idempotency_key] : [] }}"
 inputs:
   args:
     type: array

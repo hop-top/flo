@@ -28,9 +28,14 @@ func loadPack(t *testing.T) map[string]*node.Spec {
 
 func plan(t *testing.T, s *node.Spec, in map[string]any) []string {
 	t.Helper()
+	return planBound(t, s, in, nil)
+}
+
+func planBound(t *testing.T, s *node.Spec, in map[string]any, adm *core.AdmissionBinding) []string {
+	t.Helper()
 	x := &command.Executor{Commands: &coretest.Commands{}}
 	p, perr := x.Plan(core.Invocation{
-		Node: s, In: in, RunAs: "noor",
+		Node: s, In: in, RunAs: "noor", Admission: adm,
 		Config: map[string]any{"bos": map[string]any{"scope": scope}},
 	})
 	if perr != nil {
@@ -70,9 +75,8 @@ func TestRequestTransitionNodeIsARequestOnly(t *testing.T) {
 			t.Errorf("argv lacks %q: %v", want, argv)
 		}
 	}
-	if argv[0] != "sh" || !strings.Contains(argv[2], "workflow request-transition") ||
-		!strings.Contains(argv[2], "--proposal") || !strings.Contains(argv[2], "FLO_IDEMPOTENCY_KEY") {
-		t.Errorf("shell line = %v", argv[:3])
+	if strings.Contains(line, "--proposal") || strings.Contains(line, "--idempotency-key") {
+		t.Errorf("a request with no approval carries approval flags: %v", argv)
 	}
 	// it names no decision: nothing in the call votes or decides
 	if strings.Contains(line, "decide") {
@@ -81,6 +85,17 @@ func TestRequestTransitionNodeIsARequestOnly(t *testing.T) {
 	// without the optional flags the call has only what was given
 	argv = plan(t, s, map[string]any{"args": []any{"i"}, "flags": map[string]any{"reason": "r"}})
 	if strings.Contains(strings.Join(argv, " "), "--action") || strings.Contains(strings.Join(argv, " "), "--state-version") {
+		t.Errorf("argv = %v", argv)
+	}
+}
+
+// An approved request carries the proposal and the execution key, taken from
+// the admission namespace; no shell line is needed.
+func TestRequestTransitionNodeCarriesTheApproval(t *testing.T) {
+	s := loadPack(t)["bos/workflow.request-transition@1"]
+	in := map[string]any{"args": []any{"i"}, "flags": map[string]any{"reason": "r", "state-version": "1"}}
+	argv := planBound(t, s, in, &core.AdmissionBinding{Proposal: "agent_proposals_1", ExecutionKey: "exec_1"})
+	if argv[0] != "bos" || !strings.Contains(strings.Join(argv, " "), "--proposal agent_proposals_1 --idempotency-key exec_1") {
 		t.Errorf("argv = %v", argv)
 	}
 }

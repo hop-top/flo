@@ -17,7 +17,7 @@ type Activation = map[string]any
 
 // namespaces declared as map<string, dyn>.
 var mapNamespaces = []string{
-	"vars", "subject", "run", "steps", "results", "trigger", "state", "config", "in", "result", "decisions",
+	"vars", "subject", "run", "steps", "results", "trigger", "state", "config", "in", "result", "decisions", "admission",
 }
 
 // celReserved are words CEL cannot use as a variable name; a flow var with

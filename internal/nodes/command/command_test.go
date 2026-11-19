@@ -490,39 +490,35 @@ func TestPlanRendersWithoutRunning(t *testing.T) {
 	}
 }
 
-// A step an external backend approved gets its proposal, and the key that lets
-// the target run it once, in its environment.
-func TestAdmissionBindingReachesTheProcess(t *testing.T) {
+// A step an external backend approved reads its proposal and the key that lets
+// the target run it once as admission.*, and the key is also its idempotency
+// key in the environment; with no approval the namespace is empty.
+func TestAdmissionBindingIsReadAsAdmissionNamespace(t *testing.T) {
 	s := spec(t, `
 node: bos/pay@1
 kind: command
-argv: [bos, pay]
+argv: [bos, pay, "{{ admission.proposal }}", "{{ admission.idempotency_key }}", "{{ admission.proposal != '' ? 'bound' : 'free' }}"]
 inputs: {}
 outputs: { from: stdout, format: text }
 side_effect: write-shared
 privacy: local
 capabilities: [billing.pay]
 `)
-	fx := &fakeExec{fn: func(cmd *exec.Cmd) error { return nil }}
-	x := &command.Executor{Commands: command.NewRunner(fx)}
+	x := &command.Executor{Commands: command.NewRunner(&fakeExec{fn: func(cmd *exec.Cmd) error { return nil }})}
 	inv := invoke(s, map[string]any{})
-	inv.IdempotencyKey = "exec_1"
 	inv.Admission = &core.AdmissionBinding{Proposal: "agent_proposals_1", ExecutionKey: "exec_1"}
-	if _, err := x.Execute(context.Background(), inv); err != nil {
-		t.Fatal(err)
+	p, perr := x.Plan(inv)
+	if perr != nil {
+		t.Fatal(perr)
 	}
-	if !slices.Contains(fx.envs[0], "FLO_ADMISSION_PROPOSAL=agent_proposals_1") || !slices.Contains(fx.envs[0], "FLO_IDEMPOTENCY_KEY=exec_1") {
-		t.Fatalf("env = %v", fx.envs[0][len(fx.envs[0])-3:])
+	if got := strings.Join(p["argv"].([]string), " "); got != "bos pay agent_proposals_1 exec_1 bound" {
+		t.Errorf("bound argv = %q", got)
 	}
-	// and nothing of the kind without one
-	fx2 := &fakeExec{fn: func(cmd *exec.Cmd) error { return nil }}
-	x2 := &command.Executor{Commands: command.NewRunner(fx2)}
-	if _, err := x2.Execute(context.Background(), invoke(s, map[string]any{})); err != nil {
-		t.Fatal(err)
+	p, perr = x.Plan(invoke(s, map[string]any{}))
+	if perr != nil {
+		t.Fatal(perr)
 	}
-	for _, e := range fx2.envs[0] {
-		if strings.HasPrefix(e, "FLO_ADMISSION_PROPOSAL=") {
-			t.Errorf("a step with no approval got %s", e)
-		}
+	if got := strings.Join(p["argv"].([]string), " "); got != "bos pay   free" {
+		t.Errorf("unbound argv = %q", got)
 	}
 }

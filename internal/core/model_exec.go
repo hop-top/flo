@@ -126,8 +126,9 @@ type Invocation struct {
 	// Idempotency-Key header).
 	IdempotencyKey string
 	// Admission is the approval an external admission backend bound the step
-	// to; nil for none. The command node passes it as FLO_ADMISSION_PROPOSAL
-	// and sets the idempotency key to the execution key.
+	// to; nil for none. Node templates read it as admission.proposal and
+	// admission.idempotency_key (the execution key), which is also the
+	// step's idempotency key.
 	Admission *AdmissionBinding
 	// Resume is set when a parked step is re-dispatched after its approval
 	// completed.

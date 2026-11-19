@@ -120,8 +120,8 @@ A JSON-Schema subset: `type` (one or a list of `string`, `integer`,
 `required: true` with a `default` is an error.
 
 Inputs reach the node as `in` (a map). Inside a node spec, templates see
-`in`, `config`, `run` (read only; includes `run.step_dir`, §4.3) and, in a command or HTTP node, nothing
-else: a node cannot read other steps' results or flow state. A node gets
+`in`, `config`, `run` (read only; includes `run.step_dir`, §4.3),
+`admission` (§10.2) and, in a command or HTTP node, nothing else: a node cannot read other steps' results or flow state. A node gets
 its data only through `with`.
 
 A flow's `with` values are validated against `inputs` at save time where
@@ -678,6 +678,15 @@ business-governance backend uses, so one request is recognized as the
 same across tools. Phase 1's local port allows what the actor's grants
 cover and records the receipt. (Whether canonicalization matches the other
 backend byte for byte is unverified; open question 3.)
+
+When a backend asks a person and approves, the step runs bound to the
+approval. A node template reads it as `admission`, a map of two strings:
+`admission.proposal` (the proposal the backend opened) and
+`admission.idempotency_key` (the key that lets the target run it once,
+also the step's idempotency key and `FLO_IDEMPOTENCY_KEY`). Both are `""`
+when the step has no approval, as with the local backend, so a template
+can test `admission.proposal != ''`. When the approver corrected the
+request, the step's `in` is the corrected input, never its own.
 
 ### 10.3 Trust
 

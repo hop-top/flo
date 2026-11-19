@@ -11,8 +11,8 @@ import (
 type scope map[string]bool
 
 var (
-	scopeDeclared = scope{"in": true, "config": true, "run": true}
-	scopeOutput   = scope{"out": true, "in": true, "config": true, "run": true}
+	scopeDeclared = scope{"in": true, "config": true, "run": true, "admission": true}
+	scopeOutput   = scope{"out": true, "in": true, "config": true, "run": true, "admission": true}
 	scopeInOnly   = scope{"in": true}
 )
 
