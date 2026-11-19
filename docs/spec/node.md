@@ -674,13 +674,17 @@ generator; any engine, local or cloud) must be on the allow-list, the
 `ai.models.allow` setting (env `FLO_AI_MODELS_ALLOW`, comma-separated; config
 file list; `-c`). It is checked before any request and before any secret read.
 
-- An entry is an exact model URI, or a prefix with a trailing `*`
-  (`ollama://qwen3*`); `*` alone allows every model. `jev` stands for the
-  default Jev model on both sides (`jev` and `jev://typesafe/jev-1.14` are the
-  same entry).
-- A prefix does not reach past the `?` of a model URI, so
-  `ollama://qwen3*` does not allow `ollama://qwen3?base_url=…` (the query
-  moves the endpoint); an entry that spells the query out does.
+- An entry is an exact model URI, or a model URI whose name ends in `*`
+  (`ollama://qwen3*`); `*` alone allows every model. Entry and model are
+  compared as parsed URIs (the model client's parser), not as strings: scheme
+  (as written), host and port, and query params (`base_url`) must be equal, so
+  an entry without a host matches only models without one, and the same for
+  `base_url`. The `*` stands for the rest of the model name only: what it
+  matches holds no `@`, `?`, `#` or `..`, and no `/` unless the prefix has one.
+  `ollama://qwen3*` allows `ollama://qwen3:4b`, not
+  `ollama://qwen3.example.com:11434/m` or `ollama://qwen3?base_url=…`. `jev`
+  stands for the default Jev model on both sides (`jev` and
+  `jev://typesafe/jev-1.14` are the same entry).
 - An unlisted model is unusable: alone, or when the whole list is, the step
   fails `privacy_violation`; inside a list it is skipped (§6.3.1).
 - An unset or empty list allows nothing: every model is refused, with a

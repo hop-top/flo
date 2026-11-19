@@ -31,7 +31,7 @@ func TestModelAllowed(t *testing.T) {
 		{"glob other", []string{"ollama://qwen3*"}, "ollama://gemma4:e4b", false},
 		{"glob host form", []string{"ollama://gpu.internal:11434/*"}, "ollama://gpu.internal:11434/big:70b", true},
 		{"glob stops at the query", []string{"ollama://qwen3*"}, "ollama://qwen3?base_url=https://evil.example.com", false},
-		{"glob inside the query is explicit", []string{"ollama://qwen3?base_url=http://gpu.internal*"}, "ollama://qwen3?base_url=http://gpu.internal:1", true},
+		{"glob in the query is not a glob", []string{"ollama://qwen3?base_url=http://gpu.internal*"}, "ollama://qwen3?base_url=http://gpu.internal:1", false},
 		{"star alone", []string{"*"}, "anthropic://claude-haiku-5-5", true},
 		{"star is only a suffix", []string{"ollama://*3:4b"}, "ollama://qwen3:4b", false},
 		{"any entry", []string{"x://a", "ollama://m"}, "ollama://m", true},
@@ -39,6 +39,21 @@ func TestModelAllowed(t *testing.T) {
 		{"jev shorthand model", []string{jevModel}, "jev", true},
 		{"jev shorthand both", []string{"jev"}, "jev", true},
 		{"jev other model", []string{"jev"}, "jev://typesafe/jev-2", false},
+		// Bypasses: a glob reaches the model name only, never the endpoint.
+		{"host smuggled through the glob", []string{"ollama://qwen3*"}, "ollama://qwen3.attacker.example:11434/model", false},
+		{"host smuggled with userinfo", []string{"ollama://qwen3*"}, "ollama://qwen3:4b@attacker.example:11434/m", false},
+		{"userinfo in the name", []string{"ollama://qwen3*"}, "ollama://qwen3@attacker.example", false},
+		{"path segment past the glob", []string{"ollama://qwen3*"}, "ollama://qwen3/x", false},
+		{"dot dot past the glob", []string{"ollama://qwen3*"}, "ollama://qwen3..%2f", false},
+		{"base_url smuggled past a host entry", []string{"ollama://gpu.internal:11434/*"}, "ollama://gpu.internal:11434/m?base_url=http://evil.example", false},
+		{"other host with the entry as prefix", []string{"ollama://gpu.internal:11434/*"}, "ollama://gpu.internal.evil.example:11434/m", false},
+		{"host entry does not match a hostless model", []string{"ollama://gpu.internal:11434/*"}, "ollama://m", false},
+		{"hostless entry does not match a host model", []string{"ollama://*"}, "ollama://evil.example:11434/m", false},
+		{"scheme case", []string{"ollama://qwen3*"}, "OLLAMA://qwen3:4b", false},
+		{"scheme prefix glob", []string{"oll*"}, "ollama://qwen3", false},
+		{"exact with query matches itself", []string{"ollama://m?base_url=http://gpu.internal:1"}, "ollama://m?base_url=http://gpu.internal:1", true},
+		{"exact without query does not match a query", []string{"ollama://m"}, "ollama://m?base_url=http://evil.example", false},
+		{"namespaced model under a glob", []string{"ollama://hf.co/user/*"}, "ollama://hf.co/user/model:q4", true},
 		{"empty list", nil, "ollama://m", false},
 		{"blank entries are none", []string{"", " "}, "ollama://m", false},
 	} {
@@ -412,7 +427,7 @@ func TestAllowListPermitsExactAndGlob(t *testing.T) {
 		{"exact", []string{"ollama://gemma4:e4b"}, "ollama://gemma4:e4b", "ollama://gemma4:e4b"},
 		{"glob", []string{"ollama://gemma4*"}, "ollama://gemma4:e4b", "ollama://gemma4:e4b"},
 		{"jev shorthand", []string{"jev"}, []any{"jev"}, jevModel},
-		{"jev glob", []string{"jev://*"}, []any{"jev"}, jevModel},
+		{"jev glob", []string{"jev://typesafe/*"}, []any{"jev"}, jevModel},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, h := newWorld(true, "gemma4:e4b")

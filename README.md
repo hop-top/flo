@@ -122,7 +122,9 @@ flo run cancel <run> --yes
   comma-separated) lists the models flows may run, cloud or local, on every
   engine; anything else is refused with `privacy_violation` before any request
   or secret read. Entries are exact model URIs, or a prefix with a trailing `*`
-  (`ollama://qwen3*`; `*` allows all; a prefix does not reach past a `?` query).
+  (`ollama://qwen3*`; `*` alone allows all). Entries are matched as parsed URIs:
+  scheme, host and `base_url` must equal the model's, and `*` covers only the
+  rest of the model name, never a host or a query.
   Unset allows nothing: set it before using `judge` or `llm`.
 
   ```yaml

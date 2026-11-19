@@ -33,30 +33,62 @@ func canonModel(s string) string {
 }
 
 // ModelAllowed reports whether model is on the allow-list. An entry is an
-// exact model URI, or a prefix with a trailing `*`; a `*` alone allows every
-// model. A prefix does not reach past the `?` of a model URI (its query holds
-// the endpoint, `base_url`), unless the prefix itself does. `jev` stands for
-// the default Jev model on both sides.
+// exact model URI, or a model URI whose name ends in `*`; a `*` alone allows
+// every model. Entries and models are compared as parsed URIs (kit's
+// llm.ParseURI, the parser the client uses), never as strings: scheme, host
+// and port, and query params (`base_url` moves the endpoint) must be equal,
+// and the `*` stands for the rest of the model name only. What it stands for
+// holds no `@`, `?`, `#` or `..`, and no `/` unless the prefix has one. The
+// scheme is compared as written. `jev` stands for the default Jev model on
+// both sides.
 func ModelAllowed(allow []string, model string) bool {
 	m := canonModel(model)
+	mu, merr := llm.ParseURI(m)
 	for _, e := range allow {
 		e = canonModel(e)
-		if e == "" {
+		switch {
+		case e == "":
+			continue
+		case e == "*":
+			return true
+		case merr != nil:
 			continue
 		}
-		p, glob := strings.CutSuffix(e, "*")
+		pattern, glob := strings.CutSuffix(e, "*")
 		if !glob {
-			if e == m {
+			if eu, err := llm.ParseURI(e); err == nil && sameEndpoint(eu, mu) && eu.Model == mu.Model {
 				return true
 			}
 			continue
 		}
-		rest, ok := strings.CutPrefix(m, p)
-		if ok && (p == "" || strings.Contains(p, "?") || !strings.Contains(rest, "?")) {
-			return true
+		// The entry up to the star, parsed with a placeholder name char.
+		eu, err := llm.ParseURI(pattern + "x")
+		if err != nil || !sameEndpoint(eu, mu) {
+			continue
 		}
+		prefix := strings.TrimSuffix(eu.Model, "x")
+		rest, ok := strings.CutPrefix(mu.Model, prefix)
+		if !ok || strings.ContainsAny(rest, "@?#") || strings.Contains(rest, "..") ||
+			(strings.Contains(rest, "/") && !strings.Contains(prefix, "/")) {
+			continue
+		}
+		return true
 	}
 	return false
+}
+
+// sameEndpoint is whether two parsed model URIs have the same scheme, host
+// and params: where a call goes, whatever the model name.
+func sameEndpoint(a, b llm.URI) bool {
+	if a.Scheme != b.Scheme || a.Host != b.Host || len(a.Params) != len(b.Params) {
+		return false
+	}
+	for k, v := range a.Params {
+		if w, ok := b.Params[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
 }
 
 // modelRef is one model of a step, read.
