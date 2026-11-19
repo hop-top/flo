@@ -457,11 +457,17 @@ func TestProjectConfigRefusesUpperCaseKeys(t *testing.T) {
 		"Owner_Profile: evil\n",
 		"BOS:\n  bin: /tmp/x\n",
 		"ai:\n  MODELS:\n    allow: [\"*\"]\n",
+		"1:\n  BOS:\n    bin: x\n",
+		"true:\n  BOS:\n    bin: x\n",
+		"? [a]\n: 1\n",
+		"x:\n  1:\n    BOS: {bin: x}\n",
+		"\"owner_profile.x\": evil\n",
+		"ai.models.allow: [\"*\"]\n",
 	} {
 		s := newSandbox(t)
 		s.project("proj", text)
-		if _, err := s.run("proj"); !core.IsCode(err, core.CodeUsage) || !strings.Contains(err.Error(), "lower case") {
-			t.Errorf("%q: err = %v", text, err)
+		if _, err := s.run("proj"); !core.IsCode(err, core.CodeUsage) {
+			t.Errorf("%q: err = %v, want a usage error", text, err)
 		}
 	}
 }

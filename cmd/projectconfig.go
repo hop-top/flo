@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -103,7 +104,8 @@ func loadFiles(opts kitconfig.Options) (configDoc, error) {
 	return doc, nil
 }
 
-// refuseUpperKeys refuses a project config with a key that is not lower case.
+// refuseUpperKeys refuses a project config with a key that is not lower case,
+// holds a dot, or is not a string.
 // Kit matches the rule keys case-sensitively but viper folds keys to lower
 // case, so `Owner_Profile:` or `AI: {Models: ...}` would pass the rules and
 // still set the setting. Drop this once kit matches the rules case-insensitively.
@@ -125,9 +127,14 @@ func refuseUpperKeys(file string) error {
 					return k
 				}
 			}
+		case map[any]any:
+			// A non-string key: fail closed (kit refuses it too).
+			for k := range m {
+				return fmt.Sprint(k)
+			}
 		case map[string]any:
 			for k, e := range m {
-				if k != strings.ToLower(k) {
+				if k != strings.ToLower(k) || strings.Contains(k, ".") {
 					return k
 				}
 				if bad := walk(e); bad != "" {
@@ -138,8 +145,8 @@ func refuseUpperKeys(file string) error {
 		return ""
 	}
 	if k := walk(doc); k != "" {
-		return core.Errorf(core.CodeUsage, "project config %s: key %q must be lower case", file, k).
-			WithSuggestion("write the key in lower case")
+		return core.Errorf(core.CodeUsage, "project config %s: key %q must be lower case, without dots, and a string", file, k).
+			WithSuggestion("write nested keys as nested maps, in lower case")
 	}
 	return nil
 }
