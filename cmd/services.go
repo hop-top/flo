@@ -143,10 +143,14 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 	cfg.ModelsAllow = listSetting(root, builtin.EnvModelsAllow, "ai.models.allow")
 	cfg.ModelsDeny = listSetting(root, builtin.EnvModelsDeny, "ai.models.deny")
 	for _, l := range []struct {
-		key  string
-		list []string
-	}{{"ai.models.allow", cfg.ModelsAllow}, {"ai.models.deny", cfg.ModelsDeny}} {
-		if err := builtin.ValidateModelPatterns(l.list); err != nil {
+		key      string
+		list     []string
+		validate func([]string) error
+	}{
+		{"ai.models.allow", cfg.ModelsAllow, builtin.ValidateModelPatterns},
+		{"ai.models.deny", cfg.ModelsDeny, builtin.ValidateDenyPatterns},
+	} {
+		if err := l.validate(l.list); err != nil {
 			var ce *core.Error
 			if errors.As(err, &ce) {
 				return serve.Config{}, core.Errorf(core.CodeUsage, "%s: %s", l.key, ce.Message).WithSuggestion(ce.Suggestion)

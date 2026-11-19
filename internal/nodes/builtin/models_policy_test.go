@@ -63,6 +63,27 @@ func TestPolicyDenyRefusesBeforeAnyRequestOrSecret(t *testing.T) {
 	}
 }
 
+// Deny cannot be dodged by pointing the model at another endpoint: the step is
+// refused before any request or secret read.
+func TestPolicyDenyHoldsAtAnyEndpoint(t *testing.T) {
+	for _, model := range []string{
+		"ollama://gemma4:e4b?base_url=http://other.example",
+		"ollama://gpu.internal:11434/gemma4:e4b",
+		"ollama://[::1]:11434/gemma4:e4b",
+		"openai://gpu.internal:11434/gemma4:e4b",
+	} {
+		for _, deny := range [][]string{{"ollama://gemma4*", "jev"}, {"gemma4*", "jev"}} {
+			_, h := newWorld(true, "gemma4:e4b")
+			s := withT(t, jevKeys())
+			res := classifyAs(t, policyCls(t, h, s, nil, deny, ""), specrun.PrivacyCloudAllowed, listIn(model, ""))
+			if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodePrivacyViolation || !strings.Contains(res.Err.Message, "denied") {
+				t.Fatalf("%s %v: %+v", model, deny, res)
+			}
+			noTraffic(t, h, s)
+		}
+	}
+}
+
 func TestPolicyDenyMessageSaysDenied(t *testing.T) {
 	_, h := newWorld(true, "gemma4:e4b")
 	res := classifyAs(t, policyCls(t, h, withT(t, jevKeys()), nil, []string{"ollama://gemma4*", "jev"}, ""), specrun.PrivacyCloudAllowed, listIn("ollama://gemma4:e4b", ""))

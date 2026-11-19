@@ -44,12 +44,22 @@ type modelPattern struct {
 // parsePattern reads one entry: `*`, `jev`, or a model URI whose model name
 // may be a glob. Entries and models are read by kit's llm.ParseURI, the parser
 // the client uses, never compared as strings.
-func parsePattern(entry string) (modelPattern, error) {
+func parsePattern(entry string) (modelPattern, error) { return parseEntry(entry, false) }
+
+// parseEntry reads one entry. With bare, an entry that is not a model URI is a
+// model name (glob), as `ai.models.deny` takes: `qwen3*`.
+func parseEntry(entry string, bare bool) (modelPattern, error) {
 	e := canonModel(entry)
 	if e == "*" {
 		return modelPattern{any: true}, nil
 	}
 	scheme, rest, ok := strings.Cut(e, "://")
+	if bare && (!ok || scheme == "") {
+		if loc := queryStart.FindStringIndex(e); loc != nil {
+			e = e[:loc[0]]
+		}
+		return modelPattern{name: e}, nil
+	}
 	if !ok || scheme == "" {
 		return modelPattern{}, fmt.Errorf("%q is not a model URI (write scheme://<model>, jev or *)", llm.RedactURI(e))
 	}
@@ -129,17 +139,29 @@ func (p modelPattern) check(entry string) error {
 // entry must be `*`, `jev` or a model URI, with globs (`*`, `?`, `[...]`)
 // in the model name only. The error names the entry.
 func ValidateModelPatterns(list []string) error {
+	return validateList(list, false,
+		"write *, jev, or scheme://[host:port/]<model> with *, ? and [...] in the model name, e.g. ollama://qwen3*")
+}
+
+// ValidateDenyPatterns checks the `ai.models.deny` setting: as
+// ValidateModelPatterns, and a bare model name (a glob) is an entry too:
+// `qwen3*`. Deny reads the model name only (see ModelDenied).
+func ValidateDenyPatterns(list []string) error {
+	return validateList(list, true,
+		"write *, jev, a model name, or scheme://[host:port/]<model> with *, ? and [...] in the model name, e.g. qwen3*")
+}
+
+func validateList(list []string, bare bool, hint string) error {
 	for _, e := range list {
 		if strings.TrimSpace(e) == "" {
 			continue
 		}
-		p, err := parsePattern(e)
+		p, err := parseEntry(e, bare)
 		if err == nil {
 			err = p.check(e)
 		}
 		if err != nil {
-			return core.New(core.CodeUsage, err.Error()).
-				WithSuggestion("write *, jev, or scheme://[host:port/]<model> with *, ? and [...] in the model name, e.g. ollama://qwen3*")
+			return core.New(core.CodeUsage, err.Error()).WithSuggestion(hint)
 		}
 	}
 	return nil
@@ -163,31 +185,43 @@ func (p modelPattern) matches(mu llm.URI) bool {
 			return false
 		}
 	}
+	return p.nameMatches(mu.Model)
+}
+
+// nameMatches reports whether the model name is the entry's: equal, or a glob
+// match under the protections above.
+func (p modelPattern) nameMatches(model string) bool {
 	if !hasGlob(p.name) {
-		return p.name == mu.Model
+		return p.name == model
 	}
-	if strings.ContainsAny(mu.Model, "@?#") || strings.Contains(mu.Model, "..") ||
-		strings.Count(mu.Model, "/") != strings.Count(p.name, "/") {
+	if strings.ContainsAny(model, "@?#") || strings.Contains(model, "..") ||
+		strings.Count(model, "/") != strings.Count(p.name, "/") {
 		return false
 	}
-	ok, err := path.Match(p.name, mu.Model)
+	ok, err := path.Match(p.name, model)
 	return err == nil && ok
 }
 
 // listed reports whether model matches any entry of list. Entries that cannot
 // be read match nothing; ValidateModelPatterns refuses them at load.
-func listed(list []string, model string) bool {
+func listed(list []string, model string, deny bool) bool {
 	m := canonModel(model)
 	mu, merr := llm.ParseURI(m)
 	for _, e := range list {
 		if strings.TrimSpace(e) == "" {
 			continue
 		}
-		p, err := parsePattern(e)
+		p, err := parseEntry(e, deny)
 		if err != nil || p.check(e) != nil {
 			continue
 		}
-		if p.any || (merr == nil && p.matches(mu)) {
+		switch {
+		case p.any:
+			return true
+		case merr != nil:
+		case deny && p.nameMatches(mu.Model):
+			return true
+		case !deny && p.matches(mu):
 			return true
 		}
 	}
@@ -197,11 +231,15 @@ func listed(list []string, model string) bool {
 // ModelAllowed reports whether model is on the list: an exact model URI, or a
 // model URI whose name is a glob, or `*` for every model. See
 // ModelPermitted for the policy.
-func ModelAllowed(list []string, model string) bool { return listed(list, model) }
+func ModelAllowed(list []string, model string) bool { return listed(list, model, false) }
 
-// ModelDenied reports whether model is on the deny list; the same matcher as
-// ModelAllowed.
-func ModelDenied(list []string, model string) bool { return listed(list, model) }
+// ModelDenied reports whether model is on the deny list. Deny reads the model
+// name only: an entry's scheme, host, port and params are ignored, so
+// `ollama://qwen3*` and `qwen3*` deny `qwen3:4b` at any endpoint and under any
+// scheme (a `base_url`, another host, openai://host/qwen3:4b). The name is
+// matched as in ModelAllowed (glob, same protections). A denial is thus
+// broader than the entry reads; over-denying is the safe direction.
+func ModelDenied(list []string, model string) bool { return listed(list, model, true) }
 
 // ModelPermitted is the model policy of `ai.models.allow` and
 // `ai.models.deny`. Deny wins. With neither list set every model is
@@ -209,8 +247,8 @@ func ModelDenied(list []string, model string) bool { return listed(list, model) 
 // denied; with both, the allowed and not denied. The matcher is that of
 // ModelAllowed: entries and models are compared as parsed URIs, the endpoint
 // (scheme, host and port, params) exactly, and the entry's globs (`*`, `?`,
-// `[...]`, as path.Match) match the model name only. `jev` stands for the
-// default Jev model on both sides.
+// `[...]`, as path.Match) match the model name only. Deny is name-only (see
+// ModelDenied). `jev` stands for the default Jev model on both sides.
 func ModelPermitted(allow, deny []string, model string) bool {
 	if ModelDenied(deny, model) {
 		return false

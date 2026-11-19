@@ -34,8 +34,9 @@ func TestModelPermitted(t *testing.T) {
 		// name only.
 		{"deny does not reach another host", nil, []string{"ollama://qwen3*"}, "ollama://qwen3.attacker.example:11434/m", true},
 		{"deny host form", nil, []string{"ollama://gpu.internal:11434/*"}, "ollama://gpu.internal:11434/big:70b", false},
-		{"deny host form other host", nil, []string{"ollama://gpu.internal:11434/*"}, "ollama://gpu.internal.evil.example:11434/m", true},
-		{"deny scheme case", nil, []string{"ollama://qwen3*"}, "OLLAMA://qwen3:4b", true},
+		// Deny reads the entry's name only: its host narrows nothing.
+		{"deny host form other host", nil, []string{"ollama://gpu.internal:11434/*"}, "ollama://gpu.internal.evil.example:11434/m", false},
+		{"deny scheme case", nil, []string{"ollama://qwen3*"}, "OLLAMA://qwen3:4b", false},
 		{"allow with a denied base_url", []string{"ollama://m"}, []string{"ollama://m?base_url=http://evil.example"}, "ollama://m?base_url=http://evil.example", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -46,10 +47,10 @@ func TestModelPermitted(t *testing.T) {
 	}
 }
 
-// Bypass attempts hold for the deny list the same as for the allow list: the
-// glob reaches the model name only. A model the glob does not match is not
-// denied (it is another endpoint), and not allowed by the same entry.
-func TestModelGlobBypassesBothLists(t *testing.T) {
+// Bypass attempts on the allow list: the glob reaches the model name only,
+// the endpoint is matched structurally. Deny is name-only (see
+// TestModelDenyMatchesNameAtAnyEndpoint).
+func TestModelGlobBypassesAllowList(t *testing.T) {
 	for _, model := range []string{
 		"ollama://qwen3.attacker.example:11434/model",
 		"ollama://qwen3:4b@attacker.example:11434/m",
@@ -58,14 +59,106 @@ func TestModelGlobBypassesBothLists(t *testing.T) {
 		"ollama://qwen3..%2f",
 		"ollama://qwen3?base_url=https://evil.example.com",
 		"OLLAMA://qwen3:4b",
+		"ollama://otherhost:11434/qwen3:4b",
+		"openai://qwen3:4b",
 	} {
 		entry := []string{"ollama://qwen3*"}
 		if builtin.ModelAllowed(entry, model) {
 			t.Errorf("allow entry %v matched %q", entry, model)
 		}
-		if builtin.ModelDenied(entry, model) {
-			t.Errorf("deny entry %v matched %q", entry, model)
+	}
+}
+
+// Deny matches the model name at any endpoint and any scheme: pointing a
+// model elsewhere does not escape it.
+func TestModelDenyMatchesNameAtAnyEndpoint(t *testing.T) {
+	denied := []string{
+		"ollama://qwen3:4b",
+		"ollama://qwen3:4b?base_url=http://other",
+		"ollama://otherhost:11434/qwen3:4b",
+		"openai://localhost:11434/qwen3:4b",
+		"openai://qwen3:4b",
+		"ollama://[::1]:11434/qwen3:4b",
+		"ollama://[2001:db8::1]:11434/qwen3:4b?base_url=http://x",
+		"OLLAMA://qwen3:4b",
+	}
+	kept := []string{
+		"ollama://gemma4:e4b",
+		"ollama://otherhost:11434/gemma4:e4b",
+		"ollama://qwen3.attacker.example:11434/gemma4",
+		"ollama://x/qwen3:4b/extra",
+	}
+	for _, entry := range []string{
+		"ollama://qwen3*", "qwen3*", "openai://qwen3*", "ollama://gpu.internal:11434/qwen3*",
+		"ollama://[::1]:11434/qwen3*", "ollama://qwen3*?base_url=http://z", "qwen3:4b*", "qwen?:4b",
+	} {
+		for _, m := range denied {
+			if !builtin.ModelDenied([]string{entry}, m) {
+				t.Errorf("deny %q did not match %q", entry, m)
+			}
+			if builtin.ModelPermitted(nil, []string{entry}, m) {
+				t.Errorf("deny %q permitted %q", entry, m)
+			}
 		}
+		for _, m := range kept {
+			if builtin.ModelDenied([]string{entry}, m) {
+				t.Errorf("deny %q matched %q", entry, m)
+			}
+		}
+	}
+	// Allow stays structural.
+	for _, m := range denied[1:] {
+		if m == "OLLAMA://qwen3:4b" || m == "openai://qwen3:4b" {
+			continue
+		}
+		if builtin.ModelAllowed([]string{"ollama://qwen3*"}, m) {
+			t.Errorf("allow matched %q", m)
+		}
+	}
+}
+
+func TestModelDenyBareNamesAndStar(t *testing.T) {
+	for _, c := range []struct {
+		deny  []string
+		model string
+		want  bool
+	}{
+		{[]string{"gemma4:e4b"}, "ollama://gemma4:e4b", true},
+		{[]string{"gemma4:e4b"}, "ollama://h:1/gemma4:e4b", true},
+		{[]string{"gemma4:e4b"}, "ollama://gemma4:e2b", false},
+		{[]string{"hf.co/u/*"}, "ollama://hf.co/u/m", true},
+		{[]string{"hf.co/u/*"}, "ollama://hf.co/v/m", false},
+		{[]string{"*"}, "openai://h:1/anything", true},
+		{[]string{"jev"}, "jev", true},
+		{[]string{"jev"}, "jev://typesafe/jev-1.14", true},
+		{[]string{"jev"}, "openai://typesafe/jev-1.14", true},
+		{[]string{"jev"}, "ollama://m", false},
+		{[]string{"jev://typesafe/*"}, "jev", true},
+		{[]string{"jev://typesafe/*"}, "jev://typesafe/other", true},
+		{[]string{"jev://typesafe/*"}, "ollama://typesafe/x", true},
+		{[]string{"typesafe/*"}, "jev", true},
+		{[]string{"typesafe/*"}, "ollama://m", false},
+	} {
+		if got := builtin.ModelDenied(c.deny, c.model); got != c.want {
+			t.Errorf("ModelDenied(%v, %q) = %v", c.deny, c.model, got)
+		}
+	}
+}
+
+func TestValidateDenyPatterns(t *testing.T) {
+	for _, ok := range []string{"*", "jev", "qwen3*", "qwen3:4b", "hf.co/u/*", "ollama://qwen3*", "jev://typesafe/*", " ", ""} {
+		if err := builtin.ValidateDenyPatterns([]string{ok}); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"qwen[3", "a[/]b", "*://qwen3", "ollama://qwen[3", "ollama://a[/]b", "ollama://*:11434/m"} {
+		if err := builtin.ValidateDenyPatterns([]string{"ok*", bad}); !core.IsCode(err, core.CodeUsage) || !strings.Contains(err.Error(), bad[:3]) {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+	// Allow still refuses a bare name.
+	if err := builtin.ValidateModelPatterns([]string{"qwen3*"}); !core.IsCode(err, core.CodeUsage) {
+		t.Errorf("allow bare name: %v", err)
 	}
 }
 

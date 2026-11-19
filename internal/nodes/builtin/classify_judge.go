@@ -69,13 +69,23 @@ func (j *JudgeClassifier) Classify(ctx context.Context, req ClassifyRequest) (La
 		return nil, core.Cost{}, core.Errorf(core.CodeInputInvalid, "engine %q is not known to the judge backend", engine).
 			WithSuggestion("use " + strings.Join(engines, ", "))
 	}
-	mode, err := modeOf(req.Strategy)
-	if err != nil {
-		return nil, core.Cost{}, err
-	}
 	models, implicit, err := j.candidates(req, engine)
 	if err != nil {
 		return nil, core.Cost{}, err
+	}
+	// The strategy is read only for a local judge: Jev never sees it (the
+	// step notes it, see classifyJev). When no candidate can be Jev, a bad
+	// strategy fails before any model is probed; otherwise it is read once
+	// the pick is local.
+	var mode llmjudge.ModeKind
+	canJev := implicit
+	for _, m := range models {
+		canJev = canJev || strings.HasPrefix(canonModel(m), jevPrefix)
+	}
+	if !canJev {
+		if mode, err = modeOf(req.Strategy); err != nil {
+			return nil, core.Cost{}, err
+		}
 	}
 	p, err := j.m.pick(ctx, pickIn{
 		models: models, implicitJev: implicit, jevOK: true, localOnly: req.LocalOnly,
@@ -86,6 +96,11 @@ func (j *JudgeClassifier) Classify(ctx context.Context, req ClassifyRequest) (La
 	}
 	if p.ref.jev {
 		return j.classifyJev(ctx, req, p)
+	}
+	if canJev {
+		if mode, err = modeOf(req.Strategy); err != nil {
+			return nil, core.Cost{}, err
+		}
 	}
 	req.Model = p.ref.model
 	return j.classifyLocal(ctx, req, mode)

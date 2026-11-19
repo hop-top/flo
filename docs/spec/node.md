@@ -390,7 +390,11 @@ answered (`local` or `jev`), so a run shows who judged:
 - `jev`: kit's `go/ai/judge/jev` (TypeSafe Jev through OpenRouter), one
   choice question per item over `labels`; confidence and probabilities are
   the service's, `why` is empty, cost is the service's reported USD.
-  `strategy` is ignored, with a `notes` entry in the output; `pattern`'s system
+  `strategy` is ignored, with a `notes` entry in the output: it is not parsed
+  or validated, so any value, even a malformed one, is only noted, never
+  `input_invalid`. Under `auto` it is read only when the model chosen is local;
+  while every candidate is local a malformed one fails before any model is
+  probed. `pattern`'s system
   text goes first in the question's instructions, then a blank line, then the
   step's `instructions` (a pattern needs a pattern source as under `local`);
   `schema` fails `engine_feature`. It is
@@ -700,11 +704,23 @@ before any request and before any secret read.
   entry). In an entry a `?` is a glob unless a `key=` follows it, which starts
   the query.
 - Globs in the scheme, the host or the params are not supported: an entry
-  with one, one that is not a model URI, a bad glob, or a class holding a `/`
+  with one, one that is not a model URI (deny: nor a bare model name), a bad glob, or a class holding a `/`
   is refused at configuration load (`usage`), naming the setting and the entry.
-- Allow and deny use the same matcher. A deny entry is therefore as exact as
-  an allow entry: `ollama://qwen3*` does not deny the same model name at
-  another endpoint (host or `base_url`); deny `*` or name the endpoint.
+- Deny reads the model name only. An entry of `ai.models.deny` is `*`, `jev`,
+  a bare model name (a glob), or a model URI; for a URI entry the scheme, host,
+  port and params are ignored and only the name pattern is compared (same glob
+  rules and protections as above) with the model's name, so a model cannot
+  escape deny by pointing elsewhere. `ollama://qwen3*` and `qwen3*` both deny
+  `ollama://qwen3:4b`, `ollama://qwen3:4b?base_url=http://other`,
+  `ollama://otherhost:11434/qwen3:4b`, `ollama://[::1]:11434/qwen3:4b` and
+  `openai://localhost:11434/qwen3:4b`. `jev` and `jev://typesafe/*` deny the
+  Jev models by name (`typesafe/…`). `*` denies every model. Allow stays
+  structural: it is the endpoint-exact matcher above. Over-denying is the
+  accepted direction: a host in a deny entry narrows nothing
+  (`ollama://gpu.internal:11434/*` denies every model, as its name is `*`);
+  to deny one model on one host only, allow structurally instead.
+  Bare names are a deny-only form; allow refuses them. Globs in a URI entry's
+  scheme, host or params are refused in deny too.
 - A refused model is unusable: alone, or when the whole list is, the step
   fails `privacy_violation` ("denied" or "not allowed"); inside a list it is
   skipped (§6.3.1).

@@ -722,6 +722,48 @@ func TestJevStrategyIsIgnoredWithANote(t *testing.T) {
 	}
 }
 
+// A strategy is not read before Jev: whatever it says, even malformed, the
+// outcome is the note, never input_invalid. Under auto it is read only when
+// the chosen engine is local.
+func TestJevStrategyIsNeverParsed(t *testing.T) {
+	for _, s := range []string{"votes:99", "bogus", "votes:x", "votes:0"} {
+		for _, engine := range []string{builtin.EngineJev, builtin.EngineAuto, ""} {
+			_, h := newWorld(false) // no local model: auto falls to Jev
+			in := engineIn("ollama://m", engine)
+			in["strategy"] = s
+			res := classifyAs(t, kitJevCls(t, h, engine, nil), specrun.PrivacyCloudAllowed, in)
+			if res.Outcome != core.OutcomeOK || out(res)["engine"] != "jev" {
+				t.Fatalf("%s/%s: %+v %v", s, engine, res.Err, res.Output)
+			}
+			notes, _ := out(res)["notes"].([]any)
+			if len(notes) != 1 || !strings.Contains(notes[0].(string), s) {
+				t.Errorf("%s/%s: notes %v", s, engine, out(res)["notes"])
+			}
+		}
+	}
+	// A list that ends at Jev: strategy unread while Jev answers.
+	_, h := newWorld(false)
+	in := listIn([]any{"ollama://m", "jev"}, builtin.EngineAuto)
+	in["strategy"] = "votes:99"
+	res := classifyAs(t, kitJevCls(t, h, builtin.EngineAuto, nil), specrun.PrivacyCloudAllowed, in)
+	if res.Outcome != core.OutcomeOK || out(res)["engine"] != "jev" {
+		t.Fatalf("list: %+v %v", res.Err, res.Output)
+	}
+}
+
+// When the chosen engine is local, a malformed strategy is input_invalid.
+func TestLocalMalformedStrategyIsInputInvalid(t *testing.T) {
+	for _, engine := range []string{builtin.EngineLocal, builtin.EngineAuto} {
+		_, h := newWorld(true, "m")
+		in := engineIn("ollama://m", engine)
+		in["strategy"] = "votes:99"
+		res := classifyAs(t, engineCls(t, h, withT(t, jevKeys()), ""), specrun.PrivacyCloudAllowed, in)
+		if res.Outcome != core.OutcomeFailed || res.Err.Code != core.CodeInputInvalid {
+			t.Errorf("%s: %+v", engine, res)
+		}
+	}
+}
+
 // No strategy, no note; and a local judge keeps its strategy, with no note.
 func TestJevNoStrategyNoNote(t *testing.T) {
 	_, h := newWorld(false)

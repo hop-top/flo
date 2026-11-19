@@ -119,7 +119,8 @@ flo run cancel <run> --yes
   chosen model is reported, not retried on the next. `jev` is the default Jev
   model (`jev://typesafe/jev-1.14`) and is classify only; `engine:` filters the
   list. Jev takes a step's `pattern` text first in its instructions and ignores
-  `strategy`, with a `notes` entry in the step output. When none is usable the error lists each model and why.
+  `strategy`, with a `notes` entry in the step output (the value is not
+  validated there: even a malformed one is only noted). When none is usable the error lists each model and why.
 - Model allow and deny lists: `ai.models.allow` and `ai.models.deny` (env
   `FLO_AI_MODELS_ALLOW`, `FLO_AI_MODELS_DENY`, comma-separated) say which
   models flows may run, cloud or local, on every engine. Deny wins. Neither
@@ -131,7 +132,10 @@ flo run cancel <run> --yes
   `jev://typesafe/*`, `ollama://localhost:11434/*`. Entries are matched as
   parsed URIs: scheme, host and `base_url` must equal the model's, and a glob
   covers the model name only, never a host or a query; a glob in the scheme,
-  host or params is refused at load.
+  host or params is refused at load. Deny is looser on purpose: it matches the
+  model name at any endpoint and scheme (`qwen3*` or `ollama://qwen3*` also
+  denies `ollama://otherhost:11434/qwen3:4b` and `?base_url=…`), so a model
+  cannot be moved out of it; entries may be bare names (`qwen3*`).
 
   ```yaml
   ai:

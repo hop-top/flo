@@ -85,7 +85,7 @@ func newModelClients(d LLMDeps) (*modelClients, error) {
 	if err := ValidateModelPatterns(d.Allow); err != nil {
 		return nil, prefixed("ai.models.allow", err)
 	}
-	if err := ValidateModelPatterns(d.Deny); err != nil {
+	if err := ValidateDenyPatterns(d.Deny); err != nil {
 		return nil, prefixed("ai.models.deny", err)
 	}
 	local, err := node.NewLocalHosts(d.LocalHosts)
