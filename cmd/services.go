@@ -45,6 +45,9 @@ const (
 	EnvEngineClaimTTL      = "FLO_ENGINE_CLAIM_TTL"
 	EnvEngineShutdownGrace = "FLO_ENGINE_SHUTDOWN_GRACE"
 	EnvApprovalPoll        = "FLO_APPROVAL_POLL"
+	// EnvJobsRetention is how long finished jobs are kept (key jobs.retention;
+	// default 0 keeps them for ever).
+	EnvJobsRetention = "FLO_JOBS_RETENTION"
 
 	// The tlc project and profile the tasks port reaches, and the eva
 	// gateway of `check:` (config.eva.url).
@@ -140,6 +143,13 @@ func engineConfig(root *kitcli.Root) (serve.Config, error) {
 		if *d.dst, err = durationSetting(root, d.env, d.key); err != nil {
 			return serve.Config{}, err
 		}
+	}
+	if cfg.JobsRetention, err = durationSetting(root, EnvJobsRetention, "jobs.retention"); err != nil {
+		return serve.Config{}, err
+	}
+	if cfg.JobsRetention < 0 {
+		return serve.Config{}, core.Errorf(core.CodeUsage, "%s: %s is negative", EnvJobsRetention, cfg.JobsRetention).
+			WithSuggestion("use 0 to keep finished jobs for ever, or a duration such as 720h")
 	}
 	cfg.Classifier = setting(root, builtin.EnvClassifier, "ai.classifier")
 	cfg.JudgeEngine = setting(root, builtin.EnvJudgeEngine, "ai.judge.engine")

@@ -49,6 +49,7 @@ var settingCases = []struct {
 	{"engine.interval", EnvEngineInterval, "1s", "2s", "3s", func(c serve.Config) string { return c.Interval.String() }},
 	{"engine.claim_ttl", EnvEngineClaimTTL, "1m", "2m", "3m", func(c serve.Config) string { return c.ClaimTTL.String() }},
 	{"engine.shutdown_grace", EnvEngineShutdownGrace, "1m", "2m", "3m", func(c serve.Config) string { return c.ShutdownGrace.String() }},
+	{"jobs.retention", EnvJobsRetention, "1h", "2h", "3h", func(c serve.Config) string { return c.JobsRetention.String() }},
 	// FLO_APPROVAL_POLL is not the derived name: an explicit bind.
 	{"engine.approval_poll", EnvApprovalPoll, "1s", "2s", "3s", func(c serve.Config) string { return c.ApprovalPoll.String() }},
 	{"ai.classifier", "FLO_AI_CLASSIFIER", "cfile", "cenv", "cflag", func(c serve.Config) string { return c.Classifier }},
@@ -153,7 +154,7 @@ func TestConfigPrecedence(t *testing.T) {
 // number as one), and what it is with nothing set.
 func normalize(key, v string) string {
 	switch key {
-	case "engine.interval", "engine.claim_ttl", "engine.shutdown_grace", "engine.approval_poll":
+	case "engine.interval", "engine.claim_ttl", "engine.shutdown_grace", "engine.approval_poll", "jobs.retention":
 		d, err := time.ParseDuration(v)
 		if err != nil {
 			return v
@@ -169,7 +170,7 @@ func defaultOf(key string) string {
 		return string(core.DefaultTenant)
 	case "owner_profile":
 		return "login" // $USER
-	case "engine.interval", "engine.claim_ttl", "engine.shutdown_grace", "engine.approval_poll":
+	case "engine.interval", "engine.claim_ttl", "engine.shutdown_grace", "engine.approval_poll", "jobs.retention":
 		return "0s"
 	}
 	return ""
@@ -255,5 +256,19 @@ func TestConfigModelListsRefuseBadEntries(t *testing.T) {
 		if !core.IsCode(err, core.CodeUsage) || !strings.Contains(err.Error(), c.key) || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s=%s: %v", c.key, c.val, err)
 		}
+	}
+}
+
+// jobs.retention below zero or not a duration is a usage error; zero keeps
+// finished jobs for ever.
+func TestJobsRetentionRejectsInvalid(t *testing.T) {
+	for _, v := range []string{"-1h", "soon"} {
+		if _, err := loaded(t, "", map[string]string{EnvJobsRetention: v}); !core.IsCode(err, core.CodeUsage) {
+			t.Errorf("%q: err = %v, want usage", v, err)
+		}
+	}
+	cfg, err := loaded(t, "", map[string]string{EnvJobsRetention: "0"})
+	if err != nil || cfg.JobsRetention != 0 {
+		t.Errorf("0: %v, %v", cfg.JobsRetention, err)
 	}
 }

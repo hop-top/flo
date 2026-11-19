@@ -125,6 +125,13 @@ flo run cancel <run> --yes
   it (no `-c` file, `FLO_FLOWS_DIR` or `-c flows.dir=` beats it), else to the
   working directory. `flo status` shows the effective directory
   and its source (`flows_dir`, `flows_dir_from`).
+- Job retention: `jobs.retention` (`FLO_JOBS_RETENTION`), a duration, default
+  `0` = keep finished jobs for ever, no pruning. When above zero, the engine
+  deletes finished jobs (succeeded, failed, timed out, cancelled) last updated
+  more than that long ago, at start and then every `min(retention, 1h)`;
+  pending and running jobs are never deleted. Negative or non-duration values
+  are a usage error. Not settable from a project config (it deletes
+  install-wide history).
 
   ```yaml
   # $XDG_CONFIG_HOME/flo/config.yaml (and the project's .flo/config.yaml)
@@ -139,6 +146,7 @@ flo run cancel <run> --yes
     claim_ttl: 2m
     shutdown_grace: 30s
     approval_poll: 1m
+  jobs: { retention: 0 }                        # FLO_JOBS_RETENTION; user/system config only
   ai: { classifier: rules, generator: template, judge: { engine: auto }, builder: { model: "ollama://qwen3:4b-instruct-2507-q4_K_M" } }  # FLO_AI_*
   eva: { url: http://127.0.0.1:9000 }             # FLO_EVA_URL
   packs:                        # config.<pack>.<key> in node specs and triggers

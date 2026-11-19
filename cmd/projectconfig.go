@@ -37,11 +37,12 @@ const (
 // projectRules is what a project config may not do. A project config is
 // committed next to the code: it sets no secret, nothing about who owns the
 // install or what counts as local (they loosen what the user set), nor the
-// access authority with the binary it runs; and it only narrows the model
+// access authority with the binary it runs, nor how long finished jobs live
+// (it deletes install-wide history); and it only narrows the model
 // policy lists, never widens them. The model matcher is that of the policy.
 var projectRules = &kitconfig.ProjectRules{
 	SecretKey: regexp.MustCompile(`(?i)secret|token|passw|credential|api[_-]?key|private[_-]?key|access[_-]?key`),
-	Forbidden: []string{"owner_profile", "engine_profile", "privacy.local_hosts", "bos"},
+	Forbidden: []string{"owner_profile", "engine_profile", "privacy.local_hosts", "bos", "jobs.retention"},
 	Narrow: []kitconfig.NarrowKey{
 		{Key: keyModelsDeny, Mode: kitconfig.Union},
 		{Key: keyModelsAllow, Mode: kitconfig.Intersect, Match: func(pattern, model string) bool {

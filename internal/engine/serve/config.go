@@ -66,6 +66,9 @@ type Config struct {
 	// killed engine's runs wait before another one picks them up. Zero is
 	// jobs.DefaultClaimTTL.
 	ClaimTTL time.Duration
+	// JobsRetention is how long finished jobs are kept before the worker
+	// prunes them; zero keeps them for ever.
+	JobsRetention time.Duration
 	// ApprovalPoll is how often open approvals are polled for a closed task
 	// and a timeout; zero is approvals.DefaultPollEvery.
 	ApprovalPoll time.Duration

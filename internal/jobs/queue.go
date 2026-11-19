@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"hop.top/kit/go/runtime/domain"
@@ -240,17 +239,26 @@ func (q *Queue) insert(ctx context.Context, spec core.JobSpec) (core.JobID, erro
 	if spec.Payload != nil {
 		o.Payload = spec.Payload
 	}
-	var err error
-	for try := 0; try < 4; try++ { // kit ids are 32 random bits: retry a collision
-		var id string
-		if id, err = q.eng.Enqueue(ctx, o); err == nil {
-			return core.JobID(id), nil
-		}
-		if !strings.Contains(err.Error(), "UNIQUE constraint failed: jobs.id") {
-			break
-		}
+	id, err := q.eng.Enqueue(ctx, o) // kit ids are full-length typeids: no collision to retry
+	if err != nil {
+		return "", internal(err)
 	}
-	return "", internal(err)
+	return core.JobID(id), nil
+}
+
+// Prune deletes finished jobs (succeeded, failed, timed out, cancelled) last
+// updated more than retention ago, by the queue's clock, and returns how many.
+// Pending and active jobs are never touched. A retention of zero or less
+// deletes nothing.
+func (q *Queue) Prune(ctx context.Context, retention time.Duration) (int, error) {
+	if retention <= 0 {
+		return 0, nil
+	}
+	n, err := q.eng.Prune(ctx, q.opts.Clock.Now().Add(-retention))
+	if err != nil {
+		return 0, internal(err)
+	}
+	return n, nil
 }
 
 func toInfo(j *job.Job) core.JobInfo {

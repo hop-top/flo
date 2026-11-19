@@ -21,3 +21,6 @@ func ClaimAs(q *Queue, worker string) error {
 	_, err := q.eng.Claim(context.Background(), QueueName, worker)
 	return err //nolint:wrapcheck // test helper
 }
+
+// PruneOnce runs one prune pass of w.
+func PruneOnce(w *Worker) { w.pruneOnce(context.Background()) }

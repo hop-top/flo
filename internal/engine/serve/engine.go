@@ -105,7 +105,7 @@ func (e *Engine) open(ctx context.Context) error {
 	e.RunLog = runlog.New(runlog.Options{RunsDir: reg.RunsDir})
 	e.Worker = jobs.NewWorker(q, jobs.WorkerOptions{
 		Pollers: cfg.Pollers, Interval: cfg.Interval, StaleInterval: cfg.StaleInterval,
-		ShutdownGrace: cfg.ShutdownGrace, Logger: cfg.Logger,
+		ShutdownGrace: cfg.ShutdownGrace, Retention: cfg.JobsRetention, Logger: cfg.Logger,
 	})
 	if err := e.wire(); err != nil {
 		return err

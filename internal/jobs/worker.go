@@ -27,9 +27,19 @@ type WorkerOptions struct {
 	// ShutdownGrace is how long Serve lets running handlers finish after its
 	// context is done before cancelling theirs. Zero waits for ever.
 	ShutdownGrace time.Duration
+	// Retention is how long finished jobs are kept; they are pruned once older.
+	// Zero keeps them for ever and runs no pruning.
+	Retention time.Duration
+	// PruneInterval is how often finished jobs are pruned. Default
+	// min(Retention, DefaultPruneInterval).
+	PruneInterval time.Duration
 	// Logger receives queue errors and handler failures; slog.Default when nil.
 	Logger *slog.Logger
 }
+
+// DefaultPruneInterval caps the pause between prunes: a retention longer than
+// this is still checked hourly.
+const DefaultPruneInterval = time.Hour
 
 // Worker implements core.JobWorker over a Queue: it runs kit's Poller, N of
 // them, wraps each handler so the claim is heartbeated while it runs (kit's
@@ -54,6 +64,12 @@ func NewWorker(q *Queue, opts WorkerOptions) *Worker {
 	}
 	if opts.StaleInterval <= 0 {
 		opts.StaleInterval = 30 * time.Second
+	}
+	if opts.Retention < 0 {
+		opts.Retention = 0
+	}
+	if opts.PruneInterval <= 0 {
+		opts.PruneInterval = min(opts.Retention, DefaultPruneInterval)
 	}
 	if opts.ID == "" {
 		h, _ := os.Hostname()
@@ -177,6 +193,14 @@ func (w *Worker) Serve(ctx context.Context) error {
 		}()
 	}
 
+	if w.opts.Retention > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w.pruneLoop(pollCtx)
+		}()
+	}
+
 	<-ctx.Done()
 	g.stop()
 	if w.opts.ShutdownGrace > 0 {
@@ -224,4 +248,34 @@ func (w *Worker) heartbeat(id string) (stop func()) {
 		}
 	}()
 	return func() { close(done); <-finished }
+}
+
+// pruneLoop prunes at start and then every PruneInterval until ctx is done.
+func (w *Worker) pruneLoop(ctx context.Context) {
+	t := time.NewTicker(w.opts.PruneInterval)
+	defer t.Stop()
+	for {
+		w.pruneOnce(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// pruneOnce deletes finished jobs older than the retention; none when it is
+// zero. A failure is logged and retried at the next tick.
+func (w *Worker) pruneOnce(ctx context.Context) {
+	if w.opts.Retention <= 0 {
+		return
+	}
+	n, err := w.q.Prune(ctx, w.opts.Retention)
+	if err != nil {
+		w.opts.Logger.Warn("job prune", "error", err)
+		return
+	}
+	if n > 0 {
+		w.opts.Logger.Info("jobs pruned", "count", n, "older_than", w.opts.Retention.String())
+	}
 }

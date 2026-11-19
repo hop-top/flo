@@ -324,6 +324,7 @@ func TestProjectConfigRefusesAuthorityKeys(t *testing.T) {
 		"privacy:\n  local_hosts: [evil.example]\n",
 		"owner_profile: x\n",
 		"bos:\n  bin: /tmp/x\n",
+		"jobs:\n  retention: 1s\n",
 	} {
 		s := newSandbox(t)
 		s.project("proj", text)
