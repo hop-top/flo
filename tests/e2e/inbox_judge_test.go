@@ -389,6 +389,76 @@ func TestInboxDecisionsUseSenderFacts(t *testing.T) {
 	}
 }
 
+// TestInboxDecisionsAuthAndVendors: auth mail (login code, reset, magic link) is
+// unrequested: labelled and archived only for a customer vendor whose mail
+// authenticates, otherwise kept in the inbox, flagged; mail claiming a customer
+// vendor that fails authentication is flagged; a customer vendor's mail is never
+// deleted. Without a security label every auth mail stays. Synthetic senders.
+func TestInboxDecisionsAuthAndVendors(t *testing.T) {
+	e := triageEnv(t)
+	item := func(n int) map[string]any {
+		return map[string]any{"n": n, "sender": map[string]any{"address": fmt.Sprintf("s%d@example.org", n)}}
+	}
+	facts := func(n int, f map[string]any) map[string]any {
+		f["n"], f["in_store"] = n, true
+		return f
+	}
+	senders := []any{
+		facts(1, map[string]any{"auth_class": "reset", "auth_route": "archive_security", "customer_vendor": true, "auth": "pass"}),
+		facts(2, map[string]any{"auth_class": "code", "auth_route": "keep_flagged", "customer_vendor": true, "auth": "fail"}),
+		facts(3, map[string]any{"auth_class": "link", "auth_route": "keep_flagged", "customer_vendor": false, "auth": "pass"}),
+		facts(4, map[string]any{"customer_vendor": true, "auth": "fail", "spoof_suspect": true}),
+		facts(5, map[string]any{"customer_vendor": true, "auth": "pass"}),
+		facts(6, map[string]any{"auth_class": "code", "auth_route": "archive_security", "customer_vendor": true, "auth": "pass"}),
+	}
+	var labels, weights []any
+	for n := 1; n <= 6; n++ {
+		labels = append(labels, map[string]any{"item": item(n), "label": "Reference", "confidence": 0.99, "why": "w"})
+		weights = append(weights, map[string]any{"item": item(n), "label": "irrelevant"})
+	}
+	run := func(secLabel any) map[int]string {
+		dir := snapshotDir(t)
+		body, _ := json.Marshal(map[string]any{
+			"labels": labels, "weights": weights, "senders": senders, "security_label": secLabel,
+			"sop_labels": []any{"Reference"}, "quiet_weights": []any{"irrelevant"}, "min_confidence": 0.9, "engine": "local",
+		})
+		if r := e.runShim(string(body), "inbox-decisions", "--out", filepath.Join(t.TempDir(), "sum.json"), dir); r.Exit != 0 {
+			t.Fatalf("inbox-decisions: %+v", r)
+		}
+		var d decisionsFile
+		b, err := os.ReadFile(filepath.Join(dir, "decisions.json")) //nolint:gosec // a temp file
+		if err != nil || json.Unmarshal(b, &d) != nil || len(d.Decisions) != 6 {
+			t.Fatalf("decisions: %v %s", err, b)
+		}
+		got := map[int]string{}
+		for _, dec := range d.Decisions {
+			a, _ := json.Marshal(dec.Actions)
+			got[dec.N] = string(a)
+			if (dec.N >= 4) && (strings.Contains(string(a), `"trash"`) || strings.Contains(string(a), `"spam"`)) {
+				t.Errorf("decision %d: a customer vendor's mail has a delete action: %s", dec.N, a)
+			}
+		}
+		return got
+	}
+	got := run("security")
+	if got[1] != `[{"label":"security"},"archive"]` || got[6] != `[{"label":"security"},"archive"]` {
+		t.Errorf("authenticated customer vendor: want security + archive: %s / %s", got[1], got[6])
+	}
+	for n, want := range map[int]string{2: "does not authenticate", 3: "not a customer vendor", 4: "spoof-suspect"} {
+		if !strings.HasPrefix(got[n], `[{"attention":`) || !strings.Contains(got[n], want) || strings.Contains(got[n], "archive") {
+			t.Errorf("decision %d: want kept in the inbox, flagged (%s): %s", n, want, got[n])
+		}
+	}
+	if got[5] != `[{"label":"Reference"},"read","archive"]` {
+		t.Errorf("an ordinary customer-vendor mail follows the normal policy: %s", got[5])
+	}
+	for n, g := range run(nil) {
+		if (n == 1 || n == 6) && (!strings.HasPrefix(g, `[{"attention":`) || !strings.Contains(g, "no security label")) {
+			t.Errorf("decision %d without a security label stays in the inbox, flagged: %s", n, g)
+		}
+	}
+}
+
 // TestInboxTriageJudgesLocally: the run asks the model two questions per
 // message, over headers only, and the decisions the script plans from are the
 // script's policy over the answers.

@@ -1,9 +1,9 @@
 xrr: "1"
 adapter: http
 fingerprint: 38cf7f6b
-recorded_at: "2026-11-19T06:35:51Z"
+recorded_at: "2026-11-19T07:30:43Z"
 payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T06:35:51.500168Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.95, \"value\": \"Marketing\", \"why\": \"The subject line ''Weekly digest'' and sender ''Weekly'' suggest a routine marketing communication, typical of promotional or informational content distributed to subscribers.\"}}"},"done":true,"done_reason":"stop","total_duration":11319882167,"load_duration":5084170208,"prompt_eval_count":393,"prompt_eval_cached_count":277,"prompt_eval_duration":128606000,"eval_count":52,"eval_duration":782732000}'
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T07:30:43.354191Z","message":{"role":"assistant","content":"{\n  \"label\": {\n    \"confidence\": 0.95,\n    \"value\": \"Marketing\",\n    \"why\": \"The subject ''Weekly digest'' and sender ''Weekly'' from ''example.org'' suggest a regular, promotional newsletter, which is typical of marketing content.\"\n  }\n}"},"done":true,"done_reason":"stop","total_duration":3289108166,"load_duration":431083,"prompt_eval_count":393,"prompt_eval_cached_count":277,"prompt_eval_duration":89353000,"eval_count":62,"eval_duration":538940000}'
     headers:
         Content-Type: application/json; charset=utf-8
     status: 200

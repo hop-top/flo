@@ -1,6 +1,6 @@
 {
-  "<m1@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": false, "org": "example", "must_show": false},
-  "<m2@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": false, "org": "example", "must_show": false},
-  "<m3@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": true, "org": "example", "must_show": true},
-  "<m5@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": true, "org": "example", "must_show": true}
+  "<m1@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": false, "org": "example", "must_show": false, "customer_vendor": false, "vendor_since": null, "auth": "none", "spoof_suspect": false, "auth_class": null, "auth_route": null},
+  "<m2@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": false, "org": "example", "must_show": false, "customer_vendor": false, "vendor_since": null, "auth": "none", "spoof_suspect": false, "auth_class": null, "auth_route": null},
+  "<m3@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": true, "org": "example", "must_show": true, "customer_vendor": false, "vendor_since": null, "auth": "none", "spoof_suspect": false, "auth_class": null, "auth_route": null},
+  "<m5@example.org>": {"is_contact": false, "muted": false, "ruled_out": false, "person": true, "org": "example", "must_show": true, "customer_vendor": false, "vendor_since": null, "auth": "none", "spoof_suspect": false, "auth_class": null, "auth_route": null}
 }

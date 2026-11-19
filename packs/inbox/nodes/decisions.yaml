@@ -14,11 +14,17 @@ description: >-
 # inbox/senders@1, unless the script mutes it or Jad ruled it out (those follow
 # the normal policy). A row without facts falls back to the address alone (role
 # names and sending domains), which can only err towards leaving mail for a person.
+# Auth mail (login code, password reset, magic link) is treated as unrequested:
+# with security_label set it is labelled and archived only when the sender is a
+# customer vendor for the To address and the mail authenticates, otherwise it
+# stays in the inbox, flagged. Mail that claims a customer vendor but fails
+# authentication is left in the inbox, flagged. Mail from a customer vendor never
+# gets a delete action. All from the senders facts, headers only.
 argv: [inbox-decisions, --out, "{{ run.step_dir }}/out.json", "{{ in.run_dir }}"]
 stdin:
   json: >-
     {{ {'labels': in.labels, 'weights': in.weights, 'sop_labels': in.sop_labels,
-        'hold_labels': in.hold_labels, 'senders': in.senders, 'quiet_weights': in.quiet_weights,
+        'hold_labels': in.hold_labels, 'senders': in.senders, 'quiet_weights': in.quiet_weights, 'security_label': in.security_label,
         'min_confidence': in.min_confidence, 'engine': in.engine, 'model': in.model} }}
 inputs:
   run_dir: { type: string, required: true }
@@ -36,7 +42,8 @@ inputs:
   senders:
     type: array
     default: []
-    description: "One sender-facts row per message, from inbox/senders@1 (its rows): is_contact, person, muted, ruled_out. A row without facts falls back to the address."
+    description: "One sender-facts row per message, from inbox/senders@1 (its rows): is_contact, person, muted, ruled_out, customer_vendor, auth, spoof_suspect, auth_class, auth_route. A row without facts falls back to the address."
+  security_label: { type: [string, 'null'], default: null, description: "Label for unrequested auth mail (login code, reset, magic link) from an authenticated customer vendor, which is then archived. Null: every auth mail stays in the inbox, flagged. The label must exist in the account; it is never created." }
   min_confidence: { type: number, default: 0.9, description: A label under it is Needs Review. }
   engine: { type: [string, 'null'], default: null, description: Which engine judged (local or jev); recorded in the why of each decision. }
   model: { type: [string, 'null'], default: null }

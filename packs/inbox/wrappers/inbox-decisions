@@ -21,6 +21,18 @@
 # absent) falls back to the address alone (role names and sending domains),
 # which can only err towards leaving mail for the owner.
 #
+# Customer vendors and auth mail (facts from `inbox senders`: customer_vendor,
+# auth, spoof_suspect, auth_class, auth_route). Auth mail (login code, password
+# reset, magic link) is judged from headers only and counts as unrequested: it
+# is labelled `security` (stdin `security_label`, null = none) and archived only
+# when the script's route says so (customer vendor for the To address AND the
+# mail authenticates); every other auth mail stays in the inbox, flagged. Mail
+# that claims a customer vendor but fails authentication (spoof_suspect) is left
+# in the inbox, flagged. Mail from a customer vendor never gets a delete action
+# (trash, spam), whatever else decided: it is dropped from the actions, and
+# the row is left in the inbox when nothing remains. The subject is already
+# redacted by the script for auth mail; no code or link is written here.
+#
 # An existing decisions file is kept, never rewritten. Writes {run, run_dir,
 # engine, model, already_decided, rows, asked, answered, attention,
 # needs_review} to FILE. Rows answered by hand (a reply in Sent) are decided
@@ -64,6 +76,11 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
     | if $f != null and ($f.in_store // false)
       then (($f.is_contact // false) or ($f.person // false)) and (($f.muted // false) | not) and (($f.ruled_out // false) | not)
       else person($it.sender.address // "") end;
+  def facts($it; $fs): ($fs[$it.n | tostring]) as $f | if $f != null and ($f.in_store // false) then $f else {} end;
+  def noDelete($f; $acts):
+    if ($f.customer_vendor // false) and (($f.auth // "none") != "fail")
+    then ($acts | map(select((. == "trash" or . == "spam") | not)))
+    else $acts end;
   def score: {irrelevant: 0, low: 0.25, normal: 0.5, high: 0.75, critical: 1};
   . as $in
   | ($in.min_confidence // 0.9) as $min
@@ -71,6 +88,7 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
   | ($in.hold_labels // ["Action Required", "Waiting"]) as $hold
   | ($in.quiet_weights // ["irrelevant", "low"]) as $quiet
   | ($in.engine // "model") as $eng
+  | ($in.security_label // null) as $seclabel
   | ([ ($in.senders // [])[] | {key: (.n | tostring), value: .} ] | from_entries) as $fs
   | ([ $in.weights[] | {key: (.item.n | tostring), value: .label} ] | from_entries) as $w
   | ([ $in.labels[] | . as $l | $l.item as $it
@@ -84,7 +102,22 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
        | ([ {rule: {kind: "decider", name: $rule, text: (if $rule == "needs_you" then "the judge abstained: routine handling is not certain" elif $rule == "needs_review" then "label confidence \($conf) under \($min)" else "label \($l.label)" end)},
              evidence: [ {kind: "model", name: "label", value: $l.label, confidence: $conf}, {kind: "model", name: "importance", score: $imp} ],
              score: $imp} ][0]) as $fields
-       | if $rule == "needs_you" then
+       | facts($it; $fs) as $f
+       | if ($f.auth_class // null) != null then
+           (if ($f.auth_route // "") == "archive_security" and $seclabel != null then
+              {kind: "auth", n: $it.n, actions: [ {label: $seclabel}, "archive" ],
+               why: "Auth \($f.auth_class) mail from a customer vendor, authenticated: label \($seclabel), archive",
+               why_fields: ($fields | .rule = {kind: "auth", name: "auth mail (\($f.auth_class))", text: "unrequested; customer vendor for the To address and authenticated"})}
+            else
+              {kind: "attention", n: $it.n, actions: [ {attention: ("auth \($f.auth_class) mail, flagged: " + (if ($f.customer_vendor // false) | not then "sender is not a customer vendor for this address" elif ($f.auth // "none") != "pass" then "mail does not authenticate (auth \($f.auth // "none"))" else "no security label configured" end) + "; possible phishing; left in INBOX")} ],
+               why: "Auth \($f.auth_class) mail, flagged, left in INBOX",
+               why_fields: ($fields | .rule = {kind: "auth", name: "auth mail (\($f.auth_class))", text: "unrequested login or reset: kept in the inbox, flagged"})}
+            end)
+         elif ($f.spoof_suspect // false) then
+           {kind: "attention", n: $it.n, actions: [ {attention: "spoof-suspect: claims a customer vendor but fails authentication; left in INBOX"} ],
+            why: "Spoof-suspect vendor mail, left in INBOX",
+            why_fields: ($fields | .rule = {kind: "spoof_suspect", name: "spoof-suspect", text: "claims a customer vendor but fails SPF/DKIM/DMARC: not protected, flagged"})}
+         elif $rule == "needs_you" then
            {kind: "attention", n: $it.n, actions: [ {attention: "importance \($wt); the judge could not settle routine handling, needs your judgment; left in INBOX"} ],
             why: "Judge (\($eng)): needs_you, importance \($wt)", why_fields: $fields}
          elif guard($it; $fs) then
@@ -100,7 +133,11 @@ built=$(printf '%s' "$judged" | jq --arg run "$run" --arg rd "$rd" --slurpfile s
   | (($c[0] // []) | if type == "object" then (.decisions // []) else . end | map(select(.manual_reply != null))) as $cans
   | ([ ($cans + [ $snap[0].rows[] | select(.manual_reply != null) ]) | unique_by(.n)[]
        | {n, actions: ["read", "archive"], why: "answered by hand (reply in Sent \(.manual_reply | tostring | .[0:64]))"} ]) as $answered
-  | { file: { version: 1, decisions: ($answered + [ $asked[] | del(.kind) ]) },
+  | ([ $asked[] | del(.kind) | . as $d | facts({n: $d.n}; $fs) as $f
+       | (noDelete($f; $d.actions)) as $a
+       | if ($a | length) == 0 then $d | .actions = [ {attention: "customer-vendor mail is never deleted; left in INBOX"} ]
+         else $d | .actions = $a end ]) as $final
+  | { file: { version: 1, decisions: ($answered + $final) },
       summary: { run: $run, run_dir: $rd, engine: $eng, model: ($in.model // null), already_decided: false,
                  rows: ($asked | length), asked: ($asked | length), answered: ($answered | length),
                  attention: ([ $asked[] | select(.kind == "attention") ] | length),

@@ -1,9 +1,9 @@
 xrr: "1"
 adapter: http
 fingerprint: 8530ce00
-recorded_at: "2026-11-19T06:35:52Z"
+recorded_at: "2026-11-19T07:30:44Z"
 payload:
-    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T06:35:52.370647Z","message":{"role":"assistant","content":"{\n  \"label\": {\n    \"confidence\": 0.99,\n    \"value\": \"Legal\",\n    \"why\": \"The subject is ''Contract renewal'' and the sender is ''Legal'' from example.org, strongly indicating this is a legal matter.\"\n  }\n}"},"done":true,"done_reason":"stop","total_duration":12189622708,"load_duration":5084580750,"prompt_eval_count":390,"prompt_eval_cached_count":274,"prompt_eval_duration":129556999,"eval_count":58,"eval_duration":729806000}'
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-19T07:30:44.567172Z","message":{"role":"assistant","content":"{\"label\": {\"confidence\": 0.99, \"value\": \"Legal\", \"why\": \"The subject is ''Contract renewal'' and the sender is ''Legal'' from example.org, indicating a clear legal matter related to contractual agreements.\"}}"},"done":true,"done_reason":"stop","total_duration":4502125291,"load_duration":633750,"prompt_eval_count":390,"prompt_eval_cached_count":274,"prompt_eval_duration":89145000,"eval_count":55,"eval_duration":507579000}'
     headers:
         Content-Type: application/json; charset=utf-8
     status: 200

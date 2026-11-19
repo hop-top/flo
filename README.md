@@ -267,13 +267,20 @@ flo run cancel <run> --yes
   one of the labels (var `labels`, the script's SOP labels; it may abstain),
   `weigh` says how much it matters (irrelevant to critical).
   `inbox/senders@1` asks the script who each sender is (contact, muted, ruled
-  out, person-looking, org; its local store, no body, no model).
+  out, person-looking, org, customer vendor and whether its mail authenticates,
+  auth-mail class; its local store, no body, no model).
   `inbox/decisions@1` turns both into the script's decisions file by the
   script's own policy: a label under 0.9 confidence is Needs Review, an
   abstention stays in the inbox for a person, a message that matters little is
   also read and archived, mail from a contact or a person-looking sender is
-  never filed away unless the script mutes it or it was ruled out (a row
-  without facts falls back to the address), nothing is ever trashed, replied to or unsubscribed. Setup: set
+  never filed away unless the script mutes it or it was ruled out; mail from a
+  customer vendor (a signup and a receipt for the same address) never gets a
+  delete action; a login code, reset or magic link is treated as unrequested
+  and labelled `security` and archived (var `security_label`) only for a
+  customer vendor whose mail authenticates, else kept in the inbox, flagged;
+  mail claiming a customer vendor that fails authentication is flagged too. A
+  row without facts falls back to the address. Nothing is ever trashed, replied
+  to or unsubscribed. Setup: set
   `FLO_AI_CLASSIFIER=judge` and `FLO_AI_MODELS_ALLOW=ollama://qwen3*`; the
   engine (`ai.judge.engine`, default `auto`) is configuration. **Privacy:** the
   flow and both steps are `local-only`; the model list is

@@ -3,7 +3,8 @@ kind: command
 lowers_to: engine
 description: >-
   What the script knows about each undecided sender of a run: contact card,
-  active mute, ruled out (sender lane or "not a person"), person-looking, org.
+  active mute, ruled out (sender lane or "not a person"), person-looking, org,
+  customer vendor and authentication, auth-mail class.
   Headers and address only, from the script's local store; never a body.
 # `inbox senders RUN --json` over the script's own contacts, mutes, lanes and
 # person judgment, so the guard in inbox/decisions@1 is the script's, not a
@@ -41,6 +42,12 @@ outputs:
             person: { type: boolean, description: "The script's judgment: no bulk headers, not a role or sending address, or a contact." }
             org: { type: [string, 'null'], description: Org slug of the sender's domain; null for free-mail. }
             must_show: { type: boolean, description: "The script's own guard: person and not muted or ruled out." }
+            customer_vendor: { type: boolean, description: "The sender's organisation sent this To address a signup mail and a receipt or invoice within -10..+45 days of it." }
+            vendor_since: { type: [string, 'null'], description: "Date of the signup that made it a customer vendor." }
+            auth: { type: string, enum: [pass, fail, none], description: "SPF, DKIM (aligned with From) and DMARC from the headers; none = no authentication header or not read yet." }
+            spoof_suspect: { type: boolean, description: "A customer vendor's mail that fails authentication; not protected." }
+            auth_class: { type: [string, 'null'], enum: [code, reset, link, null], description: "Login code, password reset or magic link, from subject and sender." }
+            auth_route: { type: [string, 'null'], enum: [archive_security, keep_flagged, null], description: "archive_security only for a customer vendor whose mail authenticates; else keep_flagged." }
 side_effect: read               # the script's local store and state files
 idempotent: true
 privacy: local
