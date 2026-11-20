@@ -23,6 +23,7 @@
 #       authcands-none      `authfill --candidates` lists no message
 #       heo-items      the plan is testdata/inbox/items_heo.json (heo message ids; the heo apply tests)
 #       heo-high       the plan is testdata/inbox/items_heo_high.json (trash, spam, unsubscribe, reply, move_to; accounts gm1, gm2, ol)
+#       replyneeds-fail  `plan RUN --reply-needs` fails (exit 1, an error text on stderr)
 #       ops-unguarded  `apply --ops` leaves the guard mark off a deleting item (a script that forgot it)
 #   plan --facts -   the facts document is kept as facts.json; an account in it is planned from it (the fake
 #                    plan is the same), one named in no facts is not touched
@@ -145,6 +146,7 @@ case $cmd in
     echo "fake inbox: authfill: unsupported: $*" >&2; exit 64 ;;
   plan)
     case " $* " in *" --reply-needs "*)
+      flag replyneeds-fail && { echo "inbox: cannot read the decisions of $1 (SECRET-ERR)" >&2; exit 1; }
       itemsfile="$td/items.json"; flag heo-items && itemsfile="$td/items_heo.json"; flag heo-high && itemsfile="$td/items_heo_high.json"
       emit plan 0 "$(jq -c -n --arg run "$1" --slurpfile i "$itemsfile" '{run: $run, candidates: [$i[0][] | select(any(.actions[]; type == "object" and has("reply"))) | {account, id, message_id}]}')"
       exit 0 ;;

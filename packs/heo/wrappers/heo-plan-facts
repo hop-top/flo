@@ -12,7 +12,7 @@
 #   raw     {heo message id: the header block of the message} for the ids named in --reply-ids (the messages the
 #           plan would reply to): the plan resolves the reply's recipients and the Reply-To guard from them. Headers
 #           only, never the body; at most FLO_HEO_RAW_BYTES (default 65536) bytes of each message are looked at. A
-#           message that cannot be read is left out: the plan then holds that reply as invalid, never automatic.
+#           message that cannot be read, or whose header block is not whole within that bound, is left out: the plan then holds that reply as invalid, never automatic.
 #
 # Writes {account, facts_json} to FILE. facts_json is the compact text of {accounts: {NAME: {...}}}, the
 # --facts document of `inbox plan`; inbox/plan@1 joins the facts_json of every account into its stdin. When
@@ -93,7 +93,9 @@ for _id in $(printf '%s' "$reply_ids" | tr ',' ' '); do
     *) continue ;;
   esac
   [ -s "$tmp/raw.bin" ] || continue
-  awk '/^\r?$/ { exit } { print }' "$tmp/raw.bin" > "$tmp/hdr.txt"
+  # no blank line within the bound: the block is cut (a Reply-To past it would go unseen), so it is left out
+  awk '/^\r?$/ { f = 1; exit } { print } END { exit !f }' "$tmp/raw.bin" > "$tmp/hdr.txt" ||
+    [ "$(wc -c < "$tmp/raw.bin")" -lt "$_maxb" ] || continue
   [ -s "$tmp/hdr.txt" ] || continue
   printf '\r\n' >> "$tmp/hdr.txt"
   jq --arg id "$_id" --rawfile h "$tmp/hdr.txt" '. + {($id): $h}' "$tmp/raw.json" > "$tmp/raw.new" && mv "$tmp/raw.new" "$tmp/raw.json"

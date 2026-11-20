@@ -28,6 +28,8 @@
 #   `message reply|reply-draft CONV --text T`   a write (verbs reply, reply-draft); `conversation trash|move|unsubscribe` too
 #   `channel get CH`   channel.json for acme, else channel_CH.json
 #   `provider-label list --channel CH`   provider_labels.json for acme, else provider_labels_CH.json
+#   $FLO_E2E_DIR/heo-raw/ID.eml   `message raw ID` answers this file instead (a test's own message)
+#   $FLO_E2E_DIR/heo-raw-down   only `message raw` finds no daemon (exit 70), the listings before it answered
 #   $FLO_E2E_DIR/heo-raw-fail   every `message raw` fails (exit 3, an error text that must never be passed on)
 #   $FLO_E2E_DIR/heo-down   exit 70, as heo does with no daemon
 #   $FLO_E2E_DIR/heo-fail   exit 4 with heo's JSON error envelope on stderr
@@ -86,6 +88,8 @@ case "$group $verb" in
     case $inbox in ib-acme | ib-gm1 | ib-gm2 | ib-ol) ;; *) echo '{"code":"NOT_FOUND","message":"inbox not found"}' >&2; exit 3 ;; esac
     cat "$td/${group}s_$cursor.json" ;;
   "message raw")
+    [ -e "$FLO_E2E_DIR/heo-raw-down" ] && { echo "heo: no daemon is running for profile default (PREREQUISITE)" >&2; exit 70; }
+    [ -e "$FLO_E2E_DIR/heo-raw/$pos.eml" ] && { cat "$FLO_E2E_DIR/heo-raw/$pos.eml"; exit 0; }
     [ -e "$FLO_E2E_DIR/heo-raw-fail" ] && { echo '{"code":"PROVIDER_PERMANENT","message":"SECRET-ERR provider copy too big"}' >&2; exit 1; }
     [ -e "$td/raw_$pos.eml" ] || { echo '{"code":"NOT_FOUND","message":"no such message"}' >&2; exit 3; }
     cat "$td/raw_$pos.eml" ;;
