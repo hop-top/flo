@@ -1,5 +1,5 @@
 pack: inbox
-version: 0.2.0
+version: 0.3.0
 description: "Mail triage through the inbox script: fetch, rows, decisions, plan, apply, and the trust it keeps."
 requires: { flo: ">=0.1" }
 # The nodes run `inbox` (and the wrappers in wrappers/) as
@@ -13,7 +13,10 @@ requires: { flo: ">=0.1" }
 # flow (flo/ai.classify@1), local only. inbox/ingest@1 (wrappers/inbox-ingest)
 # is the flow's fetch: it takes the listings of heo/inbox.list@1 (pack heo,
 # installed beside this one) and fetches the other accounts itself. The script's hosted (cloud) decider is
-# deliberately not a node: mail headers stay on the host.
+# deliberately not a node: mail headers stay on the host. inbox/ops@1 and
+# inbox/record@1 (wrapper inbox-record) are the two ends of apply for heo
+# accounts: the script says what to do and commits what was done, heo's nodes do
+# it between them.
 nodes:
   - nodes/fetch.yaml
   - nodes/ingest.yaml
@@ -24,4 +27,6 @@ nodes:
   - nodes/decisions.yaml
   - nodes/plan.yaml
   - nodes/apply.yaml
+  - nodes/ops.yaml
+  - nodes/record.yaml
 trusts: [trusts/inbox.yaml]

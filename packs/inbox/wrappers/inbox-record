@@ -1,0 +1,56 @@
+#!/bin/sh
+# inbox-record --out FILE RUN        (stdin: {ops, acts, ensures, backend})
+#
+# Builds the `inbox record --results` document from the ops of `inbox apply --ops` and what the transport did, and
+# commits it: `inbox record RUN --results - --no-task --json`. Writes the script's summary, with `held`, to FILE.
+#   an item with no mailbox op (attention only)                   committed, null
+#   a low-blast item whose act ran: status ok                     committed, null
+#                                    status failed                committed, the failing op's error
+#   a low-blast item with a label op, `ensure` and no ok ensure  committed, "label security could not be created: ..."
+#   a low-blast item with no act result (the step did not run it) untouched
+#   a high-blast item                                              held: the transport does not run its ops
+#   an item the script refused (guard, unknown label)             committed, the script's error
+# `security` is the only label ever logged as created (labels_created), once per account that created it.
+# Exit with the script's status: 0 ok, 3 some item failed (the file is still written).
+command -v jq > /dev/null 2>&1 || { echo "inbox-record: jq is required" >&2; exit 69; }
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "inbox-record: unknown flag $1" >&2; exit 64 ;;
+    *) break ;;
+  esac
+done
+[ -n "$out" ] && [ $# -eq 1 ] || { echo "usage: inbox-record --out FILE RUN" >&2; exit 64; }
+run=$1
+in=$(cat)
+doc=$(printf '%s' "$in" | jq -c '
+  (.ops.items // []) as $items | (.acts // []) as $acts | (.ensures // []) as $ens
+  | def okensure($acct): any($ens[]; .status == "ok" and (.account // "") == $acct);
+    def ensureerr($acct): ([$ens[] | select((.account // "") == $acct) | .error // .status] | first // "no result");
+    def acted($n): [$acts[] | select(.n == $n)] | first;
+    def firsterr($a): ([$a.results[] | select(.error != null) | (.verb + ": " + .error)] | first // "failed");
+    { results:
+        ( (.ops.refused // {} | to_entries | map({key, value}) | from_entries)
+        + ([ $items[] | select(.blast == "low")
+             | . as $i
+             | if (.ops | length) == 0 then {key: (.n | tostring), value: null}
+               else (acted($i.n)) as $a
+                 | if $a != null then {key: (.n | tostring), value: (if $a.status == "ok" then null else firsterr($a) end)}
+                   elif any(.ops[]; .ensure == true) and (okensure($i.account) | not)
+                   then {key: (.n | tostring), value: ("label security could not be created: " + ensureerr($i.account))}
+                   else empty end
+               end ] | from_entries)),
+      notes: (.ops.notes // {}),
+      held: ([ $items[] | select(.blast == "high")
+               | {key: (.n | tostring), value: ("high-blast op (" + ([.ops[] | select(.blast == "high") | .verb] | unique | join(", ")) + ") is not run through heo yet")} ] | from_entries),
+      labels_created: [ $ens[] | select(.status == "ok" and .created == true) | {account: (.account // ""), label: .label} ],
+      backend: (.backend // "heo"),
+      calls: ([$acts[] | .results[]? | select(.status == "ok" or .status == "failed")] | length) }' 2>/dev/null) ||
+  { echo "inbox-record: stdin is not {ops, acts, ensures}" >&2; exit 64; }
+summary=$(printf '%s' "$doc" | inbox record "$run" --results - --no-task --json)
+rc=$?
+case $rc in 0 | 3) ;; *) printf '%s\n' "$summary"; exit "$rc" ;; esac
+printf '%s' "$summary" > "$out" || exit 70
+exit "$rc"

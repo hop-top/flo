@@ -1,9 +1,12 @@
-{"type": "google.mail", "verbs": [
-  {"verb": "conversation archive", "state": "declared"},
-  {"verb": "conversation move", "state": "declared"},
-  {"verb": "conversation read", "state": "declared"},
-  {"verb": "conversation unread", "state": "declared"},
-  {"verb": "conversation flag", "state": "declared"},
-  {"verb": "conversation unflag", "state": "declared"},
-  {"verb": "conversation trash", "state": "unsupported", "reason": "not_declared"}
+{"ref": {"tenant": "default", "id": "ch_acme"}, "key": "acme", "type": "google.mail", "verbs": [
+  {"verb": "conversation archive", "capability": "archive", "state": "declared", "limits": {}},
+  {"verb": "conversation unarchive", "capability": "archive", "state": "declared", "limits": {}},
+  {"verb": "conversation move", "capability": "move", "state": "declared", "limits": {}},
+  {"verb": "conversation read", "capability": "read_state", "state": "declared", "limits": {}},
+  {"verb": "conversation unread", "capability": "read_state", "state": "declared", "limits": {}},
+  {"verb": "conversation flag", "capability": "flag", "state": "declared", "limits": {}},
+  {"verb": "conversation unflag", "capability": "flag", "state": "declared", "limits": {}},
+  {"verb": "conversation tag", "capability": "extension_execute", "state": "declared", "limits": {"effects": ["google.mail.labels"]}},
+  {"verb": "message raw", "capability": "raw_read", "state": "declared", "limits": {}},
+  {"verb": "conversation trash", "capability": "trash", "state": "unsupported", "reason": "not_declared", "limits": {}}
  ]}

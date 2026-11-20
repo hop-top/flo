@@ -2,9 +2,18 @@ node: inbox/apply@1
 kind: command
 lowers_to: engine               # irreversible nodes never lower to exec
 description: Apply the plan's automatic and approved actions to the mailbox.
-argv: [inbox, apply, "{{ in.run }}", --no-task, --json]
+argv:
+  - inbox
+  - apply
+  - "{{ in.run }}"
+  - --no-task
+  - --json
+  - "{{ in.exclude_accounts.map(a, ['--exclude-account', a]).flatten() }}"
 inputs:
   run: { type: string, required: true }
+  # The accounts the heo steps (inbox/ops@1 .. inbox/record@1) handle: this
+  # node leaves them alone. None: every account, as before.
+  exclude_accounts: { type: array, items: { type: string }, default: [], description: "Accounts whose items this apply does not touch." }
 # Exit 3 means some item failed: the summary lists them, and the step fails
 # from it (fail_when), keeping the output in its record.
 exit_codes: { ok: [0, 3] }

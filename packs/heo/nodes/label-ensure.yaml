@@ -1,0 +1,53 @@
+node: heo/provider-label.ensure@1
+kind: command
+lowers_to: engine
+description: >-
+  Make sure the label `security` exists in a heo account: list, create when
+  absent, wait for heo to settle the create, list again. Returns its id.
+# heo-label-ensure (wrappers/) creates nothing but `security`: any other name
+# is refused (exit 64) before heo is called. Run it under the same write-scoped
+# heo profile as heo/conversation.act@1. The create has the script's
+# idempotency key (run, `provider-label-create`, channel, name), so a rerun
+# replays. A failed create is data (exit 3); an unknown outcome (heo exit 8, or
+# no settle within FLO_HEO_SETTLE_TIMEOUT seconds) fails the step for good with
+# the operation id in the output and on stderr.
+argv:
+  - heo-label-ensure
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --run
+  - "{{ in.run }}"
+  - --channel
+  - "{{ in.channel != '' ? in.channel : in.account }}"
+  - --label
+  - "{{ in.label }}"
+  - --account
+  - "{{ in.account }}"
+inputs:
+  run:     { type: string, required: true, description: "The inbox run: part of the idempotency key." }
+  account: { type: string, required: true, description: "The script's account name." }
+  channel: { type: string, default: "", description: "heo channel key; empty is the account name." }
+  label:   { type: string, required: true, enum: [security], description: "The one label the script creates." }
+exit_codes: { ok: [0, 3], retry: [6, 70] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [channel, label, status]
+    properties:
+      account: { type: string }
+      channel: { type: string }
+      label: { type: string }
+      status: { type: string, enum: [ok, failed, outcome_unknown] }
+      id: { type: [string, 'null'] }
+      created: { type: boolean }
+      operation: { type: [string, 'null'] }
+      error: { type: [string, 'null'] }
+side_effect: irreversible       # a created mailbox is visible in the provider's own clients
+approval: required
+idempotent: true
+privacy: local
+capabilities: [mail.write]
+timeout: 300s
+retry: { max_attempts: 3, backoff: 5s }

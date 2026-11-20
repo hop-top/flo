@@ -1,0 +1,49 @@
+node: inbox/record@1
+kind: command
+lowers_to: engine               # needs stdin
+description: >-
+  Commit what a transport did for inbox/ops@1: executed marks, ledger, history,
+  locks, activity and receipt, as apply commits its own calls.
+# inbox-record (wrappers/) turns the ops output and the transport's results
+# (heo/conversation.act@1, heo/provider-label.ensure@1) into the script's
+# `record --results` document and runs `inbox record RUN --results - --no-task
+# --json`. An item whose ops all went out is marked executed; one whose op
+# failed, whose guard refused it or whose label could not be created is marked
+# failed (exit 3, the summary lists it); one with a high-blast op the transport
+# does not run is HELD: left pending with the reason in the receipt, its lock
+# kept. A label created by the ensure step is logged to labels-created.jsonl.
+# Running it again with the same results commits nothing twice.
+# A failed item does not fail this step (the flow's `apply` step, which runs
+# next and reads the whole plan, fails on any failed item, the heo ones included);
+# the summary lists them.
+argv: [inbox-record, --out, "{{ run.step_dir }}/out.json", "{{ in.run }}"]
+stdin:
+  json: "{{ {'ops': in.ops, 'acts': in.acts, 'ensures': in.ensures, 'backend': 'heo'} }}"
+inputs:
+  run:     { type: string, required: true }
+  ops:     { type: object, required: true, description: "The output of inbox/ops@1." }
+  acts:    { type: array, items: { type: object }, default: [], description: "Outputs of heo/conversation.act@1, one per message." }
+  ensures: { type: array, items: { type: object }, default: [], description: "Outputs of heo/provider-label.ensure@1." }
+exit_codes: { ok: [0, 3] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [run, executed_ok, failed, pending_left, held]
+    properties:
+      run: { type: string }
+      executed_ok: { type: array }
+      failed:
+        type: array
+        items: { type: object, properties: { n: { type: integer }, error: { type: string } } }
+      held: { type: object }
+      pending_left: { type: integer }
+      backend: { type: [string, 'null'] }
+      calls: { type: integer }
+      notes: { type: object }
+side_effect: write-local        # the script's ledger, history, locks, activity log and run files
+idempotent: true                # a repeat commits nothing twice
+privacy: local
+capabilities: [mail.write]
+timeout: 60s

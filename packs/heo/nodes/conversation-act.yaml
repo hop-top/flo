@@ -1,0 +1,70 @@
+node: heo/conversation.act@1
+kind: command
+lowers_to: engine               # needs stdin
+description: >-
+  The low-blast mailbox operations the inbox script asked for one message
+  (read, unread, flag, unflag, archive, label), run through heo on that
+  message only, in order, each waited for until heo settles it.
+# heo-conversation-act (wrappers/) is the one place a write reaches heo from
+# the triage flow, and it has no verb beyond the six: a trash, spam,
+# unsubscribe, reply or cross-account move is refused (exit 64) before heo is
+# called. Each write is `conversation <verb> <conversation> --message
+# <provider_id>`: the message's own heo id, never the whole conversation. The
+# idempotency key of each op comes from the script (sha256 of run, verb,
+# target, extra), so a rerun of the step replays what already went out.
+# Run it under a write-scoped heo profile (desk role, the provider's modify
+# grant, held operations off for it: flo's approval and the script's trust
+# decide, heo does not ask twice) that the read-only steps never use.
+# An op that fails is data (exit 3: the ops after it are skipped, so a label
+# that failed is never followed by its archive). An outcome unknown (heo exit 8,
+# or an operation that does not settle in FLO_HEO_SETTLE_TIMEOUT seconds,
+# default 120) fails the step for good: the operation id is in the output and
+# on stderr, and a person reconciles it with heo (`heo delivery reconcile`).
+argv: [heo-conversation-act, --out, "{{ run.step_dir }}/out.json"]
+stdin:
+  json: "{{ {'n': in.n, 'account': in.account, 'channel': in.channel, 'provider_id': in.provider_id, 'ops': in.ops} }}"
+inputs:
+  n:           { type: integer, default: 0, description: "The plan item number, passed through to the output." }
+  account:     { type: string, required: true, description: "The script's account name." }
+  channel:     { type: string, default: "", description: "heo channel key; empty is the account name." }
+  provider_id: { type: string, required: true, description: "heo's id of the message (the store's provider id): every write targets this message alone." }
+  ops:
+    type: array
+    description: "The script's ordered ops for the message: flags, label, archive last."
+    items:
+      type: object
+      required: [verb, key]
+      properties:
+        verb: { type: string, enum: [read, unread, flag, unflag, archive, label] }
+        label: { type: string, description: "The label name, for verb label." }
+        key: { type: string, description: "Idempotency key of the op." }
+exit_codes: { ok: [0, 3], retry: [6, 70] }    # 70: heo's daemon is not running; 6: transient. 8 (outcome unknown) is neither: the step fails
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [provider_id, status, results]
+    properties:
+      n: { type: [integer, 'null'] }
+      provider_id: { type: string }
+      status: { type: string, enum: [ok, failed, outcome_unknown] }
+      results:
+        type: array
+        items:
+          type: object
+          required: [verb, key, status]
+          properties:
+            verb: { type: string }
+            key: { type: string }
+            status: { type: string, enum: [ok, failed, skipped, outcome_unknown] }
+            operation: { type: [string, 'null'] }
+            replayed: { type: boolean }
+            error: { type: [string, 'null'] }
+side_effect: irreversible       # honest and simple: heo has no undo of its own; archive and label are undone by another call
+approval: required
+idempotent: true                # the same keys replay: nothing goes out twice
+privacy: local
+capabilities: [mail.write]
+timeout: 420s
+retry: { max_attempts: 3, backoff: 5s }

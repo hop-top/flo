@@ -1,4 +1,5 @@
 {"items": [
-  {"id": "Label_1", "name": "Finance", "kind": "user"},
-  {"id": "Label_2", "name": "Waiting", "kind": "user"}
- ], "complete": true}
+  {"channel": "acme", "id": "Label_1", "name": "Finance", "kind": "label", "role": ""},
+  {"channel": "acme", "id": "Label_2", "name": "Waiting", "kind": "label", "role": ""},
+  {"channel": "acme", "id": "INBOX", "name": "INBOX", "kind": "label", "role": "inbox"}
+ ], "next": "", "complete": true}

@@ -1,10 +1,21 @@
 #!/bin/sh
-# Fake heo for the inbox fetch, auth facts and plan facts tests: serves
+# Fake heo for the inbox fetch, auth facts, plan facts and apply tests: serves
 # testdata/inbox/heo, a page per cursor (<kind>_<cursor or first>.json). Every
-# call is logged to $FLO_E2E_DIR/heo.log. Only reads exist (the two listings,
-# `message list --message-id`, `message raw`, `channel get`, `provider-label
-# list`): any other verb is a failure (exit 64) and is logged like the rest, so
-# a test can prove nothing wrote.
+# call is logged to $FLO_E2E_DIR/heo.log. The reads are the two listings,
+# `message list --message-id`, `message get`, `message raw`, `channel get`,
+# `provider-label list`, `delivery get`; any other verb is a failure (exit 64) and
+# is logged like the rest, so a test can prove nothing wrote. Writes (a
+# `conversation <verb>` state or tag verb, `provider-label create`) exist only
+# when $FLO_E2E_DIR/heo-writes does: each is logged with its flags, queues the
+# operation op_<idempotency key> (the same key again: replayed) and answers in
+# heo's shapes (state verbs: conversation, verb, messages, operation, operation_key;
+# tag: conversation, message, effect, add, operation; create: channel, name,
+# effect, operation). `delivery get` on it returns queued once, then its end state:
+#   provider_accepted unless $FLO_E2E_DIR/heo-delivery-<verb> (verb: archive, tag, read ..., or
+#   label-create) holds another: delivered | failed | rejected | outcome_unknown | dead_lettered | queued (never ends)
+#   $FLO_E2E_DIR/heo-submit-fail-<verb>   the submit itself fails: exit 4 (CONFLICT)
+#   $FLO_E2E_DIR/heo-submit-unknown-<verb> the submit exits 8 (outcome_unknown)
+#   `message get msg_404`   NOT_FOUND (exit 3); any other id: conversation c_<id>
 #   `message raw ID -o -`   raw_<ID>.eml (exit 3 when there is none)
 #   `message list --message-id MID`   lookup_<MID with non-word chars as _>.json, else an empty page
 #   $FLO_E2E_DIR/heo-raw-fail   every `message raw` fails (exit 3, an error text that must never be passed on)
@@ -16,9 +27,12 @@ td="$FLO_E2E_TESTDATA/inbox/heo"
 [ -e "$FLO_E2E_DIR/heo-fail" ] && { echo '{"code":"CONFLICT","message":"inbox is being rebuilt"}' >&2; exit 4; }
 group=$1 verb=$2
 shift 2
-cursor=first inbox= mid= channel= pos=
+cursor=first inbox= mid= channel= pos= msg= ikey= add=
 while [ $# -gt 0 ]; do
   case $1 in
+    --message) msg=$2; shift 2 ;;
+    --idempotency-key) ikey=$2; shift 2 ;;
+    --add) add=$2; shift 2 ;;
     --cursor) cursor=$2; shift 2 ;;
     --inbox) inbox=$2; shift 2 ;;
     --message-id) mid=$2; shift 2 ;;
@@ -49,6 +63,35 @@ case "$group $verb" in
     cat "$td/channel.json" ;;
   "provider-label list")
     [ "$channel" = acme ] || { echo '{"code":"NOT_FOUND","message":"channel not found"}' >&2; exit 3; }
-    cat "$td/provider_labels.json" ;;
+    if [ -e "$FLO_E2E_DIR/heo-label-created" ]; then
+      jq -c --arg n "$(cat "$FLO_E2E_DIR/heo-label-created")" '.items += [{channel: "acme", id: "Label_new", name: $n, kind: "label", role: ""}]' "$td/provider_labels.json"
+    else cat "$td/provider_labels.json"; fi ;;
+  "message get")
+    [ "$pos" = msg_404 ] && { echo '{"code":"NOT_FOUND","message":"resource not found","exit_code":3}' >&2; exit 3; }
+    printf '{"ref":{"conversation":{"inbox":{"tenant":"default","id":"ib-acme"},"id":"c_%s"},"id":"%s"}}\n' "$pos" "$pos" ;;
+  "delivery get")
+    d="$FLO_E2E_DIR/heo-ops"
+    [ -e "$d/$pos.verb" ] || { echo '{"code":"NOT_FOUND","message":"resource not found","exit_code":3}' >&2; exit 3; }
+    v=$(cat "$d/$pos.verb"); n=$(( $(cat "$d/$pos.polls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$d/$pos.polls"
+    st=provider_accepted; [ -e "$FLO_E2E_DIR/heo-delivery-$v" ] && st=$(cat "$FLO_E2E_DIR/heo-delivery-$v")
+    [ "$n" -le 1 ] && [ "$st" != queued ] && st=queued
+    case $st in
+      failed | rejected) printf '{"id":"%s","state":"%s","failure":{"code":"PROVIDER_PERMANENT","message":"provider refused it"}}\n' "$pos" "$st" ;;
+      *) printf '{"id":"%s","state":"%s"}\n' "$pos" "$st" ;;
+    esac ;;
+  "conversation "* | "provider-label create")
+    [ -e "$FLO_E2E_DIR/heo-writes" ] || { echo "fake heo: writes are off: $group $verb" >&2; exit 64; }
+    vk=$verb; [ "$group $verb" = "provider-label create" ] && vk=label-create
+    [ -e "$FLO_E2E_DIR/heo-submit-fail-$vk" ] && { echo '{"code":"CONFLICT","message":"the conversation changed","exit_code":4}' >&2; exit 4; }
+    [ -e "$FLO_E2E_DIR/heo-submit-unknown-$vk" ] && { echo '{"code":"OUTCOME_UNKNOWN","message":"the provider may have it","exit_code":8}' >&2; exit 8; }
+    d="$FLO_E2E_DIR/heo-ops"; mkdir -p "$d"
+    op="op_$ikey"; replay=false; [ -e "$d/$op.verb" ] && replay=true
+    echo "$vk" > "$d/$op.verb"
+    [ "$vk" = label-create ] && printf '%s' "$pos" > "$FLO_E2E_DIR/heo-label-created"
+    case $vk in
+      label-create) printf '{"channel":"%s","name":"%s","effect":"fake.mailbox_create","operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$channel" "$pos" "$op" "$replay" "$ikey" ;;
+      tag) printf '{"conversation":{"ref":{"id":"%s"}},"message":"%s","effect":"google.mail.labels","add":["%s"],"operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$pos" "$msg" "$add" "$op" "$replay" "$ikey" ;;
+      *) printf '{"conversation":{"ref":{"id":"%s"}},"verb":"%s","messages":["%s"],"operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$pos" "$verb" "$msg" "$op" "$replay" "$ikey" ;;
+    esac ;;
   *) echo "fake heo: unsupported: $group $verb" >&2; exit 64 ;;
 esac

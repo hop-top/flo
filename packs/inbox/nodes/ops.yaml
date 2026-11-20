@@ -1,0 +1,55 @@
+node: inbox/ops@1
+kind: command
+lowers_to: exec
+description: >-
+  What applying the plan would do, as operations per message (flags, label,
+  archive last), for a transport to run. Re-checks the guards; touches no mail.
+# `inbox apply RUN --ops --json`: everything apply does except the mailbox
+# calls. The script re-validates each approved or automatic item, fails closed
+# on the customer-vendor guard (a delete with no sender facts is refused), takes
+# the ledger's word for items that already ran, and returns per message the
+# ordered ops with their idempotency keys and a blast (low: read, unread, flag,
+# unflag, archive, label; high: trash, spam, unsubscribe, reply, a move to
+# another account). `accounts` scopes it. Nothing is executed or marked: the
+# marks are inbox/record@1's.
+argv:
+  - inbox
+  - apply
+  - "{{ in.run }}"
+  - --ops
+  - --json
+  - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
+inputs:
+  run:      { type: string, required: true }
+  accounts: { type: array, items: { type: string }, default: [], description: "Only these accounts' items; none is every account." }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: object
+    required: [run, items, labels_needed, refused, notes]
+    properties:
+      run: { type: string }
+      run_dir: { type: string }
+      items:
+        type: array
+        items:
+          type: object
+          required: [n, account, id, blast, ops]
+          properties:
+            n: { type: integer }
+            account: { type: string }
+            message_id: { type: string }
+            id: { type: string }
+            blast: { type: string, enum: [low, high] }
+            ops: { type: array, items: { type: object } }
+      labels_needed: { type: array, items: { type: object } }
+      refused: { type: object }
+      notes: { type: object }
+      recovered: { type: array }
+side_effect: write-local        # may persist a ledger-recovered executed mark; no mail
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

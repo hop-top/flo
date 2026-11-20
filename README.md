@@ -256,7 +256,7 @@ flo run cancel <run> --yes
 - `packs/inbox` holds the nodes of `flows/inbox-triage/` over the `inbox`
   command, and the `inbox` trust provider. The nodes run `inbox` and the
   wrappers in `wrappers/` (`inbox-plan`, `inbox-trust`, `inbox-approve`,
-  `inbox-rows`, `inbox-decisions`, `inbox-ingest`; they need `jq`; `inbox/senders@1` runs
+  `inbox-rows`, `inbox-decisions`, `inbox-ingest`, `inbox-record`; they need `jq`; `inbox/senders@1` runs
   `inbox senders RUN --json`) as the flow's profile, so
   both go on that profile's `PATH`, with the script's credentials,
   `INBOX_HOME` and `INBOX_RUNS`. The trust provider runs on the engine's own
@@ -281,7 +281,17 @@ flo run cancel <run> --yes
   the channel can do, the messages in the inbox now) so `inbox/plan@1` makes
   no mailbox call for them; an account whose facts heo could not give is
   planned invalid, never automatic. Then the judgment, then the script's plan, an approval with the script's
-  trust, and `inbox/apply@1`. The judgment is two `flo/ai.classify@1` steps
+  trust, and the apply: `inbox/apply@1` for the accounts the script reaches itself, and for each heo account
+  `inbox/ops@1` (the script's ordered operations per message, guards re-checked, nothing executed),
+  `heo/provider-label.ensure@1` (creates `security` where the plan needs it, never another label),
+  `heo/conversation.act@1` (read, unread, flag, unflag, archive, label: each on that message only, with the
+  script's idempotency key, waiting for heo to settle it, timeout 120 s) and `inbox/record@1` (commits executed
+  marks, ledger, history, locks and receipt). Only those low-blast operations go through heo for now: an item
+  with a trash, spam, unsubscribe, reply or cross-account move is held, left pending with the reason in the
+  receipt. A failed operation fails its item; an outcome heo cannot confirm (exit 8, or no settle in time)
+  fails the step and parks the run, nothing retried. The write steps run under a write-scoped heo profile (desk
+  role, the provider's modify grant, held operations off for it: the approval and the script's trust decide);
+  the read steps keep a read-only one. The judgment is two `flo/ai.classify@1` steps
   over the headers of each undecided message (`inbox/rows@1`: sender, subject,
   date, flags, folder, sender history; never a body): `label` files it under
   one of the labels (var `labels`, the script's SOP labels; it may abstain),

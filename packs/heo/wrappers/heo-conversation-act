@@ -1,0 +1,132 @@
+#!/bin/sh
+# heo-conversation-act --out FILE        (stdin: {n, account, channel, provider_id, ops: [{verb, label?, key}]})
+#
+# The low-blast mailbox operations the inbox script asked for one message, run through heo in the order given
+# (flags, label, archive last). Only these verbs exist here: read, unread, flag, unflag, archive, label. Anything
+# else (trash, spam, unsubscribe, reply, a move to another account) is refused before heo is called, so nothing
+# destructive can reach heo through this wrapper, whatever a flow hands it.
+#
+# Every write targets the one message: provider_id is heo's own message id (the store's provider id) and each
+# call carries `--message <provider_id>`, never the whole conversation. The conversation id comes from
+# `heo message get`. Each write has the idempotency key the script derived (run|verb|target|extra), so a rerun
+# replays instead of repeating; each waits for its operation to settle (heo-write-lib).
+#   label   `conversation tag --add NAME`: that message only; NAME must already exist at the provider
+#           (heo-label-ensure makes `security`); a name that is not a plain label name is refused
+#
+# Stops at the first op that fails: the ops after it are `skipped` (archive never runs after a failed label).
+# Writes {n, provider_id, status, results: [{verb, key, status, operation, replayed, error}]} to FILE. status is
+# ok | failed | outcome_unknown. Exit 0 ok, 3 failed (data, the file says which), 8 outcome unknown (the operation
+# id is in the file and on stderr: a person reconciles it, nothing is retried), 70/6 heo daemon down/transient
+# (retried: same keys replay), 64 usage (nothing was sent).
+command -v jq > /dev/null 2>&1 || { echo "heo-conversation-act: jq is required" >&2; exit 69; }
+. "$(command -v heo-write-lib)" || { echo "heo-conversation-act: heo-write-lib is not on the PATH" >&2; exit 69; }
+
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    *) echo "heo-conversation-act: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] || { echo "heo-conversation-act: --out is required" >&2; exit 64; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cat > "$tmp/in.json"
+jq -e 'type == "object" and (.ops | type == "array")' "$tmp/in.json" > /dev/null 2>&1 || { echo "heo-conversation-act: stdin is not {ops: [...]}" >&2; exit 64; }
+
+pid=$(jq -r '.provider_id // ""' "$tmp/in.json")
+channel=$(jq -r 'if (.channel // "") != "" then .channel else (.account // "") end' "$tmp/in.json")
+n=$(jq -c '.n // null' "$tmp/in.json")
+# a write without a message id would act on the whole conversation: refuse
+case $pid in '' | null | -*) echo "heo-conversation-act: provider_id is required (a write is always one message)" >&2; exit 64 ;; esac
+[ -n "$channel" ] || { echo "heo-conversation-act: channel (or account) is required" >&2; exit 64; }
+# every op is checked before the first call: verb in the allowlist, key present, label a plain name
+bad=$(jq -r '[.ops[] | select(((.verb // "") | IN("read", "unread", "flag", "unflag", "archive", "label") | not)
+    or ((.key // "") == "")
+    or (.verb == "label" and (((.label // "") == "") or ((.label // "") | test("^-|[,\u0001-\u001f]")))))
+    | (.verb // "?")] | join(",")' "$tmp/in.json")
+[ -z "$bad" ] || { echo "heo-conversation-act: refused before any call, not a low-blast op or malformed: $bad" >&2; exit 64; }
+
+# act_write ARGS...: a state or tag write on THE message. The only place a write is built.
+act_write() { # verb conv key [extra args]
+  _v=$1 _c=$2 _k=$3
+  shift 3
+  hw_submit conversation "$_v" "$_c" "$@" --message "$pid" --idempotency-key "$_k"
+}
+
+write_out() { # STATUS
+  jq -n --argjson n "$n" --arg pid "$pid" --arg s "$1" --slurpfile r "$tmp/results.json" '{n: $n, provider_id: $pid, status: $s, results: $r[0]}' > "$out"
+}
+add_result() { # VERB KEY STATUS ERR
+  jq --arg v "$1" --arg k "$2" --arg s "$3" --arg e "$4" --arg op "${HW_OP:-}" --argjson rp "${HW_REPLAYED:-false}" \
+    '. + [{verb: $v, key: $k, status: $s, operation: (if $op == "" then null else $op end), replayed: $rp, error: (if $e == "" then null else $e end)}]' \
+    "$tmp/results.json" > "$tmp/r.new" && mv "$tmp/r.new" "$tmp/results.json"
+}
+echo '[]' > "$tmp/results.json"
+
+# the conversation of the message, and what the channel can do (a verb it does not declare is refused here)
+heo message get "$pid" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+rc=$?
+case $rc in
+  70 | 6) cat "$tmp/call.err" >&2; exit "$rc" ;;
+  0) conv=$(jq -r '.ref.conversation.id // empty' "$tmp/call.json") ;;
+  *) conv= ;;
+esac
+status=ok
+if [ -z "$conv" ]; then
+  hw_err
+  status=failed
+  why="message not found or not readable: ${HW_ERR:-no conversation}"
+fi
+if [ "$status" = ok ]; then
+  heo channel get "$channel" --format json --no-hints < /dev/null > "$tmp/chan.json" 2> "$tmp/call.err"
+  rc=$?
+  case $rc in
+    70 | 6) cat "$tmp/call.err" >&2; exit "$rc" ;;
+    0) ;;
+    *) hw_err; status=failed; why="channel $channel: ${HW_ERR:-unreadable}" ;;
+  esac
+fi
+
+jq -c '.ops[]' "$tmp/in.json" > "$tmp/ops.jsonl"
+while IFS= read -r op; do
+  verb=$(printf '%s' "$op" | jq -r '.verb')
+  key=$(printf '%s' "$op" | jq -r '.key')
+  HW_OP= HW_REPLAYED=false
+  if [ "$status" != ok ]; then
+    add_result "$verb" "$key" skipped "${why:-an earlier op failed}"
+    continue
+  fi
+  case $verb in label) hv="conversation tag" ;; *) hv="conversation $verb" ;; esac
+  if [ "$(jq -r --arg v "$hv" '[.verbs[]? | select(.verb == $v)][0].state // "unknown"' "$tmp/chan.json")" != declared ]; then
+    status=failed; why="the channel does not declare $hv"
+    add_result "$verb" "$key" failed "$why"
+    continue
+  fi
+  case $verb in
+    label) act_write tag "$conv" "$key" --add "$(printf '%s' "$op" | jq -r '.label')" ;;
+    *) act_write "$verb" "$conv" "$key" ;;
+  esac
+  rc=$?
+  case $rc in
+    70 | 6) exit "$rc" ;;
+    8) add_result "$verb" "$key" outcome_unknown "$HW_ERR"; status=unknown; why="outcome unknown" ; continue ;;
+    0) ;;
+    *) add_result "$verb" "$key" failed "heo $verb: $HW_ERR"; status=failed; why="an earlier op failed"; continue ;;
+  esac
+  hw_settle "$HW_OP"
+  case $HW_STATE in
+    ok) add_result "$verb" "$key" ok "" ;;
+    failed) add_result "$verb" "$key" failed "heo $verb: $HW_ERR"; status=failed; why="an earlier op failed" ;;
+    *) add_result "$verb" "$key" outcome_unknown "$HW_ERR"; status=unknown; why="outcome unknown" ;;
+  esac
+done < "$tmp/ops.jsonl"
+
+case $status in
+  ok) write_out ok; exit 0 ;;
+  failed) write_out failed; exit 3 ;;
+  *)
+    write_out outcome_unknown
+    echo "heo-conversation-act: outcome unknown, operation $(jq -r '[.[] | select(.status == "outcome_unknown") | .operation // "(not queued)"] | join(",")' "$tmp/results.json"): reconcile it with heo, nothing is retried" >&2
+    exit 8 ;;
+esac

@@ -1,5 +1,5 @@
 flow: inbox-triage
-version: 0.4.0
+version: 0.5.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
@@ -215,10 +215,69 @@ steps:
       surface: tlc
       context: { run: "{{ results.fetch.run }}", run_dir: "{{ results.plan.run_dir }}" }
 
+  # The accounts listed in heo_accounts are applied through heo, the others by
+  # the script as before (`apply` below leaves the heo accounts to these steps).
+  # The script says what to do and commits what was done; heo's nodes do it
+  # between the two: `ops` asks the script for the operations of every approved
+  # or automatic item of those accounts (it re-checks the guards, and refuses a
+  # delete it has no sender facts for), `ensure` creates the label `security`
+  # where the plan needs it (the only label ever created), `act` runs each
+  # message's ops through heo, that message only, waiting for heo to settle each
+  # one, and `record` commits the outcome. Only the low-blast ops (read, unread,
+  # flag, unflag, archive, label) go to heo for now: an item with a trash, spam,
+  # unsubscribe, reply or cross-account move in it is held, left pending with
+  # the reason in the receipt, not applied by anything. A failed op is data (the
+  # item is marked failed); an outcome heo cannot confirm fails the step and
+  # parks the run for a person. None of these steps exists with heo_accounts
+  # empty: `apply` is then the one step, as before.
+  - id: ops
+    uses: inbox/ops@1
+    when: "{{ size(vars.heo_accounts) > 0 && size(results.approve.approved) + size(results.approve.auto) > 0 }}"
+    depends_on: [plan, approve]
+    with:
+      run: "{{ results.fetch.run }}"
+      accounts: "{{ vars.heo_accounts.map(a, a.account) }}"
+
+  - id: ensure
+    uses: heo/provider-label.ensure@1
+    for_each: "{{ results.ops.labels_needed }}"
+    concurrency: 1
+    with:
+      run: "{{ results.fetch.run }}"
+      account: "{{ item.account }}"
+      channel: "{{ vars.heo_accounts.filter(a, a.account == item.account).map(a, has(a.channel) ? a.channel : '')[0] }}"
+      label: "{{ item.label }}"
+
+  - id: act
+    uses: heo/conversation.act@1
+    for_each: >-
+      {{ results.ops.items.filter(i, i.blast == 'low' && size(i.ops) > 0 &&
+           i.ops.all(o, !has(o.ensure) || !o.ensure || results.ensure.exists(e, e.account == i.account && e.status == 'ok'))) }}
+    depends_on: [ops, ensure]
+    concurrency: 1
+    with:
+      n: "{{ item.n }}"
+      account: "{{ item.account }}"
+      channel: "{{ vars.heo_accounts.filter(a, a.account == item.account).map(a, has(a.channel) ? a.channel : '')[0] }}"
+      provider_id: "{{ item.id }}"
+      ops: "{{ item.ops }}"
+
+  - id: record
+    uses: inbox/record@1
+    when: "{{ size(results.ops.items) > 0 || size(results.ops.refused) > 0 }}"
+    depends_on: [ops, ensure, act]
+    with:
+      run: "{{ results.fetch.run }}"
+      ops: "{{ results.ops }}"
+      acts: "{{ has(results.act) ? results.act : [] }}"
+      ensures: "{{ has(results.ensure) ? results.ensure : [] }}"
+
   # Runs only when something was approved or automatic: a run whose pending
   # items were all rejected applies nothing.
   - id: apply
     uses: inbox/apply@1
     when: "{{ size(results.approve.approved) + size(results.approve.auto) > 0 }}"
-    depends_on: [plan, approve]
-    with: { run: "{{ results.fetch.run }}" }
+    depends_on: [plan, approve, record]
+    with:
+      run: "{{ results.fetch.run }}"
+      exclude_accounts: "{{ vars.heo_accounts.map(a, a.account) }}"

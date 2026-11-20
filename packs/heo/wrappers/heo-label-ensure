@@ -1,0 +1,83 @@
+#!/bin/sh
+# heo-label-ensure --out FILE --run RUN --channel CH --label NAME [--account A]
+#
+# Make sure the provider mailbox NAME exists in the account of channel CH, through heo: list; when it is absent,
+# create it (`provider-label create`, queued), wait for the operation to settle, list again. Returns its id.
+# NAME is `security` and nothing else: the one label the inbox script ever creates. Any other name is refused
+# before heo is called (exit 64), whatever a flow hands in.
+#
+# The create has the idempotency key sha256(run|provider-label-create|channel|NAME|) of the inbox script, so a
+# rerun replays. Writes {account, channel, label, id, status, created, operation, error} to FILE (account: the one given, passed through); status ok | failed |
+# outcome_unknown. Exit 0 ok, 3 failed (data), 8 outcome unknown (nothing is retried: the create may exist),
+# 70/6 heo daemon down/transient (retried), 64 usage.
+command -v jq > /dev/null 2>&1 || { echo "heo-label-ensure: jq is required" >&2; exit 69; }
+. "$(command -v heo-write-lib)" || { echo "heo-label-ensure: heo-write-lib is not on the PATH" >&2; exit 69; }
+
+out= run= channel= label= account=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --run) run=$2; shift 2 ;;
+    --channel) channel=$2; shift 2 ;;
+    --label) label=$2; shift 2 ;;
+    --account) account=$2; shift 2 ;;
+    *) echo "heo-label-ensure: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] && [ -n "$run" ] && [ -n "$channel" ] || { echo "heo-label-ensure: --out, --run and --channel are required" >&2; exit 64; }
+# the only label the script creates (the allowlist lives here too, not only in the plan)
+[ "$label" = security ] || { echo "heo-label-ensure: only the label security may be created, not $label" >&2; exit 64; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+write_out() { # STATUS CREATED OP ID ERR
+  jq -n --arg a "$account" --arg ch "$channel" --arg l "$label" --arg s "$1" --argjson c "$2" --arg op "$3" --arg id "$4" --arg e "$5" \
+    '{account: $a, channel: $ch, label: $l, status: $s, created: $c, id: (if $id == "" then null else $id end), operation: (if $op == "" then null else $op end), error: (if $e == "" then null else $e end)}' > "$out"
+}
+
+# find_id: the id of the mailbox named like label (case-insensitive), all pages; sets ID (empty when absent)
+find_id() {
+  ID=
+  _cursor=
+  _pages=0
+  while :; do
+    set -- provider-label list --channel "$channel" --limit 100
+    [ -z "$_cursor" ] || set -- "$@" --cursor "$_cursor"
+    heo "$@" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+    _rc=$?
+    case $_rc in
+      0) ;;
+      70 | 6) cat "$tmp/call.err" >&2; exit "$_rc" ;;
+      *) hw_err; return 1 ;;
+    esac
+    ID=$(jq -r --arg l "$label" '[.items[]? | select((.name // "" | ascii_downcase) == ($l | ascii_downcase))][0].id // empty' "$tmp/call.json")
+    [ -z "$ID" ] || return 0
+    _cursor=$(jq -r 'if .complete == false then (.next // "") else "" end' "$tmp/call.json")
+    _pages=$((_pages + 1))
+    [ -n "$_cursor" ] && [ "$_pages" -lt 20 ] || return 0
+  done
+}
+
+find_id || { write_out failed false "" "" "provider-label list: $HW_ERR"; exit 3; }
+if [ -n "$ID" ]; then write_out ok false "" "$ID" ""; exit 0; fi
+
+key=$(hw_key "$run" provider-label-create "$channel" "$label|")
+hw_submit provider-label create "$label" --channel "$channel" --idempotency-key "$key"
+rc=$?
+case $rc in
+  70 | 6) exit "$rc" ;;
+  8) write_out outcome_unknown false "" "" "$HW_ERR"; echo "heo-label-ensure: outcome unknown for the create of $label (no operation id): reconcile it with heo" >&2; exit 8 ;;
+  0) ;;
+  *) write_out failed false "" "" "provider-label create: $HW_ERR"; exit 3 ;;
+esac
+op=$HW_OP
+hw_settle "$op"
+case $HW_STATE in
+  ok) ;;
+  failed) write_out failed false "$op" "" "provider-label create: $HW_ERR"; exit 3 ;;
+  *) write_out outcome_unknown false "$op" "" "$HW_ERR"; echo "heo-label-ensure: outcome unknown, operation $op: reconcile it with heo, nothing is retried" >&2; exit 8 ;;
+esac
+find_id || { write_out failed true "$op" "" "provider-label list after create: $HW_ERR"; exit 3; }
+[ -n "$ID" ] || { write_out failed true "$op" "" "the label is not listed after the create settled"; exit 3; }
+write_out ok true "$op" "$ID" ""
+exit 0

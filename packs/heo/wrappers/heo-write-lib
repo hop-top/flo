@@ -1,0 +1,69 @@
+#!/bin/sh
+# heo-write-lib: shared by heo-conversation-act and heo-label-ensure (sourced, never run on its own).
+#
+# One write to heo = submit with an idempotency key, then wait for the operation to settle:
+#   hw_submit ARGS...   heo ARGS --format json; on success sets HW_OP (operation id) and HW_REPLAYED
+#   hw_settle OP        polls `heo delivery get OP` until the delivery ends: HW_STATE is ok (provider_accepted,
+#                       delivered, committed), failed (failed, rejected) or unknown (outcome_unknown, dead_lettered,
+#                       or no end within FLO_HEO_SETTLE_TIMEOUT seconds, default 120: the operation may or may not
+#                       have reached the provider, so the caller parks the run)
+# Exit codes of heo: 70 daemon down and 6 transient pass through (the caller exits with them: nothing was queued
+# by this call, a rerun repeats the same keys and replays); 8 is outcome_unknown. Everything else is a failure of
+# this op: HW_ERR carries heo's code and message (no subject, no address: heo's own error text only).
+# Needs jq. $tmp is a scratch directory the caller made.
+
+hw_key() { # RUN VERB TARGET EXTRA -> inbox-<24 hex of sha256(run|verb|target|extra)>, the scheme of the inbox script
+  _s=$(printf '%s|%s|%s|%s' "$1" "$2" "$3" "$4")
+  if command -v sha256sum > /dev/null 2>&1; then _h=$(printf '%s' "$_s" | sha256sum)
+  else _h=$(printf '%s' "$_s" | shasum -a 256); fi
+  printf 'inbox-%s' "$(printf '%s' "$_h" | cut -c1-24)"
+}
+
+hw_err() { # error text of the last call, bounded
+  HW_ERR=$(jq -r '[.code, .message] | map(select(. != null)) | join(": ")' "$tmp/call.err" 2> /dev/null | cut -c1-200)
+  [ -n "$HW_ERR" ] || HW_ERR=$(head -c 200 "$tmp/call.err" | tr '\n' ' ')
+}
+
+hw_submit() { # ARGS... -> 0 queued (HW_OP, HW_REPLAYED) | 70/6 passed through | 8 unknown | 1 failed (HW_ERR)
+  heo "$@" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+  _rc=$?
+  hw_err
+  case $_rc in
+    0) ;;
+    70 | 6) cat "$tmp/call.err" >&2; return "$_rc" ;;
+    8) return 8 ;;
+    *) return 1 ;;
+  esac
+  HW_OP=$(jq -r '.operation.id // empty' "$tmp/call.json")
+  HW_REPLAYED=$(jq -r '.operation.replayed // false' "$tmp/call.json")
+  [ -n "$HW_OP" ] || { HW_ERR="heo returned no operation id"; return 1; }
+  return 0
+}
+
+hw_settle() { # OP -> HW_STATE ok|failed|unknown, HW_ERR for failed/unknown
+  _limit=${FLO_HEO_SETTLE_TIMEOUT:-120}
+  _start=$(date +%s)
+  _polls=0
+  while :; do
+    _polls=$((_polls + 1))
+    heo delivery get "$1" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+    _rc=$?
+    case $_rc in
+      0) ;;
+      70 | 6) cat "$tmp/call.err" >&2; HW_STATE=unknown; HW_ERR="heo delivery get exit $_rc while waiting"; return 0 ;;
+      *) hw_err; HW_STATE=unknown; HW_ERR="delivery get exit $_rc: $HW_ERR"; return 0 ;;
+    esac
+    case $(jq -r '.state // ""' "$tmp/call.json") in
+      provider_accepted | delivered | committed) HW_STATE=ok; HW_ERR=; return 0 ;;
+      failed | rejected)
+        HW_STATE=failed
+        HW_ERR=$(jq -r '"delivery " + .state + ": " + ([.failure.code, .failure.message] | map(select(. != null)) | join(": "))' "$tmp/call.json" 2> /dev/null | cut -c1-200)
+        return 0 ;;
+      outcome_unknown | dead_lettered)
+        HW_STATE=unknown; HW_ERR="delivery $(jq -r '.state' "$tmp/call.json"): the provider may already have it"; return 0 ;;
+    esac
+    # at least two looks, whatever the clock's second does to a short limit
+    [ "$_polls" -lt 2 ] || [ $(($(date +%s) - _start)) -lt "$_limit" ] || { HW_STATE=unknown; HW_ERR="not settled after ${_limit}s: the provider may already have it"; return 0; }
+    sleep "${FLO_HEO_POLL:-1}"
+  done
+}
