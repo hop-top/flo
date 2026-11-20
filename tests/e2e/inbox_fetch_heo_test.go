@@ -363,14 +363,18 @@ func TestInboxTriageHeoAccounts(t *testing.T) {
 		if err := json.Unmarshal(b, &doc); err != nil || len(doc.Accounts) != 1 || len(doc.Accounts["acme"].Envelopes) != 2 {
 			t.Errorf("stdin of the script: %s %v", b, err)
 		}
-		if n := len(logOf(e, "heo.log")); n != 4 {
-			t.Errorf("heo was listed %d times, want 4 (two pages of two listings): %v", n, logOf(e, "heo.log"))
-		}
+		// two pages of two listings at fetch time and again for the plan's facts; the rest are reads of the
+		// auth headers (msg_1, msg_3), the channel and the provider labels
+		n := 0
 		for _, l := range logOf(e, "heo.log") {
-			if !strings.HasPrefix(l, "heo conversation list ") && !strings.HasPrefix(l, "heo message list ") {
-				t.Errorf("heo was asked for more than a listing: %s", l)
+			if strings.HasPrefix(l, "heo conversation list ") || strings.HasPrefix(l, "heo message list --inbox ") {
+				n++
 			}
 		}
+		if n != 8 {
+			t.Errorf("heo was listed %d times, want 8: %v", n, logOf(e, "heo.log"))
+		}
+		onlyReads(t, e)
 	})
 
 	t.Run("no heo account: a plain fetch", func(t *testing.T) {

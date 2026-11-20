@@ -5,6 +5,10 @@
 # run's plan.json added to its summary as `items`. The summary names item
 # numbers only; the approval needs what each item would do.
 #
+# With a facts document on stdin ({accounts: {NAME: {labels, verbs, inbox, email}}}, one per line when
+# several: heo-plan-facts writes one per account) the plan is made from those facts for the accounts named
+# there (`inbox plan --facts -`): no mailbox read for them. No stdin, no facts: the plan as before.
+#
 # Writes {schema_version, run, run_dir, counts, task, files, items} to FILE.
 # Items are the pending, automatic and invalid ones of plan.json, never the
 # superseded copies of earlier runs. Exits with the script's status: 0 ok, 3
@@ -23,7 +27,15 @@ done
 [ -n "$out" ] && [ $# -eq 1 ] || { echo "usage: inbox-plan --out FILE RUN" >&2; exit 64; }
 run=$1
 
-summary=$(inbox plan "$run" --unattended --no-task --json)
+facts=
+[ -t 0 ] || facts=$(cat)
+if [ -n "$(printf '%s' "$facts" | tr -d ' \t\r\n')" ]; then
+  merged=$(printf '%s\n' "$facts" | jq -s -c '{accounts: (map(.accounts // {}) | add // {})}') ||
+    { echo "inbox-plan: stdin is not a facts document" >&2; exit 64; }
+  summary=$(printf '%s' "$merged" | inbox plan "$run" --unattended --no-task --json --facts -)
+else
+  summary=$(inbox plan "$run" --unattended --no-task --json)
+fi
 rc=$?
 case $rc in 0|3) ;; *) printf '%s\n' "$summary"; exit "$rc" ;; esac
 

@@ -1,12 +1,14 @@
 pack: heo
-version: 0.2.0
-description: Conversations from heo, selected by participant, and an account's inbox as envelopes.
+version: 0.3.0
+description: Conversations from heo, selected by participant, an account's inbox as envelopes, and the raw auth headers and plan facts the inbox script is handed.
 requires: { flo: ">=0.1" }
 # The node runs wrappers/heo-conversations as `aps run <profile> -- ...`: put
 # that directory, heo and jq on the PATH of the profile, and run heo's daemon
 # for it (without one heo exits 70 and the node retries). heo has no
 # participant filter yet; the wrapper is the stand-in. Drop it, and point the
 # node at `heo conversation list --participant`, when heo ships the flag.
+# heo/message.raw@1 (wrappers/heo-message-raw) and heo/plan-facts@1
+# (wrappers/heo-plan-facts) are read only the same way.
 # heo/inbox.list@1 runs wrappers/heo-inbox-list the same way, under a read-only
 # heo profile (see the node).
-nodes: [nodes/conversation-list.yaml, nodes/inbox-list.yaml]
+nodes: [nodes/conversation-list.yaml, nodes/inbox-list.yaml, nodes/message-raw.yaml, nodes/plan-facts.yaml]

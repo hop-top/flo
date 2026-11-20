@@ -20,6 +20,11 @@
 #       sender-ruled-m3     sender facts: message m3's sender is ruled out
 #       sender-contact-m1   sender facts: message m1's sender is a contact
 #       sender-nofacts      sender facts: no message is in the store
+#       authcands-none      `authfill --candidates` lists no message
+#   plan --facts -   the facts document is kept as facts.json; an account in it is planned from it (the fake
+#                    plan is the same), one named in no facts is not touched
+#   authfill --candidates --json   the rows of authcands.json (testdata/inbox) for the --account given
+#   authfill --from-raw - --json   the document is kept as rawdoc.json; "filled" counts its messages
 td="$FLO_E2E_TESTDATA/inbox"
 st="$FLO_E2E_DIR/inbox"
 mkdir -p "$st/runs" "$st/flags"
@@ -113,7 +118,23 @@ case $cmd in
     emit senders 0 "$(jq -c -n --arg run "$run" --arg rd "$rd" --argjson rows "$rows" \
       '{run: $run, run_dir: $rd, rows: $rows, count: ($rows | length), missing: ([$rows[] | select(.in_store | not)] | length)}')"
     exit 0 ;;
+  authfill)
+    case " $* " in
+      *" --candidates "*)
+        sel='[]'; prev=
+        for a in "$@"; do [ "$prev" = --account ] && sel=$(printf '%s' "$sel" | jq -c --arg a "$a" '. + [$a]'); prev=$a; done
+        if flag authcands-none; then c='[]'
+        else c=$(jq -c --argjson sel "$sel" '[.[] | select(($sel | length) == 0 or (.account | IN($sel[])))]' "$td/authcands.json"); fi
+        emit authfill 0 "$(jq -c -n --argjson c "$c" '{candidates: $c}')"
+        exit 0 ;;
+      *" --from-raw "*)
+        cat > "$st/rawdoc.json"
+        emit authfill 0 "$(jq -c '{filled: (.accounts | map_values(.messages | length)), skipped: 0, mismatched: 0}' "$st/rawdoc.json")"
+        exit 0 ;;
+    esac
+    echo "fake inbox: authfill: unsupported: $*" >&2; exit 64 ;;
   plan)
+    case " $* " in *" --facts - "*) cat > "$st/facts.json" ;; esac
     run=$1; rd=$(rundir "$run")
     [ -f "$rd/decisions.json" ] || { echo "no decisions file at $rd/decisions.json" >&2; exit 1; }
     if [ ! -f "$rd/plan.json" ]; then

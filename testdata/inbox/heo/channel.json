@@ -1,0 +1,9 @@
+{"type": "google.mail", "verbs": [
+  {"verb": "conversation archive", "state": "declared"},
+  {"verb": "conversation move", "state": "declared"},
+  {"verb": "conversation read", "state": "declared"},
+  {"verb": "conversation unread", "state": "declared"},
+  {"verb": "conversation flag", "state": "declared"},
+  {"verb": "conversation unflag", "state": "declared"},
+  {"verb": "conversation trash", "state": "unsupported", "reason": "not_declared"}
+ ]}

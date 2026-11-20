@@ -8,9 +8,16 @@ description: >-
 # and adds the live items of plan.json to its summary: the summary alone has
 # item numbers, not what each item would do. Exit 3 means some item is
 # invalid; the invalid ones are listed in the output.
+# `facts` (outputs of heo/plan-facts@1, one per heo account) go to the wrapper
+# on stdin and the script plans those accounts from them with no mailbox I/O
+# (`inbox plan --facts -`); an account listed with no facts is invalid, never
+# automatic. No facts is no stdin: the plan as before.
 argv: [inbox-plan, --out, "{{ run.step_dir }}/out.json", "{{ in.run }}"]
+stdin:
+  text: "{{ in.facts.filter(f, has(f.facts_json) && f.facts_json != '').map(f, f.facts_json).join('\\n') }}"
 inputs:
   run: { type: string, required: true }
+  facts: { type: array, items: { type: object }, default: [], description: "Outputs of heo/plan-facts@1, one per heo account." }
 exit_codes: { ok: [0, 3] }
 outputs:
   from: file:out.json

@@ -1,0 +1,11 @@
+Received: from mx.vendor.example
+Authentication-Results: mx.acme.example;
+ spf=pass smtp.mailfrom=vendor.example;
+ dkim=pass header.d=vendor.example; dmarc=pass header.from=vendor.example
+From: Vendor Billing <billing@vendor.example>
+To: me@acme.example
+Subject: Invoice 42 SECRET-SUBJECT
+Message-ID: <a1@vendor.example>
+Date: Wed, 18 Nov 2026 08:00:00 +0000
+
+SECRET-BODY the invoice is 42 dollars

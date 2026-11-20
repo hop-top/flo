@@ -1,0 +1,48 @@
+node: heo/message.raw@1
+kind: command
+lowers_to: engine               # needs stdin
+description: >-
+  The authentication headers of the listed messages, read from the provider
+  through heo, nothing else of them. Input of inbox/authfacts@1.
+# heo-message-raw (wrappers/) reads each candidate with `heo message raw ID -o -`
+# (heo's own message id, or found by its exact Message-ID) and keeps only the
+# Message-ID and Authentication-Results / ARC-Authentication-Results header
+# lines: no body, no address, no subject; never logged. Bounded: at most
+# max_messages messages per run, at most max_bytes of each looked at. Run it
+# under a read-only heo profile (viewer role, read-only provider grant). A
+# message that cannot be read is counted in stats.failed and left out: the
+# script leaves that row's authentication unknown, which is not vendor evidence.
+argv:
+  - heo-message-raw
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --max-messages
+  - "{{ string(in.max_messages) }}"
+  - --max-bytes
+  - "{{ string(in.max_bytes) }}"
+stdin:
+  json: "{{ {'candidates': in.candidates} }}"
+inputs:
+  candidates:   { type: array, items: { type: object }, default: [], description: "{account, message_id, provider_id} rows, as `inbox authfill --candidates` lists them (inbox/authfacts@1)." }
+  max_messages: { type: integer, default: 200, minimum: 1, maximum: 1000, description: At most this many candidates are read; the rest are counted as skipped. }
+  max_bytes:    { type: integer, default: 65536, minimum: 4096, maximum: 1048576, description: At most this many bytes of each message are looked at. }
+exit_codes: { ok: [0], retry: [6, 70] }    # 70: heo's daemon is not running; 6: transient
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [accounts, stats]
+    properties:
+      accounts:
+        type: object
+        description: "{name: {messages: [{message_id, headers}]}}: the --from-raw document of `inbox authfill`."
+      stats:
+        type: object
+        required: [requested, fetched, failed, skipped]
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [mail.read]
+timeout: 300s
+retry: { max_attempts: 3, backoff: 5s }

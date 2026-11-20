@@ -1,0 +1,95 @@
+#!/bin/sh
+# heo-message-raw --out FILE [--max-messages N] [--max-bytes N]      (stdin: {candidates: [...]})
+#
+# The authentication headers of the messages `inbox authfill --candidates` named,
+# for `inbox authfill --from-raw`. Read only: `heo message list --message-id` (to find a
+# message the candidate carries no heo id for) and `heo message raw ID -o -` (one provider
+# read per message), nothing else.
+#
+# stdin candidates: [{account, message_id, provider_id}]. provider_id (heo's message id,
+# kept by the fetch) is used when present, else the message is found by its Message-ID,
+# exact match, and only a single hit counts.
+#
+# Writes {accounts: {ACCOUNT: {messages: [{message_id, headers}]}}, stats} to FILE.
+# `headers` is the Message-ID and the Authentication-Results / ARC-Authentication-Results
+# header lines of the message, nothing else: no body, no address, no subject. At most
+# --max-messages candidates are read (the rest are counted as `skipped`) and at most
+# --max-bytes bytes of each message are looked at. A message that cannot be read (not
+# found, refused, over heo's size bound) is counted in stats.failed and left out; the
+# script then leaves that row's auth NULL, which is not vendor evidence.
+#
+# - Exit 70 (heo's daemon is not running) and 6 (transient) are passed through: the node
+#   retries them. 64 is a usage error.
+# - Nothing read is written to stderr or logged; heo's error text is never passed on.
+# - Run under a read-only heo profile. Needs heo and jq.
+command -v jq > /dev/null 2>&1 || { echo "heo-message-raw: jq is required" >&2; exit 69; }
+
+out= max=200 maxbytes=65536
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --max-messages) max=$2; shift 2 ;;
+    --max-bytes) maxbytes=$2; shift 2 ;;
+    *) echo "heo-message-raw: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] || { echo "heo-message-raw: --out is required" >&2; exit 64; }
+case $max$maxbytes in *[!0-9]* | '') echo "heo-message-raw: --max-messages and --max-bytes are numbers" >&2; exit 64 ;; esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+jq -c '.candidates // [] | .[]' > "$tmp/cands.jsonl" 2> /dev/null || { echo "heo-message-raw: stdin is not {candidates: [...]}" >&2; exit 64; }
+: > "$tmp/msgs.jsonl"
+requested=$(wc -l < "$tmp/cands.jsonl" | tr -d ' ')
+fetched=0 failed=0 n=0
+
+# lookup MID: heo's message id of the one message whose own Message-ID is MID (with and
+# without angle brackets) into $tmp/id; status 0 found, 1 none or several, 70/6 heo down.
+lookup() {
+  _mid=$1
+  case $_mid in "<"*">") _alt=${_mid#<}; _alt=${_alt%>} ;; *) _alt="<$_mid>" ;; esac
+  for _try in "$_mid" "$_alt"; do
+    heo message list --message-id "$_try" --limit 2 --format json --no-hints < /dev/null > "$tmp/find.json" 2> /dev/null
+    _rc=$?
+    case $_rc in 70 | 6) return "$_rc" ;; 0) ;; *) continue ;; esac
+    if [ "$(jq '.items | length' "$tmp/find.json" 2> /dev/null)" = 1 ]; then
+      jq -r '.items[0].ref.id' "$tmp/find.json" > "$tmp/id"
+      return 0
+    fi
+  done
+  return 1
+}
+
+while IFS= read -r cand; do
+  [ "$n" -lt "$max" ] || break
+  n=$((n + 1))
+  acct=$(printf '%s' "$cand" | jq -r '.account // ""')
+  mid=$(printf '%s' "$cand" | jq -r '.message_id // ""')
+  id=$(printf '%s' "$cand" | jq -r '.provider_id // ""')
+  [ -n "$acct" ] && [ -n "$mid" ] || { failed=$((failed + 1)); continue; }
+  if [ -z "$id" ]; then
+    lookup "$mid"
+    case $? in 0) id=$(cat "$tmp/id") ;; 70 | 6) exit $? ;; *) failed=$((failed + 1)); continue ;; esac
+  fi
+  # the message is looked at through a pipe: at most --max-bytes of it are kept, nothing is written to disk
+  { heo message raw "$id" -o - < /dev/null 2> /dev/null; echo $? > "$tmp/rc"; } | head -c "$maxbytes" > "$tmp/raw.bin"
+  case $(cat "$tmp/rc") in
+    0 | 141) ;;                     # 141: heo was cut off at --max-bytes
+    70 | 6) exit "$(cat "$tmp/rc")" ;;
+    *) failed=$((failed + 1)); continue ;;
+  esac
+  [ -s "$tmp/raw.bin" ] || { failed=$((failed + 1)); continue; }
+  awk 'BEGIN { keep = 0 }
+       /^\r?$/ { exit }
+       /^[ \t]/ { if (keep) print; next }
+       { keep = (tolower($0) ~ /^(message-id|authentication-results|arc-authentication-results):/); if (keep) print }' \
+    "$tmp/raw.bin" > "$tmp/hdr.txt"
+  rm -f "$tmp/raw.bin"
+  jq -c -n --arg a "$acct" --arg m "$mid" --rawfile h "$tmp/hdr.txt" '{account: $a, message_id: $m, headers: $h}' >> "$tmp/msgs.jsonl"
+  fetched=$((fetched + 1))
+done < "$tmp/cands.jsonl"
+
+jq -s --argjson req "$requested" --argjson f "$fetched" --argjson x "$failed" --argjson max "$max" '
+  { accounts: (group_by(.account) | map({key: .[0].account, value: {messages: map({message_id, headers})}}) | from_entries),
+    stats: {requested: $req, fetched: $f, failed: $x, skipped: (if $req > $max then $req - $max else 0 end)} }' \
+  "$tmp/msgs.jsonl" > "$out" || { echo "heo-message-raw: cannot write $out" >&2; exit 70; }

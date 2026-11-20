@@ -1,0 +1,44 @@
+node: inbox/authfacts@1
+kind: command
+lowers_to: engine               # needs stdin
+description: >-
+  The authentication facts of mail the script holds only as headers (heo
+  accounts): which messages need them, then the headers stored. Without `raw`
+  it lists the candidates and touches nothing; with `raw` (heo/message.raw@1)
+  the script stores the summary of those headers.
+# wrappers/inbox-authfacts runs `inbox authfill --candidates --json` (no
+# `raw`) or `inbox authfill --from-raw - --json` (`raw` holds accounts). The
+# candidate rule and the authentication logic are the script's own (the same as
+# its IMAP authfill): rows of signup/receipt kinds, customer-vendor senders and
+# authentication-class mail, only those with no summary yet, never overwritten.
+argv:
+  - inbox-authfacts
+  - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
+  - "{{ in.limit > 0 ? ['--limit', string(in.limit)] : [] }}"
+stdin:
+  json: "{{ in.raw }}"
+inputs:
+  accounts: { type: array, items: { type: string }, default: [], description: "Account names the candidates are listed for; none means every account." }
+  limit:    { type: integer, default: 0, minimum: 0, description: At most this many candidates; 0 is no limit. }
+  raw:      { type: object, default: {}, description: "heo/message.raw@1 output ({accounts: {name: {messages: [{message_id, headers}]}}}); empty lists the candidates instead." }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: object
+    required: [command, ok]
+    properties:
+      command: { type: string }
+      ok: { type: boolean }
+      candidates:
+        type: array
+        items: { type: object, properties: { account: { type: string }, message_id: { type: string }, provider_id: { type: [string, 'null'] } } }
+      filled: { type: object, description: "{account: rows that got a summary}" }
+      skipped: { type: integer }
+      mismatched: { type: integer }
+side_effect: write-local        # with `raw`: the script's local mail store; never a mailbox
+idempotent: true                # only rows with no summary are filled
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

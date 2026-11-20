@@ -1,5 +1,5 @@
 flow: inbox-triage
-version: 0.3.0
+version: 0.4.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
@@ -48,7 +48,9 @@ vars:
   # Accounts whose inbox is listed through heo (read only) instead of the
   # script's own backend, as {account, inbox, email}: `account` is the script's
   # name for it, `inbox` the heo inbox id (default: the account name), `email`
-  # the account's own address (To of its messages; default: left out). Empty:
+  # the account's own address (To of its messages; default: left out), and
+  # optionally `channel`, the heo channel key (default: the account name).
+  # Empty:
   # every account is fetched by the script, as before. A listed account must
   # also be in `accounts` when that is set.
   heo_accounts:
@@ -90,6 +92,33 @@ steps:
   # Instruct; Jev is listed after it and skipped under the local-only ceiling
   # above. The model must pass ai.models.allow / ai.models.deny
   # (e.g. FLO_AI_MODELS_ALLOW=ollama://qwen3*).
+  # Heo accounts hold no authentication results in heo's own record: the
+  # script has them only as headers rows. The messages that need them (the
+  # script's own rule: signup/receipt mail, customer-vendor senders,
+  # authentication-class mail) are asked of the script, their raw headers read
+  # through heo (read only, headers kept, nothing else of the message) and
+  # handed back for the script to store, before `senders` reads the facts.
+  # Skipped with heo_accounts empty.
+  - id: auth-need
+    uses: inbox/authfacts@1
+    when: "{{ size(vars.heo_accounts) > 0 }}"
+    depends_on: [fetch]
+    with:
+      accounts: "{{ vars.heo_accounts.map(a, a.account) }}"
+
+  - id: auth-raw
+    uses: heo/message.raw@1
+    when: "{{ size(vars.heo_accounts) > 0 && size(results['auth-need'].candidates) > 0 }}"
+    with:
+      candidates: "{{ results['auth-need'].candidates }}"
+
+  - id: auth-fill
+    uses: inbox/authfacts@1
+    when: "{{ size(vars.heo_accounts) > 0 && size(results['auth-need'].candidates) > 0 }}"
+    with:
+      accounts: "{{ vars.heo_accounts.map(a, a.account) }}"
+      raw: "{{ results['auth-raw'] }}"
+
   - id: rows
     uses: inbox/rows@1
     depends_on: [fetch]
@@ -100,7 +129,7 @@ steps:
   # a person is never filed away" is read from these facts.
   - id: senders
     uses: inbox/senders@1
-    depends_on: [fetch]
+    depends_on: [fetch, auth-fill]
     with: { run: "{{ results.fetch.run }}" }
 
   - id: label
@@ -148,10 +177,28 @@ steps:
       engine: "{{ has(results.label.engine) ? results.label.engine : '' }}"
       model: "{{ has(results.label.model) ? results.label.model : '' }}"
 
+  # Heo accounts are planned from facts read now (provider labels, what the
+  # channel can do, the messages in the inbox), so the script's plan makes no
+  # mailbox call for them and its stale check sees the inbox as it is, not as
+  # it was at fetch time. An account with no facts (heo failed) is planned
+  # invalid, never automatic. None with heo_accounts empty: the script reads
+  # its own mailboxes, as before.
+  - id: heo-facts
+    uses: heo/plan-facts@1
+    for_each: "{{ vars.heo_accounts }}"
+    depends_on: [decisions]
+    with:
+      account: "{{ item.account }}"
+      channel: "{{ has(item.channel) ? item.channel : '' }}"
+      inbox: "{{ has(item.inbox) ? item.inbox : '' }}"
+      email: "{{ has(item.email) ? item.email : '' }}"
+
   - id: plan
     uses: inbox/plan@1
-    depends_on: [decisions]
-    with: { run: "{{ results.fetch.run }}" }
+    depends_on: [decisions, heo-facts]
+    with:
+      run: "{{ results.fetch.run }}"
+      facts: "{{ results['heo-facts'] }}"
 
   # Everything apply would touch goes through the approval, so the guard of the
   # irreversible step always finds a decision: the script's automatic items

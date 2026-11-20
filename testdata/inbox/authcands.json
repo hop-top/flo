@@ -1,0 +1,5 @@
+[
+  {"account": "acme", "message_id": "<a1@vendor.example>", "provider_id": "msg_1"},
+  {"account": "acme", "message_id": "<a3@client.example>", "provider_id": null},
+  {"account": "beta", "message_id": "<m5@example.org>", "provider_id": null}
+]

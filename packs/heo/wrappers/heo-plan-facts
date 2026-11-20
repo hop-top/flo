@@ -1,0 +1,84 @@
+#!/bin/sh
+# heo-plan-facts --out FILE --account NAME [--channel CH] [--inbox ID] [--email ADDR] [--limit N]
+#
+# What `inbox plan --facts` needs for one heo account, read now (so the plan's stale checks see the
+# inbox as it is, not as it was at fetch time). Read only: `heo channel get`, `heo provider-label
+# list` and, through heo-inbox-list, the inbox listings; nothing else.
+#   labels  the names a label or move may use: INBOX, [Gmail]/All Mail, [Gmail]/Trash, [Gmail]/Spam
+#           (what the script's own heo backend allows) and the names `provider-label list` returns
+#   verbs   {verb: {state, reason}} from `channel get` (what the channel can do: plan-time check)
+#   inbox   {heo message id: Message-ID} of the messages in the inbox, newest first, at most N
+#   email   ADDR, the account's own address (reply recipients)
+#
+# Writes {account, facts_json} to FILE. facts_json is the compact text of {accounts: {NAME: {...}}}, the
+# --facts document of `inbox plan`; inbox/plan@1 joins the facts_json of every account into its stdin. When
+# heo fails for a reason other than a missing daemon the output is {account, error, facts_json: ""} and the
+# exit 3: no facts, so the script's plan makes that account's items invalid (never auto).
+#
+# - Exit 70 (heo's daemon is not running) and 6 (transient) are passed through: the node retries them.
+# - Subjects and addresses are written to FILE only, never to stderr. Needs heo and jq.
+command -v jq > /dev/null 2>&1 || { echo "heo-plan-facts: jq is required" >&2; exit 69; }
+
+out= account= channel= inbox= email= limit=300
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --account) account=$2; shift 2 ;;
+    --channel) channel=$2; shift 2 ;;
+    --inbox) inbox=$2; shift 2 ;;
+    --email) email=$2; shift 2 ;;
+    --limit) limit=$2; shift 2 ;;
+    *) echo "heo-plan-facts: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] && [ -n "$account" ] || { echo "heo-plan-facts: --out and --account are required" >&2; exit 64; }
+[ -n "$channel" ] || channel=$account
+[ -n "$inbox" ] || inbox=$account
+case $limit in *[!0-9]* | '') echo "heo-plan-facts: --limit is a number" >&2; exit 64 ;; esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+fail() {
+  jq -n --arg a "$account" --arg e "$1" '{account: $a, error: $e, facts_json: ""}' > "$out"
+  exit 3
+}
+
+# call ARGS...: heo ARGS --format json into $tmp/call.json; 70/6 pass through, any other failure is the account's.
+call() {
+  heo "$@" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+  _rc=$?
+  [ "$_rc" -eq 0 ] && return 0
+  case $_rc in 70 | 6) cat "$tmp/call.err" >&2; exit "$_rc" ;; esac
+  fail "heo $1 $2 failed: $(jq -r '[.code, .message] | map(select(. != null)) | join(": ")' "$tmp/call.err" 2> /dev/null | cut -c1-200)"
+}
+
+call channel get "$channel"
+jq -e '.verbs | type == "array"' "$tmp/call.json" > /dev/null 2>&1 || fail "heo channel get: no verbs"
+jq -c '.verbs | map({key: .verb, value: {state, reason}}) | from_entries' "$tmp/call.json" > "$tmp/verbs.json"
+
+echo '[]' > "$tmp/labels.json"
+_cursor=
+_n=0
+while :; do
+  set -- provider-label list --channel "$channel" --limit 100
+  [ -z "$_cursor" ] || set -- "$@" --cursor "$_cursor"
+  call "$@"
+  jq -e '.items | type == "array"' "$tmp/call.json" > /dev/null 2>&1 || fail "heo provider-label list: unreadable page"
+  jq --slurpfile acc "$tmp/labels.json" '$acc[0] + [.items[].name]' "$tmp/call.json" > "$tmp/acc.json" && mv "$tmp/acc.json" "$tmp/labels.json"
+  _cursor=$(jq -r 'if .complete == false then (.next // "") else "" end' "$tmp/call.json")
+  _n=$((_n + 1))
+  [ -n "$_cursor" ] && [ "$_n" -lt 20 ] || break
+done
+
+heo-inbox-list --out "$tmp/list.json" --account "$account" --inbox "$inbox" --email "$email" --limit "$limit" 2> "$tmp/list.err"
+_rc=$?
+case $_rc in 70 | 6) cat "$tmp/list.err" >&2; exit "$_rc" ;; 0) ;; *) fail "$(jq -r --arg a "$account" '.accounts[$a].error // "inbox listing failed"' "$tmp/list.json" 2> /dev/null | cut -c1-200)" ;; esac
+
+jq -c -n --arg a "$account" --arg email "$email" --slurpfile v "$tmp/verbs.json" --slurpfile l "$tmp/labels.json" --slurpfile i "$tmp/list.json" '
+  { accounts: { ($a): {
+      labels: (["INBOX", "[Gmail]/All Mail", "[Gmail]/Trash", "[Gmail]/Spam"] + $l[0] | unique),
+      verbs: $v[0],
+      inbox: ([$i[0].accounts[$a].envelopes[]? | select(.["message-id"] != null) | {key: .id, value: .["message-id"]}] | from_entries),
+      email: $email } } }' > "$tmp/facts.json" || fail "unreadable listing"
+jq -n --arg a "$account" --rawfile f "$tmp/facts.json" '{account: $a, facts_json: ($f | rtrimstr("\n"))}' > "$out"

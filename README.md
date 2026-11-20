@@ -271,7 +271,16 @@ flo run cancel <run> --yes
   there is listed by heo, read only, by `heo/inbox.list@1`; the script
   snapshots those listings and fetches every other selected account, var
   `accounts`, through its own backend, into the same run; with none listed it
-  is a plain fetch; the `heo` pack must be installed beside `inbox`), then the judgment, then the script's plan, an approval with the script's
+  is a plain fetch; the `heo` pack must be installed beside `inbox`). For
+  those accounts the script also gets, read only through heo, the
+  authentication headers of the messages that need them
+  (`inbox/authfacts@1` lists them, `heo/message.raw@1` reads only the
+  Message-ID and Authentication-Results lines, bounded, `inbox/authfacts@1`
+  stores them) before `inbox/senders@1`, and, after the decisions, the facts
+  its plan reads from the mailbox (`heo/plan-facts@1`: provider labels, what
+  the channel can do, the messages in the inbox now) so `inbox/plan@1` makes
+  no mailbox call for them; an account whose facts heo could not give is
+  planned invalid, never automatic. Then the judgment, then the script's plan, an approval with the script's
   trust, and `inbox/apply@1`. The judgment is two `flo/ai.classify@1` steps
   over the headers of each undecided message (`inbox/rows@1`: sender, subject,
   date, flags, folder, sender history; never a body): `label` files it under

@@ -1,5 +1,5 @@
 pack: inbox
-version: 0.1.0
+version: 0.2.0
 description: "Mail triage through the inbox script: fetch, rows, decisions, plan, apply, and the trust it keeps."
 requires: { flo: ">=0.1" }
 # The nodes run `inbox` (and the wrappers in wrappers/) as
@@ -19,6 +19,7 @@ nodes:
   - nodes/ingest.yaml
   - nodes/rows.yaml
   - nodes/senders.yaml
+  - nodes/authfacts.yaml
   - nodes/lanes.yaml
   - nodes/decisions.yaml
   - nodes/plan.yaml

@@ -1,0 +1,6 @@
+Authentication-Results: mx.acme.example; dkim=fail header.d=client.example
+From: Pat <pat@client.example>
+Subject: Contract draft
+Message-ID: <a3@client.example>
+
+SECRET-BODY draft

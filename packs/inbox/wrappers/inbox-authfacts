@@ -1,0 +1,19 @@
+#!/bin/sh
+# inbox-authfacts [--account A ...]        (stdin: a raw-headers document, or nothing / {})
+#
+# The two ends of the authentication facts of heo mail:
+#   stdin empty or without accounts   `inbox authfill --candidates --json [--account A ...]`: which
+#       (account, Message-ID, provider id) rows still have no authentication summary and matter to the
+#       vendor rules; nothing is read from or written to any mailbox
+#   stdin {accounts: {A: {messages: [{message_id, headers}]}}}   `inbox authfill --from-raw - --json`: the
+#       script stores the summary of those headers (its own authres logic), only for rows with none yet
+# Prints the script's summary and exits with its status.
+command -v jq >/dev/null 2>&1 || { echo "inbox-authfacts: jq is required" >&2; exit 69; }
+
+doc=
+[ -t 0 ] || doc=$(cat)
+if [ -n "$doc" ] && [ "$(printf '%s' "$doc" | jq -r '(.accounts // {}) | length' 2>/dev/null)" -gt 0 ] 2>/dev/null; then
+  printf '%s' "$doc" | inbox authfill --from-raw - --json
+else
+  inbox authfill --candidates --json "$@"
+fi

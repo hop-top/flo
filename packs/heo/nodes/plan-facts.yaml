@@ -1,0 +1,50 @@
+node: heo/plan-facts@1
+kind: command
+lowers_to: engine
+description: >-
+  What the script's plan needs to know about one heo account's mailbox:
+  provider labels, what the channel can do, and the messages in its inbox now.
+  Read only. Input of inbox/plan@1.
+# heo-plan-facts (wrappers/) runs `heo channel get`, `heo provider-label list`
+# and the inbox listing of heo-inbox-list, and writes the account's facts as
+# `facts_json`, the --facts document of `inbox plan`. Run it under a read-only
+# heo profile. A failed account is data (`error`, exit 3, no facts_json): the
+# script then plans that account's items as invalid, never automatic. The
+# node fails only on a missing daemon (exit 70, retried).
+argv:
+  - heo-plan-facts
+  - --out
+  - "{{ run.step_dir }}/out.json"
+  - --account
+  - "{{ in.account }}"
+  - --channel
+  - "{{ in.channel }}"
+  - --inbox
+  - "{{ in.inbox }}"
+  - --email
+  - "{{ in.email }}"
+  - --limit
+  - "{{ string(in.limit) }}"
+inputs:
+  account: { type: string, required: true, description: "The script's account name: the key of the facts." }
+  channel: { type: string, default: "", description: "heo channel key; empty is the account name." }
+  inbox:   { type: string, default: "", description: "heo inbox id (or key); empty is the account name." }
+  email:   { type: string, default: "", description: "The account's own address (reply recipients)." }
+  limit:   { type: integer, default: 300, minimum: 1, maximum: 500, description: "At most this many inbox messages are listed: the plan's stale check sees these." }
+exit_codes: { ok: [0, 3], retry: [6, 70] }
+outputs:
+  from: file:out.json
+  format: json
+  schema:
+    type: object
+    required: [account, facts_json]
+    properties:
+      account: { type: string }
+      facts_json: { type: string, description: "Compact JSON text of {accounts: {name: {labels, verbs, inbox, email}}}; empty when heo failed." }
+      error: { type: string }
+side_effect: read
+privacy: local
+idempotent: true
+capabilities: [mail.read]
+timeout: 120s
+retry: { max_attempts: 3, backoff: 5s }
