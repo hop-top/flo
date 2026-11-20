@@ -28,9 +28,15 @@ const (
   {"account": "gm2", "channel": "gm2", "inbox": "ib-gm2", "email": "me@gm2.example"}]`
 )
 
+// arrivalNever is the arrival limit for a copy that never comes.
+const arrivalNever = "FLO_HEO_ARRIVAL_TIMEOUT=1"
+
 func heoHighEnv(t *testing.T, extra ...string) *env {
 	t.Helper()
-	return heoActEnv(t, append([]string{"FLO_HEO_ARRIVAL_POLL=0.01", "FLO_HEO_ARRIVAL_TIMEOUT=1"}, extra...)...)
+	// The wait ends as soon as the copy appears: the limit only bounds the
+	// cases where it never does (arrivalNever), so a loaded host cannot turn
+	// a copy that arrives into one that timed out.
+	return heoActEnv(t, append([]string{"FLO_HEO_ARRIVAL_POLL=0.01", "FLO_HEO_ARRIVAL_TIMEOUT=60"}, extra...)...)
 }
 
 func setScratch(t *testing.T, e *env, name, val string) {
@@ -140,7 +146,7 @@ func TestHeoMessageMoveWrapper(t *testing.T) {
 	})
 
 	t.Run("the copy never appears: held, the source is not trashed, not tagged", func(t *testing.T) {
-		e := heoHighEnv(t)
+		e := heoHighEnv(t, arrivalNever)
 		e.scratchFlag("heo-copy-never", true)
 		r := move(e, moveStdin)
 		if r.exit != 0 || r.out["status"] != "held" || !strings.Contains(r.out["reason"].(string), "did not appear") ||
@@ -408,7 +414,7 @@ func TestHeoConversationActHigh(t *testing.T) {
 		if r.exit != 3 || len(writes(e)) != 0 {
 			t.Errorf("exit %d writes %v", r.exit, writes(e))
 		}
-		e = heoHighEnv(t)
+		e = heoHighEnv(t, arrivalNever)
 		e.scratchFlag("heo-copy-never", true)
 		r = act(e, strings.Replace(one(`{"verb": "read", "key": "k0"}, {"verb": "move_to", "key": "k", "account": "gm2", "mailbox": "Finance"}, {"verb": "archive", "key": "k1"}`), "msg_h2", "msg_h7", 1))
 		if r.exit != 0 || r.out["status"] != "held" || !strings.Contains(r.out["reason"].(string), "did not appear") {
@@ -452,7 +458,11 @@ const highAccounts = `heo_accounts=[{"account":"gm1","inbox":"ib-gm1","email":"m
 func TestInboxTriageApplyHighThroughHeo(t *testing.T) {
 	start := func(t *testing.T, flags ...string) (*env, *engine, created) {
 		t.Helper()
-		e := triageEnv(t, "FLO_HEO_POLL=0.01", "FLO_HEO_SETTLE_TIMEOUT=2", "FLO_HEO_ARRIVAL_POLL=0.01", "FLO_HEO_ARRIVAL_TIMEOUT=1")
+		arrival := "FLO_HEO_ARRIVAL_TIMEOUT=60"
+		if slices.Contains(flags, "heo-copy-never") {
+			arrival = arrivalNever
+		}
+		e := triageEnv(t, "FLO_HEO_POLL=0.01", "FLO_HEO_SETTLE_TIMEOUT=2", "FLO_HEO_ARRIVAL_POLL=0.01", arrival)
 		e.inboxFlag("heo-items", true)
 		e.inboxFlag("heo-high", true)
 		for _, f := range flags {
