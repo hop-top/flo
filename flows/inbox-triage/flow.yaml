@@ -1,5 +1,5 @@
 flow: inbox-triage
-version: 0.6.0
+version: 0.7.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
@@ -49,7 +49,12 @@ vars:
   # script's own backend, as {account, inbox, email}: `account` is the script's
   # name for it, `inbox` the heo inbox id (default: the account name), `email`
   # the account's own address (To of its messages; default: left out), and
-  # optionally `channel`, the heo channel key (default: the account name).
+  # optionally `channel`, the heo channel key (default: the account name), and
+  # `auto` (default false): the canary switch. With auto false every item of
+  # the account waits for an approval, whatever the script's trust counters
+  # hold (reason in the plan and receipt: "heo account auto off: approval
+  # required"); the counters are not touched and other accounts are not
+  # affected. Set `auto: true` to let the account run on trust.
   # Empty:
   # every account is fetched by the script, as before. A listed account must
   # also be in `accounts` when that is set.
@@ -200,6 +205,7 @@ steps:
     with:
       account: "{{ item.account }}"
       reply_ids: "{{ results['reply-needs'].candidates.filter(c, c.account == item.account).map(c, c.id) }}"
+      auto: "{{ has(item.auto) ? item.auto : false }}"
       channel: "{{ has(item.channel) ? item.channel : '' }}"
       inbox: "{{ has(item.inbox) ? item.inbox : '' }}"
       email: "{{ has(item.email) ? item.email : '' }}"

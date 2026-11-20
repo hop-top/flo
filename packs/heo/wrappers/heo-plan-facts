@@ -1,5 +1,5 @@
 #!/bin/sh
-# heo-plan-facts --out FILE --account NAME [--channel CH] [--inbox ID] [--email ADDR] [--limit N] [--reply-ids ID,ID]
+# heo-plan-facts --out FILE --account NAME [--channel CH] [--inbox ID] [--email ADDR] [--limit N] [--reply-ids ID,ID] [--auto true|false]
 #
 # What `inbox plan --facts` needs for one heo account, read now (so the plan's stale checks see the
 # inbox as it is, not as it was at fetch time). Read only: `heo channel get`, `heo provider-label
@@ -9,6 +9,8 @@
 #   verbs   {verb: {state, reason}} from `channel get` (what the channel can do: plan-time check)
 #   inbox   {heo message id: Message-ID} of the messages in the inbox, newest first, at most N
 #   email   ADDR, the account's own address (reply recipients)
+#   auto    true only when --auto true: the account may run on the script's trust. Anything else (the default)
+#           is false: the plan holds every item of the account for approval (canary switch)
 #   raw     {heo message id: the header block of the message} for the ids named in --reply-ids (the messages the
 #           plan would reply to): the plan resolves the reply's recipients and the Reply-To guard from them. Headers
 #           only, never the body; at most FLO_HEO_RAW_BYTES (default 65536) bytes of each message are looked at. A
@@ -23,7 +25,7 @@
 # - Subjects and addresses are written to FILE only, never to stderr. Needs heo and jq.
 command -v jq > /dev/null 2>&1 || { echo "heo-plan-facts: jq is required" >&2; exit 69; }
 
-out= account= channel= inbox= email= limit=300 reply_ids=
+out= account= channel= inbox= email= limit=300 reply_ids= auto=false
 while [ $# -gt 0 ]; do
   case $1 in
     --out) out=$2; shift 2 ;;
@@ -33,12 +35,14 @@ while [ $# -gt 0 ]; do
     --email) email=$2; shift 2 ;;
     --limit) limit=$2; shift 2 ;;
     --reply-ids) reply_ids=$2; shift 2 ;;
+    --auto) auto=$2; shift 2 ;;
     *) echo "heo-plan-facts: unknown flag $1" >&2; exit 64 ;;
   esac
 done
 [ -n "$out" ] && [ -n "$account" ] || { echo "heo-plan-facts: --out and --account are required" >&2; exit 64; }
 [ -n "$channel" ] || channel=$account
 [ -n "$inbox" ] || inbox=$account
+case $auto in true | false) ;; *) auto=false ;; esac
 case $limit in *[!0-9]* | '') echo "heo-plan-facts: --limit is a number" >&2; exit 64 ;; esac
 
 tmp=$(mktemp -d)
@@ -101,11 +105,11 @@ for _id in $(printf '%s' "$reply_ids" | tr ',' ' '); do
   jq --arg id "$_id" --rawfile h "$tmp/hdr.txt" '. + {($id): $h}' "$tmp/raw.json" > "$tmp/raw.new" && mv "$tmp/raw.new" "$tmp/raw.json"
 done
 
-jq -c -n --arg a "$account" --arg email "$email" --slurpfile raw "$tmp/raw.json" --slurpfile v "$tmp/verbs.json" --slurpfile l "$tmp/labels.json" --slurpfile i "$tmp/list.json" '
+jq -c -n --arg a "$account" --arg email "$email" --argjson auto "$auto" --slurpfile raw "$tmp/raw.json" --slurpfile v "$tmp/verbs.json" --slurpfile l "$tmp/labels.json" --slurpfile i "$tmp/list.json" '
   { accounts: { ($a): {
       labels: (["INBOX", "[Gmail]/All Mail", "[Gmail]/Trash", "[Gmail]/Spam"] + $l[0] | unique),
       verbs: $v[0],
       raw: $raw[0],
       inbox: ([$i[0].accounts[$a].envelopes[]? | select(.["message-id"] != null) | {key: .id, value: .["message-id"]}] | from_entries),
-      email: $email } } }' > "$tmp/facts.json" || fail "unreadable listing"
+      email: $email, auto: $auto } } }' > "$tmp/facts.json" || fail "unreadable listing"
 jq -n --arg a "$account" --rawfile f "$tmp/facts.json" '{account: $a, facts_json: ($f | rtrimstr("\n"))}' > "$out"

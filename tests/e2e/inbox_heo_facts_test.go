@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -165,6 +166,7 @@ func TestHeoPlanFactsWrapper(t *testing.T) {
 			Verbs  map[string]map[string]string `json:"verbs"`
 			Inbox  map[string]string            `json:"inbox"`
 			Email  string                       `json:"email"`
+			Auto   *bool                        `json:"auto"`
 		} `json:"accounts"`
 	}
 	fj, _ := r.out["facts_json"].(string)
@@ -186,6 +188,29 @@ func TestHeoPlanFactsWrapper(t *testing.T) {
 	}
 	if strings.Contains(fj, "\n") {
 		t.Errorf("facts_json is one line: %q", fj)
+	}
+	// canary switch: the facts say auto false unless the account was told true
+	if a.Auto == nil || *a.Auto {
+		t.Errorf("auto defaults to false: %v", a.Auto)
+	}
+	autoOf := func(args ...string) string {
+		t.Helper()
+		r := run(append([]string{"--account", "acme", "--inbox", "ib-acme"}, args...)...)
+		if r.exit != 0 {
+			t.Fatalf("exit %d\n%s", r.exit, r.err)
+		}
+		var f struct {
+			Accounts map[string]struct {
+				Auto any `json:"auto"`
+			} `json:"accounts"`
+		}
+		_ = json.Unmarshal([]byte(r.out["facts_json"].(string)), &f)
+		return fmt.Sprint(f.Accounts["acme"].Auto)
+	}
+	for args, want := range map[string]string{"--auto true": "true", "--auto false": "false", "--auto yes": "false", "--auto ": "false"} {
+		if got := autoOf(strings.Split(args, " ")...); got != want {
+			t.Errorf("%q: auto %s, want %s", args, got, want)
+		}
 	}
 	onlyReads(t, e)
 	if strings.Contains(r.err, "vendor.example") || strings.Contains(r.err, "Invoice") {
@@ -339,13 +364,43 @@ func TestInboxTriageHeoFacts(t *testing.T) {
 			Accounts map[string]struct {
 				Labels []string          `json:"labels"`
 				Inbox  map[string]string `json:"inbox"`
+				Auto   *bool             `json:"auto"`
 			} `json:"accounts"`
 		}
 		if err != nil || json.Unmarshal(fb, &fd) != nil || len(fd.Accounts) != 1 || !slices.Contains(fd.Accounts["acme"].Labels, "Finance") ||
 			len(fd.Accounts["acme"].Inbox) != 2 {
 			t.Errorf("the plan's facts: %s %v", fb, err)
 		}
+		if a := fd.Accounts["acme"].Auto; a == nil || *a {
+			t.Errorf("heo_accounts without auto: the plan's facts say auto false (canary), got %v", a)
+		}
 		onlyReads(t, e)
+	})
+
+	t.Run("heo_accounts[].auto reaches the plan's facts", func(t *testing.T) {
+		for _, tc := range []struct{ json, want string }{
+			{`"auto":true`, "true"}, {`"auto":false`, "false"}, {`"x":1`, "false"}} {
+			e := triageEnv(t)
+			e.triageActive()
+			eng := e.startEngine()
+			var c created
+			r := e.jsonOf(&c, "run", "create", "--flow", "inbox-triage", "--wait", "--var",
+				`heo_accounts=[{"account":"acme","inbox":"ib-acme","email":"me@acme.example",`+tc.json+`}]`)
+			if r.Exit != core.ExitAwaiting {
+				eng.stop()
+				t.Fatalf("%s: run: exit %d\n%s", tc.json, r.Exit, r.Stderr)
+			}
+			fb, err := os.ReadFile(filepath.Join(e.scratch, "inbox", "facts.json")) //nolint:gosec // the fake's state
+			var fd struct {
+				Accounts map[string]struct {
+					Auto any `json:"auto"`
+				} `json:"accounts"`
+			}
+			if err != nil || json.Unmarshal(fb, &fd) != nil || fmt.Sprint(fd.Accounts["acme"].Auto) != tc.want {
+				t.Errorf("%s: facts %s %v, want auto %s", tc.json, fb, err, tc.want)
+			}
+			eng.stop()
+		}
 	})
 
 	t.Run("heo failed for plan facts: no facts, the plan runs", func(t *testing.T) {

@@ -280,7 +280,10 @@ flo run cancel <run> --yes
   its plan reads from the mailbox (`heo/plan-facts@1`: provider labels, what
   the channel can do, the messages in the inbox now) so `inbox/plan@1` makes
   no mailbox call for them; an account whose facts heo could not give is
-  planned invalid, never automatic. Then the judgment, then the script's plan, an approval with the script's
+  planned invalid, never automatic. Each `heo_accounts` element takes `auto` (default false, the canary
+  switch): while it is not true every item of that account waits for an approval whatever the script's trust
+  counters hold (reason in the plan and receipt: "heo account auto off: approval required"; counters and other
+  accounts untouched). Then the judgment, then the script's plan, an approval with the script's
   trust, and the apply: `inbox/apply@1` for the accounts the script reaches itself, and for each heo account
   `inbox/ops@1` (the script's ordered operations per message, guards re-checked, nothing executed),
   `heo/provider-label.ensure@1` (creates `security` where the plan needs it, never another label),

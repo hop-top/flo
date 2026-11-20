@@ -29,12 +29,15 @@ argv:
   - "{{ string(in.limit) }}"
   - --reply-ids
   - "{{ in.reply_ids.join(',') }}"
+  - --auto
+  - "{{ in.auto ? 'true' : 'false' }}"
 inputs:
   account: { type: string, required: true, description: "The script's account name: the key of the facts." }
   channel: { type: string, default: "", description: "heo channel key; empty is the account name." }
   inbox:   { type: string, default: "", description: "heo inbox id (or key); empty is the account name." }
   email:   { type: string, default: "", description: "The account's own address (reply recipients)." }
   reply_ids: { type: array, items: { type: string }, default: [], description: "heo message ids of the messages the plan would reply to (inbox/replyneeds@1): their header block is handed to the plan as `raw`, for the reply's recipients." }
+  auto:    { type: boolean, default: false, description: "Canary switch: false (default) makes the plan hold every item of this account for approval, whatever the trust counters hold; true lets the account run on trust." }
   limit:   { type: integer, default: 300, minimum: 1, maximum: 500, description: "At most this many inbox messages are listed: the plan's stale check sees these." }
 exit_codes: { ok: [0, 3], retry: [6, 70] }
 outputs:
