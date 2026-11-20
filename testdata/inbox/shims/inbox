@@ -22,9 +22,15 @@
 #       sender-nofacts      sender facts: no message is in the store
 #       authcands-none      `authfill --candidates` lists no message
 #       heo-items      the plan is testdata/inbox/items_heo.json (heo message ids; the heo apply tests)
+#       heo-high       the plan is testdata/inbox/items_heo_high.json (trash, spam, unsubscribe, reply, move_to; accounts gm1, gm2, ol)
+#       ops-unguarded  `apply --ops` leaves the guard mark off a deleting item (a script that forgot it)
 #   plan --facts -   the facts document is kept as facts.json; an account in it is planned from it (the fake
 #                    plan is the same), one named in no facts is not touched
-#   apply RUN --ops --json [--account A]   the ordered ops per executable item (keys stable per run, verb, message)
+#   plan RUN --reply-needs --json          {candidates}: the reply items of the plan fixture, nothing planned
+#   apply RUN --ops --json [--facts -] [--account A]   the ordered ops per executable item (keys stable per run, verb, message);
+#                    the facts are kept as ops-facts.json; a deleting item of a protected sender is refused (never delete),
+#                    a move_to from an account whose facts do not declare message forward is refused, a deleting item carries
+#                    guard: cleared (unless ops-unguarded)
 #   apply RUN --exclude-account A           the legacy apply leaves that account's items alone
 #   record RUN --results - --json           commits the doc (kept as record-doc.json, recorded.log, labels-created.jsonl)
 #   authfill --candidates --json   the rows of authcands.json (testdata/inbox) for the --account given
@@ -138,6 +144,11 @@ case $cmd in
     esac
     echo "fake inbox: authfill: unsupported: $*" >&2; exit 64 ;;
   plan)
+    case " $* " in *" --reply-needs "*)
+      itemsfile="$td/items.json"; flag heo-items && itemsfile="$td/items_heo.json"; flag heo-high && itemsfile="$td/items_heo_high.json"
+      emit plan 0 "$(jq -c -n --arg run "$1" --slurpfile i "$itemsfile" '{run: $run, candidates: [$i[0][] | select(any(.actions[]; type == "object" and has("reply"))) | {account, id, message_id}]}')"
+      exit 0 ;;
+    esac
     case " $* " in *" --facts - "*) cat > "$st/facts.json" ;; esac
     run=$1; rd=$(rundir "$run")
     [ -f "$rd/decisions.json" ] || { echo "no decisions file at $rd/decisions.json" >&2; exit 1; }
@@ -147,6 +158,7 @@ case $cmd in
       # heo-items: the heo scenario of the apply tests (items for heo-listed messages, ids are heo message ids); the
       # fake plan keeps every item of the file whatever the snapshot holds
       if flag heo-items; then itemsfile="$td/items_heo.json"; rows=$(jq -c '[.[].message_id]' "$itemsfile"); fi
+      if flag heo-high; then itemsfile="$td/items_heo_high.json"; rows=$(jq -c '[.[].message_id]' "$itemsfile"); fi
       jq --slurpfile t "$st/trust.json" --argjson rows "$rows" --arg run "$run" --argjson noauto "$(flag no-auto && echo true || echo false)" --argjson invalid "$(flag invalid && echo true || echo false)" '
         def auto($k): ($t[0][$k] // {streak: 0, threshold: 15}) | .streak >= .threshold;
         { run: $run, created: "2026-11-18T09:00:00-05:00", task: null, notes: [], labels: {},
@@ -202,24 +214,35 @@ case $cmd in
     done
     [ -f "$rd/plan.json" ] || { echo "no plan at $rd/plan.json" >&2; exit 1; }
     if $ops; then
+      case " $* " in *" --facts - "*) cat > "$st/ops-facts.json" ;; *) rm -f "$st/ops-facts.json" ;; esac
+      [ -e "$st/ops-facts.json" ] || echo '{"accounts":{}}' > "$st/ops-facts.empty"
       # the seam: the ordered ops per approved or automatic item not yet executed (account scope --account), blast low|high
       # keys are stable: the same run, verb, message and extra give the same key
-      emit apply 0 "$(jq -c --arg run "$run" --arg rd "$rd" --argjson incl "$incl" '
+      factsf="$st/ops-facts.json"; [ -e "$factsf" ] || factsf="$st/ops-facts.empty"
+      emit apply 0 "$(jq -c --arg run "$run" --arg rd "$rd" --argjson incl "$incl" --slurpfile fx "$factsf" --argjson unguarded "$(flag ops-unguarded && echo true || echo false)" '
         def key($v; $i; $x): "inbox-" + $run + "-" + $v + "-" + $i + "-" + $x;
         def op($i; $v; $x; $extra): {verb: $v, blast: (if $v | IN("read", "unread", "flag", "unflag", "archive", "label") then "low" else "high" end), key: key($v; $i; $x)} + $extra;
         def opsof($i): (
           [.actions[] | select(type == "string" and IN("read", "unread", "star", "unstar")) | op($i; {star: "flag", unstar: "unflag"}[.] // .; ""; {})]
           + [.actions[] | select(type == "object" and has("label")) | .label as $l | op($i; "label"; $l; {label: $l, ensure: ($l == "security")})]
-          + [.actions[] | select(type == "object" and has("reply")) | op($i; "reply"; .reply.mode; {mode: .reply.mode})]
+          + [.actions[] | select(type == "object" and has("reply")) | op($i; "reply"; .reply.mode; {mode: .reply.mode, reply_all: false, cc: [], text: (.reply.body + "\n")})]
           + [.actions[] | select(type == "string" and . == "unsubscribe") | op($i; "unsubscribe"; ""; {})]
+          + [.actions[] | select(type == "object" and has("move_to")) | .move_to as $t | op($i; "move_to"; $t.account + "/" + $t.mailbox; {account: $t.account, mailbox: $t.mailbox})]
           + ([.actions[] | select(type == "string" and . == "archive") | op($i; "archive"; ""; {})])
           + ([.actions[] | select(type == "string" and IN("trash", "spam")) | . as $v | op($i; $v; ""; {})]));
-        { run: $run, run_dir: $rd, mode: "ops", recovered: [], refused: {},
-          notes: ([.items[] | select(.executed == null and (.status == "auto" or (.verdict | IN("approved", "corrected")))) | select(($incl | length) == 0 or (.account | IN($incl[])))
-                   | select(any(.actions[]; type == "object" and has("attention"))) | {key: (.n | tostring), value: ("attention: " + (.actions[] | select(type == "object" and has("attention")) | .attention))}] | from_entries),
-          items: [.items[] | select(.executed == null and (.status == "auto" or (.verdict | IN("approved", "corrected")))) | select(($incl | length) == 0 or (.account | IN($incl[])))
-                  | . as $it | opsof($it.id) as $ops
-                  | {n, account, message_id, id, blast: (if any($ops[]; .blast == "high") then "high" else "low" end), ops: $ops}],
+        def deletes: any(.actions[]; (type == "string" and IN("trash", "spam")) or (type == "object" and has("move_to")));
+        def refusal($acct): if deletes and (.from | endswith("@vendor.example") and startswith("protected")) then "never delete: protected customer vendor"
+          elif any(.actions[]; type == "object" and has("move_to")) and (($fx[0].accounts[$acct].verbs // null) != null) and ((($fx[0].accounts[$acct].verbs["message forward"].state) // "") != "declared")
+            then "not available on this mailbox: move_to:" + (.actions[] | select(type == "object" and has("move_to")) | .move_to | .account + "/" + .mailbox) + " (message forward: not_declared)"
+          else null end;
+        ([.items[] | select(.executed == null and (.status == "auto" or (.verdict | IN("approved", "corrected")))) | select(($incl | length) == 0 or (.account | IN($incl[])))]) as $todo
+        | { run: $run, run_dir: $rd, mode: "ops", recovered: [],
+          refused: ([$todo[] | . as $it | refusal($it.account) | select(. != null) | {key: ($it.n | tostring), value: .}] | from_entries),
+          notes: ($todo | map(select(any(.actions[]; type == "object" and has("attention"))) | {key: (.n | tostring), value: ("attention: " + (.actions[] | select(type == "object" and has("attention")) | .attention))}) | from_entries),
+          items: [$todo[] | . as $it | select(refusal($it.account) == null)
+                  | opsof($it.id) as $ops
+                  | {n, account, message_id, id, blast: (if any($ops[]; .blast == "high") then "high" else "low" end), deletes: deletes, ops: $ops}
+                    + (if deletes and ($unguarded | not) then {guard: "cleared"} else {} end)],
           files: [$rd + "/plan.json"] }
         | .labels_needed = ([.items[] | .account as $a | .ops[] | select(.ensure == true) | {account: $a, label}] | unique)
         | .counts = {items: (.items | length)}' "$rd/plan.json")"

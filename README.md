@@ -286,9 +286,15 @@ flo run cancel <run> --yes
   `heo/provider-label.ensure@1` (creates `security` where the plan needs it, never another label),
   `heo/conversation.act@1` (read, unread, flag, unflag, archive, label: each on that message only, with the
   script's idempotency key, waiting for heo to settle it, timeout 120 s) and `inbox/record@1` (commits executed
-  marks, ledger, history, locks and receipt). Only those low-blast operations go through heo for now: an item
-  with a trash, spam, unsubscribe, reply or cross-account move is held, left pending with the reason in the
-  receipt. A failed operation fails its item; an outcome heo cannot confirm (exit 8, or no settle in time)
+  marks, ledger, history, locks and receipt), and `heo/conversation.act-high@1` for the rest: trash, spam,
+  unsubscribe (heo's own policy: same-organization mailto, DKIM one-click, never a GET; its outcome is a note,
+  never a failure), reply (a draft, or a send that waits for an approval; only when the message is still the latest
+  inbound of its conversation) and a move to another account. A trash, spam or move runs only for an item the
+  script marked `guard: cleared` (the customer-vendor guard passed; no sender facts or a protected sender means
+  refused), in the flow's filter and again in the wrapper. A move forwards the message from the source account
+  (Gmail only), finds the arrived copy in the destination by the forward's own Message-ID, files it there and
+  trashes the source last; a copy that has not arrived leaves the item held, left pending with the reason in the
+  receipt, the source untouched. A failed operation fails its item; an outcome heo cannot confirm (exit 8, or no settle in time)
   fails the step and parks the run, nothing retried. The write steps run under a write-scoped heo profile (desk
   role, the provider's modify grant, held operations off for it: the approval and the script's trust decide);
   the read steps keep a read-only one. The judgment is two `flo/ai.classify@1` steps

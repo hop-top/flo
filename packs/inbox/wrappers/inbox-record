@@ -4,12 +4,15 @@
 # Builds the `inbox record --results` document from the ops of `inbox apply --ops` and what the transport did, and
 # commits it: `inbox record RUN --results - --no-task --json`. Writes the script's summary, with `held`, to FILE.
 #   an item with no mailbox op (attention only)                   committed, null
-#   a low-blast item whose act ran: status ok                     committed, null
-#                                    status failed                committed, the failing op's error
+#   an item whose act ran: status ok                              committed, null
+#                          status failed                          committed, the failing op's error
+#                          status held (a cross-account move whose copy has not arrived)
+#                                                                 held: left pending with the reason, source untouched
 #   a low-blast item with a label op, `ensure` and no ok ensure  committed, "label security could not be created: ..."
 #   a low-blast item with no act result (the step did not run it) untouched
-#   a high-blast item                                              held: the transport does not run its ops
-#   an item the script refused (guard, unknown label)             committed, the script's error
+#   a high-blast item with no act result                           held: the reason says whether the guard was not cleared
+#   an item the script refused (guard, unknown label, a mailbox that cannot)  committed, the script's error
+# An informational outcome of the act (an unsubscribe's `note`) goes to the item's note, beside the script's own.
 # `security` is the only label ever logged as created (labels_created), once per account that created it.
 # Exit with the script's status: 0 ok, 3 some item failed (the file is still written).
 command -v jq > /dev/null 2>&1 || { echo "inbox-record: jq is required" >&2; exit 69; }
@@ -30,24 +33,31 @@ doc=$(printf '%s' "$in" | jq -c '
   | def okensure($acct): any($ens[]; .status == "ok" and (.account // "") == $acct);
     def ensureerr($acct): ([$ens[] | select((.account // "") == $acct) | .error // .status] | first // "no result");
     def acted($n): [$acts[] | select(.n == $n)] | first;
-    def firsterr($a): ([$a.results[] | select(.error != null) | (.verb + ": " + .error)] | first // "failed");
+    def firsterr($a): ([$a.results[] | select(.error != null and .status != "noted") | (.verb + ": " + .error)] | first // "failed");
+    def deleting: any(.ops[]; .verb | IN("trash", "spam", "move_to"));
+    def heldwhy: if deleting and ((.guard // "") != "cleared") then "a deleting op runs only for an item the script cleared (customer-vendor guard), this one is not: not run"
+                 else "the transport did not run this item" end;
     { results:
         ( (.ops.refused // {} | to_entries | map({key, value}) | from_entries)
-        + ([ $items[] | select(.blast == "low")
+        + ([ $items[]
              | . as $i
              | if (.ops | length) == 0 then {key: (.n | tostring), value: null}
                else (acted($i.n)) as $a
-                 | if $a != null then {key: (.n | tostring), value: (if $a.status == "ok" then null else firsterr($a) end)}
+                 | if $a != null then (if $a.status == "ok" then {key: (.n | tostring), value: null}
+                                       elif $a.status == "held" then empty
+                                       else {key: (.n | tostring), value: firsterr($a)} end)
+                   elif .blast == "high" then empty
                    elif any(.ops[]; .ensure == true) and (okensure($i.account) | not)
                    then {key: (.n | tostring), value: ("label security could not be created: " + ensureerr($i.account))}
                    else empty end
                end ] | from_entries)),
-      notes: (.ops.notes // {}),
-      held: ([ $items[] | select(.blast == "high")
-               | {key: (.n | tostring), value: ("high-blast op (" + ([.ops[] | select(.blast == "high") | .verb] | unique | join(", ")) + ") is not run through heo yet")} ] | from_entries),
+      notes: ((.ops.notes // {}) as $on
+              | reduce ($acts[] | select((.note // "") != "")) as $a ($on; .[($a.n | tostring)] = ((if .[($a.n | tostring)] then .[($a.n | tostring)] + "; " else "" end) + $a.note))),
+      held: (([ $acts[] | select(.status == "held") | {key: (.n | tostring), value: (.reason // "held")} ] | from_entries)
+             + ([ $items[] | select(.blast == "high") | . as $i | select(acted($i.n) == null) | {key: (.n | tostring), value: heldwhy} ] | from_entries)),
       labels_created: [ $ens[] | select(.status == "ok" and .created == true) | {account: (.account // ""), label: .label} ],
       backend: (.backend // "heo"),
-      calls: ([$acts[] | .results[]? | select(.status == "ok" or .status == "failed")] | length) }' 2>/dev/null) ||
+      calls: ([$acts[] | .results[]? | select(.status == "ok" or .status == "failed" or .status == "noted" or .status == "held")] | length) }' 2>/dev/null) ||
   { echo "inbox-record: stdin is not {ops, acts, ensures}" >&2; exit 64; }
 summary=$(printf '%s' "$doc" | inbox record "$run" --results - --no-task --json)
 rc=$?

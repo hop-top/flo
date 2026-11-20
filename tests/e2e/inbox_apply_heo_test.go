@@ -377,7 +377,7 @@ func TestInboxTriageApplyThroughHeo(t *testing.T) {
 		return
 	}
 
-	t.Run("low-blast ops go through heo, high-blast items are held, other accounts keep the script's path", func(t *testing.T) {
+	t.Run("low-blast ops go through heo, a trash the channel cannot do fails its item, other accounts keep the script's path", func(t *testing.T) {
 		e, eng, c := start(t)
 		defer eng.stop()
 		approveAll(e, c)
@@ -405,7 +405,7 @@ func TestInboxTriageApplyThroughHeo(t *testing.T) {
 		}
 		all := strings.Join(logOf(e, "heo.log"), "\n")
 		if strings.Contains(all, "c_msg_9") {
-			t.Errorf("the held trash item was touched in heo:\n%s", all)
+			t.Errorf("the trash item was written in heo:\n%s", all)
 		}
 		if n := strings.Count(all, "heo provider-label create security"); n != 1 {
 			t.Errorf("security created %d times", n)
@@ -454,16 +454,17 @@ func TestInboxTriageApplyThroughHeo(t *testing.T) {
 		if v, ok := doc.Results["5"]; !ok || v == nil || !strings.Contains(v.(string), "not found") {
 			t.Errorf("item 5 (message gone): %v", v)
 		}
-		if h, ok := doc.Held["3"]; !ok || !strings.Contains(h, "trash") || !strings.Contains(h, "not run through heo") {
-			t.Errorf("item 3 (trash) is held with its reason: %v", doc.Held)
+		// the trash is the high-blast act's now: acme's channel does not declare it, so the item fails before any write
+		if v, _ := doc.Results["3"].(string); !strings.Contains(v, "does not declare conversation trash") {
+			t.Errorf("item 3 (trash on a channel that cannot): %v", doc.Results["3"])
 		}
-		if _, ok := doc.Results["3"]; ok {
-			t.Error("a held item has a result")
+		if len(doc.Held) != 0 {
+			t.Errorf("held: %v", doc.Held)
 		}
 		if len(doc.Created) != 1 || doc.Created[0]["label"] != "security" || doc.Created[0]["account"] != "acme" || doc.Backend != "heo" {
 			t.Errorf("labels created / backend: %+v %s", doc.Created, doc.Backend)
 		}
-		// the held item stays pending: its run-file mark is empty, the receipt says why
+		// the item whose trash the channel cannot do is marked failed, the receipt says why
 		plan := e.runFile(c, "plan.json")
 		var p struct {
 			Items []struct {
@@ -475,15 +476,15 @@ func TestInboxTriageApplyThroughHeo(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, it := range p.Items {
-			if it.N == 3 && it.Executed != nil {
-				t.Errorf("the held item is marked executed: %v", it.Executed)
+			if it.N == 3 && (it.Executed == nil || it.Executed["ok"] != false) {
+				t.Errorf("item 3 is marked failed: %v", it.Executed)
 			}
 			if it.N == 2 && (it.Executed == nil || it.Executed["ok"] != true) {
 				t.Errorf("item 2: %v", it.Executed)
 			}
 		}
 		rec := e.runFile(c, "receipt.json")
-		if !strings.Contains(string(rec), `"held: high-blast op (trash)`) {
+		if !strings.Contains(string(rec), "does not declare conversation trash") {
 			t.Errorf("receipt: %s", rec)
 		}
 		// the failed item (5) fails the run at the apply step, which reads the whole plan

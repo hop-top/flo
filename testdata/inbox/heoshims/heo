@@ -18,6 +18,16 @@
 #   `message get msg_404`   NOT_FOUND (exit 3); any other id: conversation c_<id>
 #   `message raw ID -o -`   raw_<ID>.eml (exit 3 when there is none)
 #   `message list --message-id MID`   lookup_<MID with non-word chars as _>.json, else an empty page
+#   `message forward MSG --to ADDR`   a write like the others (verb forward); its delivery reports the copy's own
+#       Message-ID <fwd-KEY@copy.example> as a provider reference unless $FLO_E2E_DIR/heo-forward-noref exists
+#   `message list --inbox ib-gm2 --message-id <fwd-KEY@copy.example>`   the arrived copy (msg_copy_KEY in conversation
+#       c_copy_KEY) once the call has been made more than N times, N in $FLO_E2E_DIR/heo-copy-after (default 0);
+#       never when $FLO_E2E_DIR/heo-copy-never exists; twice when heo-copy-twice exists. `--references` is logged and
+#       answers nothing: a test asserts it is never used.
+#   `message list --conversation C`   conv_msgs_C.json, else the one message C names (c_X holds message X)
+#   `message reply|reply-draft CONV --text T`   a write (verbs reply, reply-draft); `conversation trash|move|unsubscribe` too
+#   `channel get CH`   channel.json for acme, else channel_CH.json
+#   `provider-label list --channel CH`   provider_labels.json for acme, else provider_labels_CH.json
 #   $FLO_E2E_DIR/heo-raw-fail   every `message raw` fails (exit 3, an error text that must never be passed on)
 #   $FLO_E2E_DIR/heo-down   exit 70, as heo does with no daemon
 #   $FLO_E2E_DIR/heo-fail   exit 4 with heo's JSON error envelope on stderr
@@ -27,12 +37,15 @@ td="$FLO_E2E_TESTDATA/inbox/heo"
 [ -e "$FLO_E2E_DIR/heo-fail" ] && { echo '{"code":"CONFLICT","message":"inbox is being rebuilt"}' >&2; exit 4; }
 group=$1 verb=$2
 shift 2
-cursor=first inbox= mid= channel= pos= msg= ikey= add=
+cursor=first inbox= mid= channel= pos= msg= ikey= add= conv= refs= to=
 while [ $# -gt 0 ]; do
   case $1 in
     --message) msg=$2; shift 2 ;;
     --idempotency-key) ikey=$2; shift 2 ;;
     --add) add=$2; shift 2 ;;
+    --conversation) conv=$2; shift 2 ;;
+    --references) refs=$2; shift 2 ;;
+    --to) to=$2; shift 2 ;;
     --cursor) cursor=$2; shift 2 ;;
     --inbox) inbox=$2; shift 2 ;;
     --message-id) mid=$2; shift 2 ;;
@@ -44,28 +57,48 @@ while [ $# -gt 0 ]; do
 done
 case "$group $verb" in
   "message list")
+    if [ -n "$refs" ]; then echo '{"items":[],"complete":true}'; exit 0; fi
+    if [ -n "$conv" ]; then
+      if [ -e "$td/conv_msgs_$conv.json" ]; then cat "$td/conv_msgs_$conv.json"
+      else printf '{"items":[{"ref":{"id":"%s","conversation":{"id":"%s"}},"occurred_at":"2026-11-18T08:00:00Z","author":{"kind":"contact"},"audience":{"visibility":"public"}}],"complete":true}\n' "${conv#c_}" "$conv"; fi
+      exit 0
+    fi
     if [ -n "$mid" ]; then
+      case $mid in
+        "<fwd-"*"@copy.example>")
+          k=${mid#<fwd-}; k=${k%@copy.example>}
+          d="$FLO_E2E_DIR/heo-ops"; mkdir -p "$d"
+          n=$(( $(cat "$d/arrive.$k" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$d/arrive.$k"
+          after=0; [ -e "$FLO_E2E_DIR/heo-copy-after" ] && after=$(cat "$FLO_E2E_DIR/heo-copy-after")
+          if [ -e "$FLO_E2E_DIR/heo-copy-never" ] || [ "$n" -le "$after" ] || [ "$inbox" != ib-gm2 ]; then echo '{"items":[],"complete":true}'; exit 0; fi
+          one="{\"ref\":{\"id\":\"msg_copy_$k\",\"conversation\":{\"id\":\"c_copy_$k\"}}}"
+          if [ -e "$FLO_E2E_DIR/heo-copy-twice" ]; then printf '{"items":[%s,{"ref":{"id":"msg_copy2_%s","conversation":{"id":"c_copy2_%s"}}}],"complete":true}\n' "$one" "$k" "$k"
+          else printf '{"items":[%s],"complete":true}\n' "$one"; fi
+          exit 0 ;;
+      esac
       f="$td/lookup_$(printf '%s' "$mid" | tr -c 'A-Za-z0-9\n' _).json"
       if [ -e "$f" ]; then cat "$f"; else echo '{"items":[],"complete":true}'; fi
       exit 0
     fi
-    [ "$inbox" = ib-acme ] || { echo '{"code":"NOT_FOUND","message":"inbox not found"}' >&2; exit 3; }
+    case $inbox in ib-acme | ib-gm1 | ib-gm2 | ib-ol) ;; *) echo '{"code":"NOT_FOUND","message":"inbox not found"}' >&2; exit 3 ;; esac
     cat "$td/${group}s_$cursor.json" ;;
   "conversation list")
-    [ "$inbox" = ib-acme ] || { echo '{"code":"NOT_FOUND","message":"inbox not found"}' >&2; exit 3; }
+    case $inbox in ib-acme | ib-gm1 | ib-gm2 | ib-ol) ;; *) echo '{"code":"NOT_FOUND","message":"inbox not found"}' >&2; exit 3 ;; esac
     cat "$td/${group}s_$cursor.json" ;;
   "message raw")
     [ -e "$FLO_E2E_DIR/heo-raw-fail" ] && { echo '{"code":"PROVIDER_PERMANENT","message":"SECRET-ERR provider copy too big"}' >&2; exit 1; }
     [ -e "$td/raw_$pos.eml" ] || { echo '{"code":"NOT_FOUND","message":"no such message"}' >&2; exit 3; }
     cat "$td/raw_$pos.eml" ;;
   "channel get")
-    [ "$pos" = acme ] || { echo '{"code":"NOT_FOUND","message":"channel not found"}' >&2; exit 3; }
-    cat "$td/channel.json" ;;
+    if [ "$pos" = acme ]; then cat "$td/channel.json"
+    elif [ -e "$td/channel_$pos.json" ]; then cat "$td/channel_$pos.json"
+    else echo '{"code":"NOT_FOUND","message":"channel not found"}' >&2; exit 3; fi ;;
   "provider-label list")
-    [ "$channel" = acme ] || { echo '{"code":"NOT_FOUND","message":"channel not found"}' >&2; exit 3; }
+    lf="$td/provider_labels_$channel.json"; [ "$channel" = acme ] && lf="$td/provider_labels.json"
+    [ -e "$lf" ] || { echo '{"code":"NOT_FOUND","message":"channel not found"}' >&2; exit 3; }
     if [ -e "$FLO_E2E_DIR/heo-label-created" ]; then
-      jq -c --arg n "$(cat "$FLO_E2E_DIR/heo-label-created")" '.items += [{channel: "acme", id: "Label_new", name: $n, kind: "label", role: ""}]' "$td/provider_labels.json"
-    else cat "$td/provider_labels.json"; fi ;;
+      jq -c --arg c "$channel" --arg n "$(cat "$FLO_E2E_DIR/heo-label-created")" '.items += [{channel: $c, id: "Label_new", name: $n, kind: "label", role: ""}]' "$lf"
+    else cat "$lf"; fi ;;
   "message get")
     [ "$pos" = msg_404 ] && { echo '{"code":"NOT_FOUND","message":"resource not found","exit_code":3}' >&2; exit 3; }
     printf '{"ref":{"conversation":{"inbox":{"tenant":"default","id":"ib-acme"},"id":"c_%s"},"id":"%s"}}\n' "$pos" "$pos" ;;
@@ -77,9 +110,13 @@ case "$group $verb" in
     [ "$n" -le 1 ] && [ "$st" != queued ] && st=queued
     case $st in
       failed | rejected) printf '{"id":"%s","state":"%s","failure":{"code":"PROVIDER_PERMANENT","message":"provider refused it"}}\n' "$pos" "$st" ;;
+      provider_accepted | delivered)
+        if [ "$v" = forward ] && [ ! -e "$FLO_E2E_DIR/heo-forward-noref" ]; then
+          printf '{"id":"%s","state":"%s","provider_references":[{"namespace":"email.header","kind":"email.message_id","id":"<fwd-%s@copy.example>"}]}\n' "$pos" "$st" "${pos#op_}"
+        else printf '{"id":"%s","state":"%s"}\n' "$pos" "$st"; fi ;;
       *) printf '{"id":"%s","state":"%s"}\n' "$pos" "$st" ;;
     esac ;;
-  "conversation "* | "provider-label create")
+  "conversation "* | "provider-label create" | "message forward" | "message reply" | "message reply-draft")
     [ -e "$FLO_E2E_DIR/heo-writes" ] || { echo "fake heo: writes are off: $group $verb" >&2; exit 64; }
     vk=$verb; [ "$group $verb" = "provider-label create" ] && vk=label-create
     [ -e "$FLO_E2E_DIR/heo-submit-fail-$vk" ] && { echo '{"code":"CONFLICT","message":"the conversation changed","exit_code":4}' >&2; exit 4; }
@@ -90,6 +127,8 @@ case "$group $verb" in
     [ "$vk" = label-create ] && printf '%s' "$pos" > "$FLO_E2E_DIR/heo-label-created"
     case $vk in
       label-create) printf '{"channel":"%s","name":"%s","effect":"fake.mailbox_create","operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$channel" "$pos" "$op" "$replay" "$ikey" ;;
+      forward) printf '{"conversation":{"ref":{"id":"c_%s"}},"message":"%s","provider_message":"gm_%s","to":"%s","effect":"google.mail.forward","operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$pos" "$pos" "$pos" "$to" "$op" "$replay" "$ikey" ;;
+      reply | reply-draft) printf '{"conversation":{"ref":{"id":"%s"}},"operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$pos" "$op" "$replay" "$ikey" ;;
       tag) printf '{"conversation":{"ref":{"id":"%s"}},"message":"%s","effect":"google.mail.labels","add":["%s"],"operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$pos" "$msg" "$add" "$op" "$replay" "$ikey" ;;
       *) printf '{"conversation":{"ref":{"id":"%s"}},"verb":"%s","messages":["%s"],"operation":{"id":"%s","state":"queued","durable":true,"replayed":%s},"operation_key":"%s"}\n' "$pos" "$verb" "$msg" "$op" "$replay" "$ikey" ;;
     esac ;;

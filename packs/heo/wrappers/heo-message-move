@@ -1,0 +1,187 @@
+#!/bin/sh
+# heo-message-move --out FILE        (stdin: {n, provider_id, channel, guard, mailbox, dest: {account, channel, inbox, email}})
+#
+# Move one message to another account, through heo. heo has no cross-account move: the SOURCE account forwards the
+# message to the destination's address (`message forward`, the original attached whole), the arrived copy is found
+# in the DESTINATION account, labelled and archived there, and only then the source message is trashed. The copy
+# is never lost: the source is trashed last, after the copy exists and is filed, so every stop on the way leaves
+# the mail in at least one mailbox.
+#
+#   1. refuse unless the item is `guard: cleared` (the script's customer-vendor guard passed): exit 64
+#   2. before anything is sent: the source channel declares `message forward` and `conversation trash`, the
+#      destination declares `conversation tag` and `conversation archive` and holds the label MAILBOX
+#      (a failure here sends nothing: status failed)
+#   3. forward to dest.email, wait until heo settles it (the provider accepted it)
+#   4. the forward's own Message-ID, from the operation's provider references (`delivery get`), nothing else
+#   5. find the copy in dest.inbox: `message list --message-id <that id>` (the message's OWN id, exact; never
+#      --references, which also matches replies), polled until it appears or FLO_HEO_ARRIVAL_TIMEOUT seconds
+#      (default 180) pass. Not seen: status held, the source is NOT trashed (a later run replays the forward
+#      under the same key and carries on). Two hits: failed, the source is kept.
+#   6. label the copy (`conversation tag --add MAILBOX --message <copy>`) and archive it (same --message)
+#   7. trash the source (`conversation trash --message <source>`)
+#
+# A failure after the forward leaves the source in place, and says where the copy is. The keys of the writes do not
+# contain the run: the same message to the same address replays the same forward in a later run, never sending a
+# second copy.
+#
+# Writes {n, provider_id, status, stage, forward, copy, reason, error} to FILE. status ok | failed | held |
+# outcome_unknown. Exit 0 ok or held, 3 failed, 8 outcome unknown (the operation is in the file and on stderr; a
+# person reconciles it, nothing is retried), 70/6 heo daemon down/transient (retried), 64 usage.
+command -v jq > /dev/null 2>&1 || { echo "heo-message-move: jq is required" >&2; exit 69; }
+. "$(command -v heo-write-lib)" || { echo "heo-message-move: heo-write-lib is not on the PATH" >&2; exit 69; }
+
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    *) echo "heo-message-move: unknown flag $1" >&2; exit 64 ;;
+  esac
+done
+[ -n "$out" ] || { echo "heo-message-move: --out is required" >&2; exit 64; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cat > "$tmp/in.json"
+jq -e 'type == "object"' "$tmp/in.json" > /dev/null 2>&1 || { echo "heo-message-move: stdin is not a JSON object" >&2; exit 64; }
+get() { jq -r --arg k "$1" '.[$k] // ""' "$tmp/in.json"; }
+pid=$(get provider_id) channel=$(get channel) guard=$(get guard) mailbox=$(get mailbox)
+dacct=$(jq -r '.dest.account // ""' "$tmp/in.json") dchan=$(jq -r '.dest.channel // ""' "$tmp/in.json")
+dinbox=$(jq -r '.dest.inbox // ""' "$tmp/in.json") demail=$(jq -r '.dest.email // ""' "$tmp/in.json")
+n=$(jq -c '.n // null' "$tmp/in.json")
+
+# the vendor guard decides, the script marks it: a move that deletes the source runs only for a cleared item
+[ "$guard" = cleared ] || { echo "heo-message-move: refused, the item is not guard-cleared (customer-vendor guard)" >&2; exit 64; }
+case $pid in '' | -*) echo "heo-message-move: provider_id is required (a write is always one message)" >&2; exit 64 ;; esac
+[ -n "$channel" ] && [ -n "$dchan" ] && [ -n "$dinbox" ] && [ -n "$demail" ] && [ -n "$mailbox" ] ||
+  { echo "heo-message-move: channel, dest.channel, dest.inbox, dest.email and mailbox are required" >&2; exit 64; }
+case $demail in *[!A-Za-z0-9._%+@-]* | *@*@* | @* | *@) echo "heo-message-move: dest.email is not one bare address" >&2; exit 64 ;; esac
+case $mailbox in -* | *[,\;]* | *"$(printf '\001')"*) echo "heo-message-move: mailbox is not a plain label name" >&2; exit 64 ;; esac
+
+stage=start fwd_op= fwd_id= cid= cconv= status=failed err= reason=
+write_out() {
+  jq -n --argjson n "$n" --arg pid "$pid" --arg s "$status" --arg st "$stage" --arg op "$fwd_op" --arg fid "$fwd_id" \
+    --arg cid "$cid" --arg cconv "$cconv" --arg e "$err" --arg r "$reason" --arg da "$dacct" \
+    '{n: $n, provider_id: $pid, status: $s, stage: $st,
+      forward: (if $op == "" then null else {operation: $op, message_id: (if $fid == "" then null else $fid end)} end),
+      copy: (if $cid == "" then null else {account: $da, id: $cid, conversation: $cconv} end),
+      reason: (if $r == "" then null else $r end), error: (if $e == "" then null else $e end)}' > "$out"
+}
+finish() { # EXIT_CODE
+  write_out
+  exit "$1"
+}
+fail() { status=failed; err=$1; finish 3; }
+unknown() { # what the unknown outcome is about
+  [ -n "$fwd_op" ] || fwd_op=${HW_OP:-}
+  status=outcome_unknown; err=$1
+  echo "heo-message-move: outcome unknown at stage $stage${fwd_op:+, forward operation $fwd_op}: reconcile it with heo, nothing is retried" >&2
+  finish 8
+}
+# step ARGS...: a heo write that settles; 70/6 end the node (retried), 8 or an unsettled one is an unknown outcome
+step() { # STAGE KEY ARGS...
+  stage=$1 _key=$2
+  shift 2
+  hw_submit "$@" --idempotency-key "$_key"
+  case $? in
+    0) ;;
+    70 | 6) exit "$?" ;;
+    8) HW_OP=; unknown "$stage: heo exit 8 (outcome unknown, not queued)" ;;
+    *) return 1 ;;
+  esac
+  hw_settle "$HW_OP"
+  case $HW_STATE in ok) return 0 ;; failed) return 1 ;; *) unknown "$stage: $HW_ERR" ;; esac
+}
+call() { # ARGS...: a read; 70/6 end the node, anything else sets HW_ERR and returns 1
+  heo "$@" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+  _rc=$?
+  hw_err
+  case $_rc in 0) return 0 ;; 70 | 6) cat "$tmp/call.err" >&2; exit "$_rc" ;; *) return 1 ;; esac
+}
+declared() { # CHANNEL-JSON VERB
+  [ "$(jq -r --arg v "$2" '[.verbs[]? | select(.verb == $v)][0].state // "unknown"' "$1")" = declared ]
+}
+
+# 2. nothing is sent unless both sides can do their part and the destination has the label
+stage=check
+call message get "$pid" || fail "message not found or not readable: ${HW_ERR:-no answer}"
+conv=$(jq -r '.ref.conversation.id // empty' "$tmp/call.json")
+[ -n "$conv" ] || fail "message has no conversation"
+call channel get "$channel" || fail "channel $channel: ${HW_ERR:-unreadable}"
+cp "$tmp/call.json" "$tmp/src.json"
+declared "$tmp/src.json" "message forward" || fail "forward is not available on $channel (message forward: only a Gmail account can forward the original whole)"
+declared "$tmp/src.json" "conversation trash" || fail "the channel $channel does not declare conversation trash: the source could not be trashed, nothing was forwarded"
+call channel get "$dchan" || fail "destination channel $dchan: ${HW_ERR:-unreadable}"
+cp "$tmp/call.json" "$tmp/dst.json"
+declared "$tmp/dst.json" "conversation tag" && declared "$tmp/dst.json" "conversation archive" ||
+  fail "the destination channel $dchan cannot label and archive (conversation tag, conversation archive): nothing was forwarded"
+have=
+_cursor=
+_pages=0
+while :; do
+  set -- provider-label list --channel "$dchan" --limit 100
+  [ -z "$_cursor" ] || set -- "$@" --cursor "$_cursor"
+  call "$@" || fail "destination provider-label list: ${HW_ERR:-unreadable}"
+  jq -e --arg l "$mailbox" '[.items[]? | select((.name // "" | ascii_downcase) == ($l | ascii_downcase))] | length > 0' "$tmp/call.json" > /dev/null 2>&1 && { have=yes; break; }
+  _cursor=$(jq -r 'if .complete == false then (.next // "") else "" end' "$tmp/call.json")
+  _pages=$((_pages + 1))
+  [ -n "$_cursor" ] && [ "$_pages" -lt 20 ] || break
+done
+[ -n "$have" ] || fail "the label $mailbox does not exist in the destination account: nothing was forwarded"
+
+# 3. forward, settled
+stage=forward
+fkey=$(hw_key xmove forward "$pid" "$demail")
+step forward "$fkey" message forward "$pid" --to "$demail" || fail "forward: ${HW_ERR:-refused}"
+fwd_op=$HW_OP
+
+# 4. the forward's own Message-ID, from the operation's provider references
+stage=copy-id
+call delivery get "$fwd_op" || fail "delivery get $fwd_op: ${HW_ERR:-unreadable}"
+fwd_id=$(jq -r '[.provider_references[]? | select(.namespace == "email.header" and .kind == "email.message_id") | .id][0] // empty' "$tmp/call.json")
+if [ -z "$fwd_id" ]; then
+  status=held reason="forwarded (operation $fwd_op) but heo reports no Message-ID for the copy, so it cannot be found: source kept, check the destination"
+  finish 0
+fi
+
+# 5. the arrived copy, by its own Message-ID, in the destination inbox
+stage=find
+limit=${FLO_HEO_ARRIVAL_TIMEOUT:-180}
+start=$(date +%s)
+polls=0
+while :; do
+  polls=$((polls + 1))
+  hits=0 _cursor= _pages=0
+  : > "$tmp/found.jsonl"
+  while :; do
+    set -- message list --inbox "$dinbox" --message-id "$fwd_id" --limit 5
+    [ -z "$_cursor" ] || set -- "$@" --cursor "$_cursor"
+    call "$@" || fail "destination message list: ${HW_ERR:-unreadable}"
+    jq -c '.items[]?' "$tmp/call.json" >> "$tmp/found.jsonl"
+    _cursor=$(jq -r 'if .complete == false then (.next // "") else "" end' "$tmp/call.json")
+    _pages=$((_pages + 1))
+    [ -n "$_cursor" ] && [ "$_pages" -lt 20 ] || break
+  done
+  hits=$(wc -l < "$tmp/found.jsonl" | tr -d ' ')
+  [ "$hits" -eq 0 ] || break
+  [ "$polls" -lt 2 ] || [ $(($(date +%s) - start)) -lt "$limit" ] || break
+  sleep "${FLO_HEO_ARRIVAL_POLL:-5}"
+done
+if [ "$hits" -eq 0 ]; then
+  status=held reason="forwarded to the destination (operation $fwd_op), the copy did not appear there within ${limit}s: source kept, not trashed"
+  finish 0
+fi
+[ "$hits" -eq 1 ] || { stage=find; fail "more than one message in the destination has the copy's Message-ID: source kept, check the destination"; }
+cid=$(jq -r '.ref.id // empty' "$tmp/found.jsonl")
+cconv=$(jq -r '.ref.conversation.id // empty' "$tmp/found.jsonl")
+[ -n "$cid" ] && [ -n "$cconv" ] || fail "the arrived copy has no id: source kept"
+
+# 6. label and archive the copy, that message alone
+step label-copy "$(hw_key xmove tag "$cid" "$mailbox")" conversation tag "$cconv" --add "$mailbox" --message "$cid" ||
+  fail "the copy arrived in $dacct ($cid) but could not be labelled: ${HW_ERR:-refused}; source kept, not trashed"
+step archive-copy "$(hw_key xmove archive "$cid" "")" conversation archive "$cconv" --message "$cid" ||
+  fail "the copy arrived in $dacct ($cid), labelled, but could not be archived: ${HW_ERR:-refused}; source kept, not trashed"
+
+# 7. only now the source
+step trash-source "$(hw_key xmove trash "$pid" "")" conversation trash "$conv" --message "$pid" ||
+  fail "the copy is filed in $dacct ($cid) but the source could not be trashed: ${HW_ERR:-refused}; the mail exists twice, nothing is lost"
+stage=done status=ok
+finish 0

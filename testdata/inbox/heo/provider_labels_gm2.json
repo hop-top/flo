@@ -1,0 +1,20 @@
+{
+ "items": [
+  {
+   "channel": "gm2",
+   "id": "Label_1",
+   "name": "Finance",
+   "kind": "label",
+   "role": ""
+  },
+  {
+   "channel": "gm2",
+   "id": "INBOX",
+   "name": "INBOX",
+   "kind": "label",
+   "role": "inbox"
+  }
+ ],
+ "next": "",
+ "complete": true
+}

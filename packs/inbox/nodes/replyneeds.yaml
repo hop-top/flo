@@ -1,0 +1,34 @@
+node: inbox/replyneeds@1
+kind: command
+lowers_to: exec
+description: >-
+  The messages the plan would reply to: the ones whose original headers the
+  plan needs to resolve a reply's recipients. Reads no mailbox, plans nothing.
+# `inbox plan RUN --reply-needs --json`: from the decisions the plan reads
+# (decisions.json and the carried ones, minus what is already decided) the
+# messages with a reply action, as {account, id, message_id}. heo/plan-facts@1
+# then reads the header block of those messages through heo and the plan
+# gets them as `raw`, so a heo reply is planned with its real recipients and
+# its Reply-To guard, never with none.
+argv: [inbox, plan, "{{ in.run }}", --reply-needs, --json]
+inputs:
+  run: { type: string, required: true }
+exit_codes: { ok: [0] }
+outputs:
+  from: stdout
+  format: json
+  schema:
+    type: object
+    required: [run, candidates]
+    properties:
+      run: { type: string }
+      candidates:
+        type: array
+        items:
+          type: object
+          properties: { account: { type: string }, id: { type: string }, message_id: { type: string } }
+side_effect: read
+idempotent: true
+privacy: local
+capabilities: [mail.read]
+timeout: 60s

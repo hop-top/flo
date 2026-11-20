@@ -1,0 +1,291 @@
+[
+ {
+  "n": 1,
+  "account": "gm1",
+  "id": "msg_h1",
+  "message_id": "<h1@client.example>",
+  "from": "a@x.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   "read",
+   "archive"
+  ],
+  "original_actions": [
+   "read",
+   "archive"
+  ],
+  "keys": [
+   "read",
+   "archive"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 2,
+  "account": "gm1",
+  "id": "msg_h2",
+  "message_id": "<h2@client.example>",
+  "from": "b@x.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   "trash"
+  ],
+  "original_actions": [
+   "trash"
+  ],
+  "keys": [
+   "trash"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 3,
+  "account": "gm1",
+  "id": "msg_h3",
+  "message_id": "<h3@client.example>",
+  "from": "c@x.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   "spam"
+  ],
+  "original_actions": [
+   "spam"
+  ],
+  "keys": [
+   "spam"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 4,
+  "account": "gm1",
+  "id": "msg_h4",
+  "message_id": "<h4@client.example>",
+  "from": "news@list.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   "unsubscribe",
+   "trash"
+  ],
+  "original_actions": [
+   "unsubscribe",
+   "trash"
+  ],
+  "keys": [
+   "unsubscribe",
+   "trash"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 5,
+  "account": "gm1",
+  "id": "msg_h5",
+  "message_id": "<h5@client.example>",
+  "from": "carol@client.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   {
+    "reply": {
+     "mode": "draft",
+     "body": "Thanks, on it."
+    }
+   }
+  ],
+  "original_actions": [
+   {
+    "reply": {
+     "mode": "draft",
+     "body": "Thanks, on it."
+    }
+   }
+  ],
+  "keys": [
+   "reply:draft"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 6,
+  "account": "gm1",
+  "id": "msg_h6",
+  "message_id": "<h6@client.example>",
+  "from": "dan@client.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   {
+    "reply": {
+     "mode": "send",
+     "body": "Thanks, on it."
+    }
+   }
+  ],
+  "original_actions": [
+   {
+    "reply": {
+     "mode": "send",
+     "body": "Thanks, on it."
+    }
+   }
+  ],
+  "keys": [
+   "reply:send"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": "send proposed by the unattended decider",
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 7,
+  "account": "gm1",
+  "id": "msg_h7",
+  "message_id": "<h7@client.example>",
+  "from": "e@x.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   {
+    "move_to": {
+     "account": "gm2",
+     "mailbox": "Finance"
+    }
+   }
+  ],
+  "original_actions": [
+   {
+    "move_to": {
+     "account": "gm2",
+     "mailbox": "Finance"
+    }
+   }
+  ],
+  "keys": [
+   "move_to:gm2/Finance"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 8,
+  "account": "ol",
+  "id": "msg_h8",
+  "message_id": "<h8@client.example>",
+  "from": "f@x.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   {
+    "move_to": {
+     "account": "gm2",
+     "mailbox": "Finance"
+    }
+   }
+  ],
+  "original_actions": [
+   {
+    "move_to": {
+     "account": "gm2",
+     "mailbox": "Finance"
+    }
+   }
+  ],
+  "keys": [
+   "move_to:gm2/Finance"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ },
+ {
+  "n": 9,
+  "account": "gm1",
+  "id": "msg_h9",
+  "message_id": "<h9@client.example>",
+  "from": "protected@vendor.example",
+  "subject": "s",
+  "folder": "x",
+  "actions": [
+   "trash"
+  ],
+  "original_actions": [
+   "trash"
+  ],
+  "keys": [
+   "trash"
+  ],
+  "why": "fixture",
+  "why_fields": null,
+  "guard": null,
+  "recipients": null,
+  "status": "pending",
+  "verdict": null,
+  "verdict_at": null,
+  "executed": null,
+  "errors": []
+ }
+]

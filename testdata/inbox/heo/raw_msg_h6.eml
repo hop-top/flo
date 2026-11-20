@@ -1,0 +1,7 @@
+From: Dan <dan@client.example>
+Reply-To: attacker@elsewhere.example
+To: me@gm1.example
+Subject: Pay now
+Message-ID: <h6@client.example>
+
+the body is never kept

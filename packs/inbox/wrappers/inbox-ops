@@ -1,0 +1,33 @@
+#!/bin/sh
+# inbox-ops --out FILE RUN [--account A ...]        (stdin: the facts documents of heo/plan-facts@1, one per line)
+#
+# `inbox apply RUN --ops --json [--account A ...]`, with the plan's facts handed in when there are any
+# (`--facts -`): the script then also refuses what a mailbox cannot do (a forward on an account that cannot
+# forward, a trash it does not declare), on top of the guard it always re-runs. No stdin, no facts: as before.
+# Writes the script's summary to FILE. Exit 0 ok; anything else is a failure.
+command -v jq >/dev/null 2>&1 || { echo "inbox-ops: jq is required" >&2; exit 69; }
+
+out=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --out) out=$2; shift 2 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+[ -n "$out" ] && [ $# -ge 1 ] || { echo "usage: inbox-ops --out FILE RUN [--account A ...]" >&2; exit 64; }
+run=$1
+shift
+
+facts=
+[ -t 0 ] || facts=$(cat)
+if [ -n "$(printf '%s' "$facts" | tr -d ' \t\r\n')" ]; then
+  merged=$(printf '%s\n' "$facts" | jq -s -c '{accounts: (map(.accounts // {}) | add // {})}') ||
+    { echo "inbox-ops: stdin is not a facts document" >&2; exit 64; }
+  summary=$(printf '%s' "$merged" | inbox apply "$run" --ops --json --facts - "$@")
+else
+  summary=$(inbox apply "$run" --ops --json "$@")
+fi
+rc=$?
+[ "$rc" -eq 0 ] || { printf '%s\n' "$summary"; exit "$rc"; }
+printf '%s' "$summary" > "$out" || exit 70

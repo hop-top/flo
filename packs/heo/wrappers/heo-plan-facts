@@ -1,5 +1,5 @@
 #!/bin/sh
-# heo-plan-facts --out FILE --account NAME [--channel CH] [--inbox ID] [--email ADDR] [--limit N]
+# heo-plan-facts --out FILE --account NAME [--channel CH] [--inbox ID] [--email ADDR] [--limit N] [--reply-ids ID,ID]
 #
 # What `inbox plan --facts` needs for one heo account, read now (so the plan's stale checks see the
 # inbox as it is, not as it was at fetch time). Read only: `heo channel get`, `heo provider-label
@@ -9,6 +9,10 @@
 #   verbs   {verb: {state, reason}} from `channel get` (what the channel can do: plan-time check)
 #   inbox   {heo message id: Message-ID} of the messages in the inbox, newest first, at most N
 #   email   ADDR, the account's own address (reply recipients)
+#   raw     {heo message id: the header block of the message} for the ids named in --reply-ids (the messages the
+#           plan would reply to): the plan resolves the reply's recipients and the Reply-To guard from them. Headers
+#           only, never the body; at most FLO_HEO_RAW_BYTES (default 65536) bytes of each message are looked at. A
+#           message that cannot be read is left out: the plan then holds that reply as invalid, never automatic.
 #
 # Writes {account, facts_json} to FILE. facts_json is the compact text of {accounts: {NAME: {...}}}, the
 # --facts document of `inbox plan`; inbox/plan@1 joins the facts_json of every account into its stdin. When
@@ -19,7 +23,7 @@
 # - Subjects and addresses are written to FILE only, never to stderr. Needs heo and jq.
 command -v jq > /dev/null 2>&1 || { echo "heo-plan-facts: jq is required" >&2; exit 69; }
 
-out= account= channel= inbox= email= limit=300
+out= account= channel= inbox= email= limit=300 reply_ids=
 while [ $# -gt 0 ]; do
   case $1 in
     --out) out=$2; shift 2 ;;
@@ -28,6 +32,7 @@ while [ $# -gt 0 ]; do
     --inbox) inbox=$2; shift 2 ;;
     --email) email=$2; shift 2 ;;
     --limit) limit=$2; shift 2 ;;
+    --reply-ids) reply_ids=$2; shift 2 ;;
     *) echo "heo-plan-facts: unknown flag $1" >&2; exit 64 ;;
   esac
 done
@@ -75,10 +80,30 @@ heo-inbox-list --out "$tmp/list.json" --account "$account" --inbox "$inbox" --em
 _rc=$?
 case $_rc in 70 | 6) cat "$tmp/list.err" >&2; exit "$_rc" ;; 0) ;; *) fail "$(jq -r --arg a "$account" '.accounts[$a].error // "inbox listing failed"' "$tmp/list.json" 2> /dev/null | cut -c1-200)" ;; esac
 
-jq -c -n --arg a "$account" --arg email "$email" --slurpfile v "$tmp/verbs.json" --slurpfile l "$tmp/labels.json" --slurpfile i "$tmp/list.json" '
+# raw headers of the messages to be replied to (read only: `heo message raw ID -o -`, cut at a byte bound)
+echo '{}' > "$tmp/raw.json"
+_maxb=${FLO_HEO_RAW_BYTES:-65536}
+case $_maxb in *[!0-9]* | '') _maxb=65536 ;; esac
+for _id in $(printf '%s' "$reply_ids" | tr ',' ' '); do
+  case $_id in '' | -* | *[!A-Za-z0-9_.:-]*) continue ;; esac
+  { heo message raw "$_id" -o - < /dev/null 2> "$tmp/raw.err"; echo $? > "$tmp/rc"; } | head -c "$_maxb" > "$tmp/raw.bin"
+  case $(cat "$tmp/rc") in
+    0 | 141) ;;
+    70 | 6) cat "$tmp/raw.err" >&2; exit "$(cat "$tmp/rc")" ;;
+    *) continue ;;
+  esac
+  [ -s "$tmp/raw.bin" ] || continue
+  awk '/^\r?$/ { exit } { print }' "$tmp/raw.bin" > "$tmp/hdr.txt"
+  [ -s "$tmp/hdr.txt" ] || continue
+  printf '\r\n' >> "$tmp/hdr.txt"
+  jq --arg id "$_id" --rawfile h "$tmp/hdr.txt" '. + {($id): $h}' "$tmp/raw.json" > "$tmp/raw.new" && mv "$tmp/raw.new" "$tmp/raw.json"
+done
+
+jq -c -n --arg a "$account" --arg email "$email" --slurpfile raw "$tmp/raw.json" --slurpfile v "$tmp/verbs.json" --slurpfile l "$tmp/labels.json" --slurpfile i "$tmp/list.json" '
   { accounts: { ($a): {
       labels: (["INBOX", "[Gmail]/All Mail", "[Gmail]/Trash", "[Gmail]/Spam"] + $l[0] | unique),
       verbs: $v[0],
+      raw: $raw[0],
       inbox: ([$i[0].accounts[$a].envelopes[]? | select(.["message-id"] != null) | {key: .id, value: .["message-id"]}] | from_entries),
       email: $email } } }' > "$tmp/facts.json" || fail "unreadable listing"
 jq -n --arg a "$account" --rawfile f "$tmp/facts.json" '{account: $a, facts_json: ($f | rtrimstr("\n"))}' > "$out"

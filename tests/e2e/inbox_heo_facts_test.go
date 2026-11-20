@@ -330,7 +330,7 @@ func TestInboxTriageHeoFacts(t *testing.T) {
 		if i, j := slices.Index(order, "senders "+"20261118-090001"), slices.Index(order, "authfill --from-raw"); j < 0 || i < j {
 			t.Errorf("the headers are stored before the sender facts are read: %v", order)
 		}
-		plans := e.inboxCalls("plan")
+		plans := planCalls(e)
 		if len(plans) != 1 || !strings.HasSuffix(plans[0], " --facts -") {
 			t.Errorf("plan calls: %v", plans)
 		}
@@ -365,7 +365,7 @@ func TestInboxTriageHeoFacts(t *testing.T) {
 		if facts["error"] == nil || facts["facts_json"] != "" {
 			t.Errorf("an account heo cannot answer for has no facts: %v", facts)
 		}
-		if plans := e.inboxCalls("plan"); len(plans) != 1 || strings.Contains(plans[0], "--facts") {
+		if plans := planCalls(e); len(plans) != 1 || strings.Contains(plans[0], "--facts") {
 			t.Errorf("no facts at all: the plan is asked as before: %v", plans)
 		}
 	})
@@ -427,4 +427,16 @@ func (e *env) stepOfElement(run, step string, i int) (core.StepRun, map[string]a
 	}
 	e.t.Fatalf("run %s has no element %d of step %s", run, i, step)
 	return core.StepRun{}, nil
+}
+
+// planCalls are the calls of `inbox plan` that plan: the question of which messages need a raw original
+// (--reply-needs) is asked beside them and plans nothing.
+func planCalls(e *env) []string {
+	var out []string
+	for _, l := range e.inboxCalls("plan") {
+		if !strings.Contains(l, " --reply-needs ") {
+			out = append(out, l)
+		}
+	}
+	return out
 }

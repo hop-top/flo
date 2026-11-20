@@ -1,6 +1,6 @@
 node: inbox/ops@1
 kind: command
-lowers_to: exec
+lowers_to: engine               # needs stdin
 description: >-
   What applying the plan would do, as operations per message (flags, label,
   archive last), for a transport to run. Re-checks the guards; touches no mail.
@@ -10,21 +10,27 @@ description: >-
 # the ledger's word for items that already ran, and returns per message the
 # ordered ops with their idempotency keys and a blast (low: read, unread, flag,
 # unflag, archive, label; high: trash, spam, unsubscribe, reply, a move to
-# another account). `accounts` scopes it. Nothing is executed or marked: the
-# marks are inbox/record@1's.
+# another account). `accounts` scopes it: a move to an account outside it is
+# refused. `facts` (heo/plan-facts@1 outputs) let it refuse what a mailbox
+# cannot do (a forward on an account that cannot forward). Every item that
+# would delete (trash, spam, a move to another account) and passed the
+# customer-vendor guard carries `guard: cleared`; the flow runs a deleting item
+# only on that. Nothing is executed or marked: the marks are inbox/record@1's.
 argv:
-  - inbox
-  - apply
+  - inbox-ops
+  - --out
+  - "{{ run.step_dir }}/out.json"
   - "{{ in.run }}"
-  - --ops
-  - --json
   - "{{ in.accounts.map(a, ['--account', a]).flatten() }}"
+stdin:
+  text: "{{ in.facts.filter(f, has(f.facts_json) && f.facts_json != '').map(f, f.facts_json).join('\\n') }}"
 inputs:
   run:      { type: string, required: true }
   accounts: { type: array, items: { type: string }, default: [], description: "Only these accounts' items; none is every account." }
+  facts:    { type: array, items: { type: object }, default: [], description: "Outputs of heo/plan-facts@1, one per heo account." }
 exit_codes: { ok: [0] }
 outputs:
-  from: stdout
+  from: file:out.json
   format: json
   schema:
     type: object
@@ -43,6 +49,8 @@ outputs:
             message_id: { type: string }
             id: { type: string }
             blast: { type: string, enum: [low, high] }
+            deletes: { type: boolean, description: "The item trashes, spams or moves the message to another account." }
+            guard: { type: string, enum: [cleared], description: "Present only on an item that deletes and passed the customer-vendor guard." }
             ops: { type: array, items: { type: object } }
       labels_needed: { type: array, items: { type: object } }
       refused: { type: object }

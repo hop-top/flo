@@ -1,5 +1,5 @@
 flow: inbox-triage
-version: 0.5.0
+version: 0.6.0
 description: Classify new mail, ask about what needs a person, apply the rest.
 on:
   - schedule: { rrule: "FREQ=MINUTELY;INTERVAL=15" }
@@ -183,12 +183,23 @@ steps:
   # it was at fetch time. An account with no facts (heo failed) is planned
   # invalid, never automatic. None with heo_accounts empty: the script reads
   # its own mailboxes, as before.
+  # A reply is planned with its real recipients and Reply-To guard: the
+  # messages the plan would reply to are asked of the script, and the header
+  # block of each (no body) is read through heo and handed to the plan as raw.
+  - id: reply-needs
+    uses: inbox/replyneeds@1
+    when: "{{ size(vars.heo_accounts) > 0 }}"
+    depends_on: [decisions]
+    with:
+      run: "{{ results.fetch.run }}"
+
   - id: heo-facts
     uses: heo/plan-facts@1
     for_each: "{{ vars.heo_accounts }}"
-    depends_on: [decisions]
+    depends_on: [decisions, reply-needs]
     with:
       account: "{{ item.account }}"
+      reply_ids: "{{ results['reply-needs'].candidates.filter(c, c.account == item.account).map(c, c.id) }}"
       channel: "{{ has(item.channel) ? item.channel : '' }}"
       inbox: "{{ has(item.inbox) ? item.inbox : '' }}"
       email: "{{ has(item.email) ? item.email : '' }}"
@@ -219,24 +230,39 @@ steps:
   # the script as before (`apply` below leaves the heo accounts to these steps).
   # The script says what to do and commits what was done; heo's nodes do it
   # between the two: `ops` asks the script for the operations of every approved
-  # or automatic item of those accounts (it re-checks the guards, and refuses a
-  # delete it has no sender facts for), `ensure` creates the label `security`
-  # where the plan needs it (the only label ever created), `act` runs each
-  # message's ops through heo, that message only, waiting for heo to settle each
-  # one, and `record` commits the outcome. Only the low-blast ops (read, unread,
-  # flag, unflag, archive, label) go to heo for now: an item with a trash, spam,
-  # unsubscribe, reply or cross-account move in it is held, left pending with
-  # the reason in the receipt, not applied by anything. A failed op is data (the
-  # item is marked failed); an outcome heo cannot confirm fails the step and
-  # parks the run for a person. None of these steps exists with heo_accounts
-  # empty: `apply` is then the one step, as before.
+  # or automatic item of those accounts (it re-checks the guards, refuses a
+  # delete it has no sender facts for, and refuses what a mailbox cannot do),
+  # `ensure` creates the label `security` where the plan needs it (the only
+  # label ever created), `act` runs each low-blast message's ops through heo
+  # (read, unread, flag, unflag, archive, label), `act-high` the rest: trash,
+  # spam, unsubscribe, reply (draft or send) and a move to another account.
+  # Every write names the one message and waits for heo to settle it, and
+  # `record` commits the outcome.
+  #
+  # The deleting ops (trash, spam, a move to another account) are guarded
+  # twice: the script marks `guard: cleared` on an item only when the
+  # customer-vendor guard passed for its message (no sender facts, or a
+  # protected sender, means refused), `act-high` below runs a deleting item
+  # only on that mark, and the wrapper refuses a deleting op on input without
+  # it. An item the script did not clear is held, left pending with the reason
+  # in the receipt. A reply send is never automatic under the unattended
+  # decider (the plan makes it pending), so it waits for an approval.
+  #
+  # A move to another account forwards the message from the source account,
+  # finds the arrived copy in the destination by the forward's own Message-ID,
+  # files it there and trashes the source last. A copy that has not arrived in
+  # time leaves the item held and the source untouched. A failed op is data
+  # (the item is marked failed); an outcome heo cannot confirm fails the step
+  # and parks the run for a person. None of these steps exists with
+  # heo_accounts empty: `apply` is then the one step, as before.
   - id: ops
     uses: inbox/ops@1
     when: "{{ size(vars.heo_accounts) > 0 && size(results.approve.approved) + size(results.approve.auto) > 0 }}"
-    depends_on: [plan, approve]
+    depends_on: [plan, approve, heo-facts]
     with:
       run: "{{ results.fetch.run }}"
       accounts: "{{ vars.heo_accounts.map(a, a.account) }}"
+      facts: "{{ results['heo-facts'] }}"
 
   - id: ensure
     uses: heo/provider-label.ensure@1
@@ -262,14 +288,34 @@ steps:
       provider_id: "{{ item.id }}"
       ops: "{{ item.ops }}"
 
+  # The high-blast items. A deleting item (trash, spam, a move to another
+  # account) is listed only when the script cleared its guard; the wrapper
+  # checks the same mark again.
+  - id: act-high
+    uses: heo/conversation.act-high@1
+    for_each: >-
+      {{ results.ops.items.filter(i, i.blast == 'high' && size(i.ops) > 0 &&
+           (!i.ops.exists(o, o.verb == 'trash' || o.verb == 'spam' || o.verb == 'move_to') || (has(i.guard) && i.guard == 'cleared')) &&
+           i.ops.all(o, !has(o.ensure) || !o.ensure || results.ensure.exists(e, e.account == i.account && e.status == 'ok'))) }}
+    depends_on: [ops, ensure, act]
+    concurrency: 1
+    with:
+      n: "{{ item.n }}"
+      account: "{{ item.account }}"
+      channel: "{{ vars.heo_accounts.filter(a, a.account == item.account).map(a, has(a.channel) ? a.channel : '')[0] }}"
+      provider_id: "{{ item.id }}"
+      guard: "{{ has(item.guard) ? item.guard : '' }}"
+      destinations: "{{ vars.heo_accounts.map(a, {'account': a.account, 'channel': has(a.channel) ? a.channel : '', 'inbox': has(a.inbox) ? a.inbox : '', 'email': has(a.email) ? a.email : ''}) }}"
+      ops: "{{ item.ops }}"
+
   - id: record
     uses: inbox/record@1
     when: "{{ size(results.ops.items) > 0 || size(results.ops.refused) > 0 }}"
-    depends_on: [ops, ensure, act]
+    depends_on: [ops, ensure, act, act-high]
     with:
       run: "{{ results.fetch.run }}"
       ops: "{{ results.ops }}"
-      acts: "{{ has(results.act) ? results.act : [] }}"
+      acts: "{{ (has(results.act) ? results.act : []) + (('act-high' in results) ? results['act-high'] : []) }}"
       ensures: "{{ has(results.ensure) ? results.ensure : [] }}"
 
   # Runs only when something was approved or automatic: a run whose pending

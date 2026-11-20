@@ -1,0 +1,50 @@
+{
+ "items": [
+  {
+   "ref": {
+    "id": "msg_h10",
+    "conversation": {
+     "id": "c_msg_h10"
+    }
+   },
+   "occurred_at": "2026-11-18T08:00:00Z",
+   "author": {
+    "kind": "contact"
+   },
+   "audience": {
+    "visibility": "public"
+   }
+  },
+  {
+   "ref": {
+    "id": "msg_h10_newer",
+    "conversation": {
+     "id": "c_msg_h10"
+    }
+   },
+   "occurred_at": "2026-11-18T09:30:00Z",
+   "author": {
+    "kind": "contact"
+   },
+   "audience": {
+    "visibility": "public"
+   }
+  },
+  {
+   "ref": {
+    "id": "msg_h10_ours",
+    "conversation": {
+     "id": "c_msg_h10"
+    }
+   },
+   "occurred_at": "2026-11-18T10:00:00Z",
+   "author": {
+    "kind": "self"
+   },
+   "audience": {
+    "visibility": "public"
+   }
+  }
+ ],
+ "complete": true
+}

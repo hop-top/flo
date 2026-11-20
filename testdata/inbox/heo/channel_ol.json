@@ -1,0 +1,89 @@
+{
+ "ref": {
+  "tenant": "default",
+  "id": "ch_ol"
+ },
+ "key": "ol",
+ "type": "microsoft.mail",
+ "verbs": [
+  {
+   "verb": "conversation archive",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation unarchive",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation move",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation read",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation unread",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation flag",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation unflag",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation tag",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation trash",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "conversation unsubscribe",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "message reply-draft",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "message raw",
+   "capability": "x",
+   "state": "declared",
+   "limits": {}
+  },
+  {
+   "verb": "message forward",
+   "capability": "extension_execute",
+   "state": "unsupported",
+   "reason": "not_declared",
+   "limits": {}
+  }
+ ]
+}

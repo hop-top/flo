@@ -1,10 +1,17 @@
 #!/bin/sh
-# heo-conversation-act --out FILE        (stdin: {n, account, channel, provider_id, ops: [{verb, label?, key}]})
+# heo-conversation-act [--high] --out FILE
+#     (stdin: {n, account, channel, provider_id, ops: [{verb, label?, key}]}; --high also: guard, destinations, ops with
+#      text/mode/reply_all/cc/account/mailbox)
 #
-# The low-blast mailbox operations the inbox script asked for one message, run through heo in the order given
-# (flags, label, archive last). Only these verbs exist here: read, unread, flag, unflag, archive, label. Anything
-# else (trash, spam, unsubscribe, reply, a move to another account) is refused before heo is called, so nothing
-# destructive can reach heo through this wrapper, whatever a flow hands it.
+# The mailbox operations the inbox script asked for one message, run through heo in the order given (flags, label,
+# reply, unsubscribe, move to another account, archive/trash/spam last).
+#   without --high   only the low-blast verbs exist here: read, unread, flag, unflag, archive, label. Anything else
+#                    (trash, spam, unsubscribe, reply, a move to another account) is refused before heo is called, so
+#                    nothing destructive can reach heo through this mode, whatever a flow hands it.
+#   with --high      those, plus trash, spam, unsubscribe, reply (draft or send) and move_to (heo-message-move).
+#                    trash, spam and move_to additionally need `guard: cleared` on the input (the script's
+#                    customer-vendor guard passed for this message): without it the whole input is refused (exit 64)
+#                    before heo is called. Nothing else gives a destructive verb a way in.
 #
 # Every write targets the one message: provider_id is heo's own message id (the store's provider id) and each
 # call carries `--message <provider_id>`, never the whole conversation. The conversation id comes from
@@ -12,19 +19,29 @@
 # replays instead of repeating; each waits for its operation to settle (heo-write-lib).
 #   label   `conversation tag --add NAME`: that message only; NAME must already exist at the provider
 #           (heo-label-ensure makes `security`); a name that is not a plain label name is refused
+#   trash   `conversation trash --message`; spam: `conversation move --role junk --message`
+#   unsubscribe `conversation unsubscribe --message`, heo's policy (same-organization mailto, DKIM one-click, never a
+#           GET): the outcome is informational, it never fails the item or stops the ops after it (status noted, a
+#           `note` "unsubscribe <state>: ..." in the output). Never repeated: the key replays.
+#   reply   `message reply` (send) or `message reply-draft` (draft) with the text the script composed, --reply-all
+#           and --cc as planned. heo answers the LATEST inbound message of the conversation: when that is not this
+#           message (a newer mail arrived since the plan) nothing is sent, the op fails.
+#   move_to heo-message-move: forward from here, find the copy in the destination, file it, trash this message last.
+#           A copy that has not arrived yet leaves the item held (status held, the source untouched).
 #
 # Stops at the first op that fails: the ops after it are `skipped` (archive never runs after a failed label).
-# Writes {n, provider_id, status, results: [{verb, key, status, operation, replayed, error}]} to FILE. status is
-# ok | failed | outcome_unknown. Exit 0 ok, 3 failed (data, the file says which), 8 outcome unknown (the operation
-# id is in the file and on stderr: a person reconciles it, nothing is retried), 70/6 heo daemon down/transient
-# (retried: same keys replay), 64 usage (nothing was sent).
+# Writes {n, provider_id, status, note?, reason?, results: [{verb, key, status, operation, replayed, error}]} to FILE.
+# status is ok | failed | held | outcome_unknown. Exit 0 ok or held, 3 failed (data, the file says which), 8 outcome
+# unknown (the operation id is in the file and on stderr: a person reconciles it, nothing is retried), 70/6 heo
+# daemon down/transient (retried: same keys replay), 64 usage (nothing was sent).
 command -v jq > /dev/null 2>&1 || { echo "heo-conversation-act: jq is required" >&2; exit 69; }
 . "$(command -v heo-write-lib)" || { echo "heo-conversation-act: heo-write-lib is not on the PATH" >&2; exit 69; }
 
-out=
+out= high=
 while [ $# -gt 0 ]; do
   case $1 in
     --out) out=$2; shift 2 ;;
+    --high) high=1; shift ;;
     *) echo "heo-conversation-act: unknown flag $1" >&2; exit 64 ;;
   esac
 done
@@ -40,12 +57,24 @@ n=$(jq -c '.n // null' "$tmp/in.json")
 # a write without a message id would act on the whole conversation: refuse
 case $pid in '' | null | -*) echo "heo-conversation-act: provider_id is required (a write is always one message)" >&2; exit 64 ;; esac
 [ -n "$channel" ] || { echo "heo-conversation-act: channel (or account) is required" >&2; exit 64; }
-# every op is checked before the first call: verb in the allowlist, key present, label a plain name
-bad=$(jq -r '[.ops[] | select(((.verb // "") | IN("read", "unread", "flag", "unflag", "archive", "label") | not)
-    or ((.key // "") == "")
-    or (.verb == "label" and (((.label // "") == "") or ((.label // "") | test("^-|[,\u0001-\u001f]")))))
-    | (.verb // "?")] | join(",")' "$tmp/in.json")
-[ -z "$bad" ] || { echo "heo-conversation-act: refused before any call, not a low-blast op or malformed: $bad" >&2; exit 64; }
+# every op is checked before the first call: verb in the allowlist of the mode, key present, a label a plain name,
+# text on a reply, one bare address per cc. In the low mode that is six verbs; --high adds the rest.
+if [ -n "$high" ]; then allowed='"read", "unread", "flag", "unflag", "archive", "label", "trash", "spam", "unsubscribe", "reply", "move_to"'
+else allowed='"read", "unread", "flag", "unflag", "archive", "label"'; fi
+bad=$(jq -r "[.ops[] | select(((.verb // \"\") | IN($allowed) | not)
+    or ((.key // \"\") == \"\")
+    or (.verb == \"label\" and (((.label // \"\") == \"\") or ((.label // \"\") | test(\"^-|[,\\u0001-\\u001f]\"))))
+    or (.verb == \"reply\" and (((.mode // \"\") | IN(\"send\", \"draft\") | not) or ((.text // \"\") == \"\")
+        or (((.cc // []) | type) != \"array\") or ((.cc // []) | any(type != \"string\" or test(\"[^A-Za-z0-9._%+@-]|^-|^\$|@.*@\")))))
+    or (.verb == \"move_to\" and (((.account // \"\") == \"\") or ((.mailbox // \"\") == \"\"))))
+    | (.verb // \"?\")] | join(\",\")" "$tmp/in.json")
+[ -z "$bad" ] || { echo "heo-conversation-act: refused before any call, not an op of this mode or malformed: $bad" >&2; exit 64; }
+# a verb that deletes (trash, spam, a move to another account) runs only for an item the script marked guard: cleared
+guard=$(jq -r '.guard // ""' "$tmp/in.json")
+if [ -n "$(jq -r '[.ops[] | select(.verb | IN("trash", "spam", "move_to")) | .verb] | join(",")' "$tmp/in.json")" ] && [ "$guard" != cleared ]; then
+  echo "heo-conversation-act: refused before any call, a destructive op needs guard: cleared (customer-vendor guard)" >&2
+  exit 64
+fi
 
 # act_write ARGS...: a state or tag write on THE message. The only place a write is built.
 act_write() { # verb conv key [extra args]
@@ -55,7 +84,9 @@ act_write() { # verb conv key [extra args]
 }
 
 write_out() { # STATUS
-  jq -n --argjson n "$n" --arg pid "$pid" --arg s "$1" --slurpfile r "$tmp/results.json" '{n: $n, provider_id: $pid, status: $s, results: $r[0]}' > "$out"
+  jq -n --argjson n "$n" --arg pid "$pid" --arg s "$1" --arg note "$notes" --arg reason "${held_reason:-}" --slurpfile r "$tmp/results.json" \
+    '{n: $n, provider_id: $pid, status: $s, results: $r[0]}
+     + (if $note == "" then {} else {note: $note} end) + (if $reason == "" then {} else {reason: $reason} end)' > "$out"
 }
 add_result() { # VERB KEY STATUS ERR
   jq --arg v "$1" --arg k "$2" --arg s "$3" --arg e "$4" --arg op "${HW_OP:-}" --argjson rp "${HW_REPLAYED:-false}" \
@@ -63,6 +94,8 @@ add_result() { # VERB KEY STATUS ERR
     "$tmp/results.json" > "$tmp/r.new" && mv "$tmp/r.new" "$tmp/results.json"
 }
 echo '[]' > "$tmp/results.json"
+notes= held_reason=
+add_note() { if [ -z "$notes" ]; then notes=$1; else notes="$notes; $1"; fi; }
 
 # the conversation of the message, and what the channel can do (a verb it does not declare is refused here)
 heo message get "$pid" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
@@ -88,6 +121,40 @@ if [ "$status" = ok ]; then
   esac
 fi
 
+# latest_inbound: 0 when pid is the latest inbound message of the conversation (what heo's reply answers), 1 when a
+# newer one exists, 2 when that cannot be told (the reply is not sent on a guess)
+latest_inbound() {
+  : > "$tmp/convmsgs.jsonl"
+  _cursor= _pages=0
+  while :; do
+    set -- message list --conversation "$conv" --limit 100
+    [ -z "$_cursor" ] || set -- "$@" --cursor "$_cursor"
+    heo "$@" --format json --no-hints < /dev/null > "$tmp/call.json" 2> "$tmp/call.err"
+    _rc=$?
+    case $_rc in 0) ;; 70 | 6) cat "$tmp/call.err" >&2; exit "$_rc" ;; *) hw_err; return 2 ;; esac
+    jq -c '.items[]?' "$tmp/call.json" >> "$tmp/convmsgs.jsonl"
+    _cursor=$(jq -r 'if .complete == false then (.next // "") else "" end' "$tmp/call.json")
+    _pages=$((_pages + 1))
+    [ -n "$_cursor" ] && [ "$_pages" -lt 20 ] || break
+  done
+  _latest=$(jq -rs '[.[] | select(((.audience.visibility // "public") == "public") and ((.author.kind // "") | IN("self", "desk", "agent") | not))]
+    | sort_by(.occurred_at // "") | last | .ref.id // empty' "$tmp/convmsgs.jsonl")
+  [ -n "$_latest" ] || return 2
+  [ "$_latest" = "$pid" ]
+}
+
+# the heo verb (and so the declaration to look for) of an op; empty: nothing to look for
+verb_decl() { # VERB MODE
+  case $1 in
+    label) echo "conversation tag" ;;
+    spam) echo "conversation move" ;;
+    unsubscribe) echo "conversation unsubscribe" ;;
+    reply) [ "$2" = draft ] && echo "message reply-draft" ;;
+    move_to) echo "message forward" ;;
+    *) echo "conversation $1" ;;
+  esac
+}
+
 jq -c '.ops[]' "$tmp/in.json" > "$tmp/ops.jsonl"
 while IFS= read -r op; do
   verb=$(printf '%s' "$op" | jq -r '.verb')
@@ -97,33 +164,93 @@ while IFS= read -r op; do
     add_result "$verb" "$key" skipped "${why:-an earlier op failed}"
     continue
   fi
-  case $verb in label) hv="conversation tag" ;; *) hv="conversation $verb" ;; esac
-  if [ "$(jq -r --arg v "$hv" '[.verbs[]? | select(.verb == $v)][0].state // "unknown"' "$tmp/chan.json")" != declared ]; then
-    status=failed; why="the channel does not declare $hv"
+  decl=$(verb_decl "$verb" "$(printf '%s' "$op" | jq -r '.mode // ""')")
+  if [ -n "$decl" ] && [ "$(jq -r --arg v "$decl" '[.verbs[]? | select(.verb == $v)][0].state // "unknown"' "$tmp/chan.json")" != declared ]; then
+    if [ "$verb" = unsubscribe ]; then   # informational: the drop proceeds
+      add_note "unsubscribe error: the channel does not declare $decl"
+      add_result "$verb" "$key" noted "the channel does not declare $decl"
+      continue
+    fi
+    status=failed; why="the channel does not declare $decl"
     add_result "$verb" "$key" failed "$why"
     continue
   fi
+  HW_ERR=
   case $verb in
     label) act_write tag "$conv" "$key" --add "$(printf '%s' "$op" | jq -r '.label')" ;;
+    spam) act_write move "$conv" "$key" --role junk ;;
+    unsubscribe) act_write unsubscribe "$conv" "$key" ;;
+    reply)
+      latest_inbound
+      case $? in
+        0) ;;
+        *) status=failed; why="a newer message is in the conversation, or the latest cannot be told: heo would answer that one, so nothing was sent"
+           add_result "$verb" "$key" failed "$why"; continue ;;
+      esac
+      set -- --text "$(printf '%s' "$op" | jq -r '.text')"
+      [ "$(printf '%s' "$op" | jq -r '.reply_all // false')" != true ] || set -- "$@" --reply-all
+      _cc=$(printf '%s' "$op" | jq -r '(.cc // []) | join(",")')
+      [ -z "$_cc" ] || set -- "$@" --cc "$_cc"
+      if [ "$(printf '%s' "$op" | jq -r '.mode')" = draft ]; then
+        hw_submit message reply-draft "$conv" "$@" --idempotency-key "$key"
+      else
+        hw_submit message reply "$conv" "$@" --idempotency-key "$key"
+      fi ;;
+    move_to)
+      _dest=$(jq -c --arg a "$(printf '%s' "$op" | jq -r '.account')" '[.destinations[]? | select(.account == $a)][0] // null' "$tmp/in.json")
+      if [ "$_dest" = null ]; then
+        status=failed; why="the destination account is not served through heo"
+        add_result "$verb" "$key" failed "$why"
+        continue
+      fi
+      jq -n --argjson n "$n" --arg pid "$pid" --arg ch "$channel" --arg g "$guard" --arg mb "$(printf '%s' "$op" | jq -r '.mailbox')" --argjson d "$_dest" \
+        '{n: $n, provider_id: $pid, channel: $ch, guard: $g, mailbox: $mb, dest: {account: $d.account, channel: (if ($d.channel // "") == "" then $d.account else $d.channel end), inbox: (if ($d.inbox // "") == "" then $d.account else $d.inbox end), email: ($d.email // "")}}' \
+        | heo-message-move --out "$tmp/move.json" 2> "$tmp/move.err"
+      rc=$?
+      case $rc in
+        70 | 6) cat "$tmp/move.err" >&2; exit "$rc" ;;
+        0 | 3 | 8) ;;
+        *) cat "$tmp/move.err" >&2; status=failed; why="move: heo-message-move exit $rc"; add_result "$verb" "$key" failed "$why"; continue ;;
+      esac
+      HW_OP=$(jq -r '.forward.operation // empty' "$tmp/move.json" 2> /dev/null)
+      case $(jq -r '.status // ""' "$tmp/move.json" 2> /dev/null) in
+        ok) add_result "$verb" "$key" ok "" ;;
+        held) held_reason=$(jq -r '.reason // "held"' "$tmp/move.json"); status=held; why=$held_reason
+              add_result "$verb" "$key" held "$held_reason" ;;
+        outcome_unknown) cat "$tmp/move.err" >&2; add_result "$verb" "$key" outcome_unknown "$(jq -r '.error // ""' "$tmp/move.json")"; status=unknown; why="outcome unknown" ;;
+        *) status=failed; why="move: $(jq -r '.error // "failed"' "$tmp/move.json" 2> /dev/null)"
+           add_result "$verb" "$key" failed "$why" ;;
+      esac
+      continue ;;
     *) act_write "$verb" "$conv" "$key" ;;
   esac
   rc=$?
   case $rc in
     70 | 6) exit "$rc" ;;
-    8) add_result "$verb" "$key" outcome_unknown "$HW_ERR"; status=unknown; why="outcome unknown" ; continue ;;
+    8)
+      if [ "$verb" = unsubscribe ]; then add_note "unsubscribe unknown: heo could not confirm it, not repeated"; add_result "$verb" "$key" noted "$HW_ERR"; continue; fi
+      add_result "$verb" "$key" outcome_unknown "$HW_ERR"; status=unknown; why="outcome unknown"; continue ;;
     0) ;;
-    *) add_result "$verb" "$key" failed "heo $verb: $HW_ERR"; status=failed; why="an earlier op failed"; continue ;;
+    *)
+      if [ "$verb" = unsubscribe ]; then add_note "unsubscribe error: $HW_ERR"; add_result "$verb" "$key" noted "$HW_ERR"; continue; fi
+      add_result "$verb" "$key" failed "heo $verb: $HW_ERR"; status=failed; why="an earlier op failed"; continue ;;
   esac
   hw_settle "$HW_OP"
   case $HW_STATE in
-    ok) add_result "$verb" "$key" ok "" ;;
-    failed) add_result "$verb" "$key" failed "heo $verb: $HW_ERR"; status=failed; why="an earlier op failed" ;;
-    *) add_result "$verb" "$key" outcome_unknown "$HW_ERR"; status=unknown; why="outcome unknown" ;;
+    ok) add_result "$verb" "$key" ok ""
+        [ "$verb" != unsubscribe ] || add_note "unsubscribe sent: heo has the sender's request (the provider accepted it)" ;;
+    failed)
+      if [ "$verb" = unsubscribe ]; then add_note "unsubscribe refused: $HW_ERR"; add_result "$verb" "$key" noted "$HW_ERR"; continue; fi
+      add_result "$verb" "$key" failed "heo $verb: $HW_ERR"; status=failed; why="an earlier op failed" ;;
+    *)
+      if [ "$verb" = unsubscribe ]; then add_note "unsubscribe unknown: $HW_ERR"; add_result "$verb" "$key" noted "$HW_ERR"; continue; fi
+      add_result "$verb" "$key" outcome_unknown "$HW_ERR"; status=unknown; why="outcome unknown" ;;
   esac
 done < "$tmp/ops.jsonl"
 
 case $status in
   ok) write_out ok; exit 0 ;;
+  held) write_out held; exit 0 ;;
   failed) write_out failed; exit 3 ;;
   *)
     write_out outcome_unknown
