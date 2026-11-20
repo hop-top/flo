@@ -102,7 +102,7 @@ func TestHeoMessageMoveWrapper(t *testing.T) {
 		tag := indexOfCall(e, "conversation tag c_copy_")
 		arch := indexOfCall(e, "conversation archive c_copy_")
 		trash := indexOfCall(e, "conversation trash c_msg_h7 --message msg_h7 ")
-		if !(fwd >= 0 && fwd < find && find < tag && tag < arch && arch < trash) {
+		if fwd < 0 || fwd >= find || find >= tag || tag >= arch || arch >= trash {
 			t.Fatalf("order forward %d, find %d, tag %d, archive %d, trash %d\n%s", fwd, find, tag, arch, trash, strings.Join(logOf(e, "heo.log"), "\n"))
 		}
 		if n := len(heoCalls(e, "message list --inbox ib-gm2 --message-id ")); n != 3 {
@@ -573,9 +573,9 @@ func TestInboxTriageApplyHighThroughHeo(t *testing.T) {
 			}
 		}
 		// the source of the move goes last: after the copy is found and filed
-		if !(indexOfCall(e, "message forward msg_h7") < indexOfCall(e, "message list --inbox ib-gm2 --message-id") &&
-			indexOfCall(e, "message list --inbox ib-gm2 --message-id") < indexOfCall(e, "conversation tag c_copy_") &&
-			indexOfCall(e, "conversation archive c_copy_") < indexOfCall(e, "conversation trash c_msg_h7")) {
+		msgFwd, find := indexOfCall(e, "message forward msg_h7"), indexOfCall(e, "message list --inbox ib-gm2 --message-id")
+		if msgFwd >= find || find >= indexOfCall(e, "conversation tag c_copy_") ||
+			indexOfCall(e, "conversation archive c_copy_") >= indexOfCall(e, "conversation trash c_msg_h7") {
 			t.Errorf("order of the move:\n%s", all)
 		}
 		doc := recordDoc(e)
