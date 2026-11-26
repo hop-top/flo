@@ -85,11 +85,17 @@ func newFlowRig(t *testing.T) *flowRig {
 
 func (r *flowRig) run(args ...string) (stdout, stderr string, err error) {
 	r.t.Helper()
+	return r.runIn("", args...)
+}
+
+// runIn is run with stdin as the command's standard input.
+func (r *flowRig) runIn(stdin string, args ...string) (stdout, stderr string, err error) {
+	r.t.Helper()
 	root := NewRootOver(func(context.Context) (*serve.Engine, error) { return r.eng, nil })
 	var out, errOut bytes.Buffer
 	root.Cmd.SetOut(&out)
 	root.Cmd.SetErr(&errOut)
-	root.Cmd.SetIn(strings.NewReader(""))
+	root.Cmd.SetIn(strings.NewReader(stdin))
 	root.SetArgs(args)
 	err = root.Execute(context.Background())
 	return out.String(), errOut.String(), err
