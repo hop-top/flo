@@ -33,7 +33,7 @@ flo run cancel <run> --yes
 ```
 
 - `run create`: `--var name=value` (typed per the flow), `--var-file`,
-  `--idempotency-key` (same key, same run), `--trigger-file` (trigger payload),
+  `--idempotency-key` (same key, same run), `--trigger-file` (trigger payload; `-` reads it from stdin),
   `--version`, `--wait [--timeout]`. `--wait` needs a serving engine.
 - `flow test <flow>`: runs a stored version once in a sandbox (nothing reaches
   the real stores). Writes (`write-shared`, `irreversible`) are not executed:

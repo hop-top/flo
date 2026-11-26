@@ -208,7 +208,7 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 	ver := c.Flags().String("version", "", "run this version (hash or document version) instead of the active one")
 	vars := c.Flags().StringArray("var", nil, "a flow var: name=value, typed per its declaration (repeatable)")
 	varFile := c.Flags().String("var-file", "", "a JSON object of vars; --var wins over it")
-	trigFile := c.Flags().String("trigger-file", "", "a JSON object read as the run's trigger payload (trigger.<key> in expressions)")
+	trigFile := c.Flags().String("trigger-file", "", "a JSON object read as the run's trigger payload (trigger.<key> in expressions); - reads standard input")
 	record := c.Flags().Bool("record", false, "record the run's exec and HTTP calls for `flo run replay`")
 	wait := c.Flags().Bool("wait", false, "wait until the run succeeds, fails, is cancelled or parks on an approval")
 	timeout := c.Flags().Duration("timeout", 0, "with --wait, give up after this long (exit 6); 0 waits for ever")
@@ -230,6 +230,7 @@ func runCreateCmd(root *kitcli.Root, svc ServicesFunc, alive func() error) *cobr
 		{Title: "start it once per day, wait for the outcome", Command: "flo run create --flow dependency-watch --idempotency-key 2026-11-18 --wait"},
 		{Title: "record the run, to replay it offline", Command: "flo run create --flow dependency-watch --record --wait"},
 		{Title: "bind vars", Command: "flo run create --flow dependency-watch --var lookback=7d --var repos='[\"example-org/api\"]'"},
+		{Title: "pass a trigger payload on standard input", Command: "echo '{\"event\":{\"id\":\"e1\"}}' | flo run create --flow dependency-watch --trigger-file - --idempotency-key e1"},
 	})
 	_ = kitcli.SetNextSteps(c, []kitcli.NextStep{
 		{When: "the run was created", Suggest: "flo run logs <run> --follow", Reason: "follow its events"},
@@ -251,7 +252,7 @@ func runCreate(cmd *cobra.Command, root *kitcli.Root, svc ServicesFunc, alive fu
 	if err != nil {
 		return err
 	}
-	payload, err := readTriggerFile(a.trigFile)
+	payload, err := readTriggerFile(cmd.InOrStdin(), a.trigFile)
 	if err != nil {
 		return err
 	}
@@ -447,22 +448,36 @@ func parseVars(flags []string, file string) (map[string]string, error) {
 }
 
 // readTriggerFile reads --trigger-file: a JSON object that becomes the run's
-// trigger payload.
-func readTriggerFile(path string) (map[string]any, error) {
+// trigger payload. "-" reads it from in (standard input); a file literally
+// named "-" is reached as ./-.
+func readTriggerFile(in io.Reader, path string) (map[string]any, error) {
 	if path == "" {
 		return nil, nil //nolint:nilnil // no file, no payload
 	}
-	data, err := os.ReadFile(path) //nolint:gosec // the file the caller named
-	if err != nil {
+	var (
+		data  []byte
+		err   error
+		label = path
+	)
+	if path == "-" {
+		label = "stdin"
+		data, err = io.ReadAll(in)
+		if err != nil {
+			return nil, core.Errorf(core.CodeUsage, "--trigger-file: read stdin: %v", err)
+		}
+		if len(bytes.TrimSpace(data)) == 0 {
+			return nil, core.New(core.CodeUsage, "--trigger-file: stdin is empty: want a JSON object")
+		}
+	} else if data, err = os.ReadFile(path); err != nil { //nolint:gosec // the file the caller named
 		return nil, core.Errorf(core.CodeUsage, "--trigger-file: %v", err)
 	}
 	v, err := core.DecodeJSONValue(data)
 	if err != nil {
-		return nil, core.Errorf(core.CodeUsage, "--trigger-file %s: not JSON: %v", path, err)
+		return nil, core.Errorf(core.CodeUsage, "--trigger-file %s: not JSON: %v", label, err)
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		return nil, core.Errorf(core.CodeUsage, "--trigger-file %s: want a JSON object", path)
+		return nil, core.Errorf(core.CodeUsage, "--trigger-file %s: want a JSON object", label)
 	}
 	return m, nil
 }
@@ -726,11 +741,11 @@ func runReplayCmd(root *kitcli.Root, eng EngineFunc) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 	}
 	timeout := c.Flags().Duration("timeout", serve.DefaultTestTimeout, "give up after this long")
-	trigFile := c.Flags().String("trigger-file", "", "a JSON object replacing the recorded trigger payload (needed when a redact path dropped part of it)")
+	trigFile := c.Flags().String("trigger-file", "", "a JSON object replacing the recorded trigger payload (needed when a redact path dropped part of it); - reads standard input")
 	varsFile := c.Flags().String("vars-file", "", "a JSON object replacing the recorded vars (typed values)")
 	stateFile := c.Flags().String("state-file", "", "a JSON object replacing the recorded starting state")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
-		trig, err := readTriggerFile(*trigFile)
+		trig, err := readTriggerFile(cmd.InOrStdin(), *trigFile)
 		if err != nil {
 			return err
 		}

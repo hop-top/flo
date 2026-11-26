@@ -53,7 +53,7 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 	c.Flags().Bool("replay", false, "answer calls from the recordings (the default)")
 	vars := c.Flags().StringArray("var", nil, "bind a flow var: name=value (repeatable)")
 	varFile := c.Flags().String("var-file", "", "a JSON object of vars; --var wins over it")
-	trigFile := c.Flags().String("trigger-file", "", "a JSON object read as the trigger payload (trigger.<key> in expressions); default the recorded one")
+	trigFile := c.Flags().String("trigger-file", "", "a JSON object read as the trigger payload (trigger.<key> in expressions); - reads standard input; default the recorded one")
 	state := c.Flags().String("state", "", "flow state to start from: default (declared defaults), current (read-only copy of the engine's state) or a JSON/YAML seed file; default: record/state.json on replay, else the declared defaults")
 	timeout := c.Flags().Duration("timeout", serve.DefaultTestTimeout, "give up after this long")
 	yes := c.Flags().Bool("yes", false, "with --record or --from-run, confirm without asking")
@@ -69,7 +69,7 @@ func flowTestCmd(root *kitcli.Root, svc ServicesFunc, eng EngineFunc) *cobra.Com
 		if err != nil {
 			return err
 		}
-		payload, err := readTriggerFile(*trigFile)
+		payload, err := readTriggerFile(cmd.InOrStdin(), *trigFile)
 		if err != nil {
 			return err
 		}
