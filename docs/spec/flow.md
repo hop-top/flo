@@ -49,7 +49,7 @@ decision. These words are not interchangeable: "gate" is retired, and
 | Recipe 0.1 | In a flow |
 |---|---|
 | Encoding rules: one YAML or JSON document, root a mapping, unknown keys are errors, validation always runs, SHA-256 of the raw bytes travels with every run | same (the hash is the run's `flow_hash`) |
-| `version`, `description`, `requires.subject`, `vars` (`description`, `required`, `default`), `agent`, `track.*` | same; `track.*` is read by plan-level implementers and ignored by the engine |
+| `version`, `description`, `requires.subject`, `vars` (`description`, `required`, `default`), `agent` | same |
 | Step `id`, `depends_on`, `when`, `title`, `description`, `assignee`, `due` | same |
 | Step kinds `agent`, `exec`, `human`, and their keys (`agent`, `exec.*`, `human.*`) | same, unchanged; a step with neither `kind` nor `uses` is `agent` |
 | `retry.max_attempts`, `retry.backoff` | same, on any step |
@@ -97,7 +97,7 @@ decision. These words are not interchangeable: "gate" is retired, and
 | `outputs` (`outputs.state`) | step | §7.4 |
 | `check` | step | §5.8 |
 | `timeout`, `runner` (reserved) | step | §5.1 |
-| `x-*` | any mapping | §2.2 |
+| `x-*` | flow, step | §2.2 |
 
 Reserved for after phase 1 and rejected by the phase-1 validator with
 `reserved_key`: `subject`, `stages`, `until` on stages (not on `repeat`),
@@ -115,9 +115,43 @@ unknown keys are errors, no extension point skips validation.
 
 ### 2.2 Extension keys
 
-Any mapping may carry keys prefixed `x-`. The validator ignores them and
-tools MUST preserve them on rewrite. (Open question 4: align with the task
-tool's extension namespace.)
+The flow root and every step mapping may carry keys prefixed `x-`. They are
+the implementer's: the spec reads them, keeps them and writes them back, and
+gives them no meaning.
+
+- A key is an extension when it starts with `x-`; nothing after the prefix is
+  checked. The prefix is case-sensitive.
+- A value may be any YAML or JSON value (scalar, list, mapping). Its
+  contents are not validated.
+- Every other unknown key stays an error (V03). An `x-` key below the flow
+  root or a step mapping (inside `vars`, `exec`, `with`, `check`, ...) is
+  an unknown key like any other.
+- Implementers MUST preserve extensions on rewrite and MUST NOT let them
+  change the meaning of any key defined here. The engine ignores them.
+- Steps keep their own extensions through `include` and `repeat`
+  expansion: an expanded step carries the extensions of the step it came
+  from, not those of the block that produced it.
+- Templates: string values at any depth in a step's extensions are
+  templatable (§4.2) and rendered with the step's other fields; an
+  unresolvable reference is an error as there. A flow's extensions are not
+  rendered by the spec module; an implementer that wants them rendered
+  applies the same rules itself (the Go module offers `RenderMap`).
+
+An implementer namespaces its data by naming one key after itself
+(`x-<tool>`) and keeping everything under it, so two tools never collide.
+
+```yaml
+flow: review
+version: 1.0.0
+x-acme:                       # flow level
+  owner: platform
+steps:
+  - id: lint
+    title: "Lint {{pr}}"
+    x-acme:                   # step level
+      priority: 2
+      tags: [ci, "pr-{{pr}}"] # rendered like title
+```
 
 ### 2.3 Top-level keys
 
@@ -137,7 +171,7 @@ tool's extension namespace.)
 | `tasks` | `none` \| `per-run` \| `per-step` | no | §7.8. Default `per-run` |
 | `concurrency` | Concurrency | no | §7.3 |
 | `retention` | Retention | no | §7.10. Default: recordings kept 90 days |
-| `track` | `{title, type, plan}` | no | Plan level, as recipe 0.1 |
+| `x-*` | any | no | Implementer extension data (§2.2) |
 | `returns` | map name → expression | no | §5.9 |
 | `steps` | list of Step | yes | At least one |
 
@@ -232,7 +266,8 @@ recipe 0.1 placeholders (`{{repo}}`, `{{results.sec/scan.stdout}}`,
 Which fields may hold a placeholder: `title`, `description`, `assignee`,
 `due`, `when`, `until`, `agent`, `exec.argv[*]`, `exec.cwd`, `exec.env`
 values, `human.assignee`, `check.contract`, `for_each`, and every string
-value, at any depth, under `with` and `outputs`. Triggers' `when` and
+value, at any depth, under `with`, `outputs` and a step's `x-*` keys. A
+flow's own `x-*` keys are not templated by the spec. Triggers' `when` and
 `source` options are templatable against `trigger` only.
 
 ### 4.3 Rendering
@@ -918,9 +953,9 @@ step lists with the same rules per list.
    approval means the next fire is skipped (§7.3) and triage stalls until a
    decision. An approval mode that detaches (run completes, decisions
    trigger a continuation) is likely needed; not specified in 0.1.
-4. **Extension namespace.** `x-*` here versus the task tool's own
-   extension namespace for round-trip fields; align when the spec module is
-   extracted.
+4. **Extension key naming.** Whether names after `x-` get a registry or a
+   convention beyond the one-key-per-implementer advice of §2.2. 0.1
+   checks only the prefix.
 5. **Legacy loose equality.** §4.4 keeps recipe 0.1's `%v` equality for
    expressions that match its grammar. Remove once no recipe depends on it.
 6. **Block-level `for_each`.** Only step-level and sub-flow `for_each` in

@@ -14,11 +14,6 @@ vars:
   pr: {description: "PR number", required: true}
   depth: {default: standard}
 agent: claude
-track:
-  title: "Review {{pr}}"
-  type: delivery
-  plan: |
-    Review checklist.
 steps:
   - id: lint
     kind: exec
@@ -56,9 +51,6 @@ func assertRecipeHeader(t *testing.T, r *Flow) {
 	t.Helper()
 	if r.Name != "code-review" || r.Version != "1.2.0" || r.Requires.Subject != "task" || r.Agent != "claude" {
 		t.Errorf("header = %+v", r)
-	}
-	if r.Track == nil || r.Track.Type != "delivery" || !strings.Contains(r.Track.Plan, "checklist") {
-		t.Errorf("track block = %+v", r.Track)
 	}
 	if r.Hash == "" || r.Path != "test.yaml" {
 		t.Errorf("hash/path not set: %q %q", r.Hash, r.Path)

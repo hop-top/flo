@@ -42,6 +42,7 @@ func StepFields(s *Step) []Field {
 	}
 	out = appendAnyFields(out, "with", s.With)
 	out = appendAnyFields(out, "outputs", s.Outputs)
+	out = appendExtFields(out, s.Ext)
 	out = append(out, Field{"for_each", s.ForEach})
 	var kept []Field
 	for _, f := range out {
@@ -50,6 +51,20 @@ func StepFields(s *Step) []Field {
 		}
 	}
 	return kept
+}
+
+// appendExtFields lists the string leaves of the extension map under
+// their own key paths (x-acme.tags[0]).
+func appendExtFields(out []Field, m map[string]any) []Field {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		out = appendAnyField(out, k, m[k])
+	}
+	return out
 }
 
 func appendAnyFields(out []Field, prefix string, m map[string]any) []Field {

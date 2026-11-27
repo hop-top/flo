@@ -19,7 +19,6 @@ type Flow struct {
 	Requires    Requires          `yaml:"requires,omitempty" json:"requires,omitempty"`
 	Vars        map[string]VarDef `yaml:"vars,omitempty" json:"vars,omitempty"`
 	Agent       string            `yaml:"agent,omitempty" json:"agent,omitempty"`
-	Track       *Track            `yaml:"track,omitempty" json:"track,omitempty"`
 	Steps       []Step            `yaml:"steps" json:"steps"`
 
 	// Run-level keys (flow spec §1.3). The spec module parses and keeps
@@ -35,6 +34,11 @@ type Flow struct {
 	Concurrency map[string]any    `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
 	Returns     map[string]string `yaml:"returns,omitempty" json:"returns,omitempty"`
 	Retention   map[string]any    `yaml:"retention,omitempty" json:"retention,omitempty"`
+
+	// Ext holds the x-* keys of the flow root: implementer-owned data the
+	// spec parses, preserves and serializes but gives no meaning
+	// (flow spec §2.2). Not rendered; see RenderMap.
+	Ext map[string]any `yaml:"-" json:"-"`
 
 	// Path is the file the flow was parsed from, Source the directory or
 	// layer it was located in, Hash the sha256 of the raw bytes. None of
@@ -68,13 +72,6 @@ type VarDef struct {
 	Type     string `yaml:"type,omitempty" json:"type,omitempty"`
 	Required bool   `yaml:"required,omitempty" json:"required,omitempty"`
 	Default  any    `yaml:"default,omitempty" json:"default,omitempty"`
-}
-
-// Track is what a plan-level tool builds a track from; the engine ignores it.
-type Track struct {
-	Title string `yaml:"title,omitempty" json:"title,omitempty"`
-	Type  string `yaml:"type,omitempty" json:"type,omitempty"`
-	Plan  string `yaml:"plan,omitempty" json:"plan,omitempty"`
 }
 
 // Step is one entry of the ordered steps list. A step is exactly one
@@ -121,6 +118,11 @@ type Step struct {
 	Repeat int    `yaml:"repeat,omitempty" json:"repeat,omitempty"`
 	Until  string `yaml:"until,omitempty" json:"until,omitempty"`
 	Steps  []Step `yaml:"steps,omitempty" json:"steps,omitempty"`
+
+	// Ext holds the x-* keys of the step: implementer-owned data the spec
+	// parses, preserves and serializes but gives no meaning (flow spec
+	// §2.2). String leaves are templatable like with and outputs.
+	Ext map[string]any `yaml:"-" json:"-"`
 
 	Ordinal int `yaml:"-" json:"ordinal,omitempty"`
 }

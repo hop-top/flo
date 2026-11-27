@@ -18,6 +18,9 @@ func ValidateFlow(r *Flow) error {
 	if err := validateFlowVars(r); err != nil {
 		return err
 	}
+	if err := validateExtKeys("flow "+r.Name, r.Ext); err != nil {
+		return err
+	}
 	for i := range r.Steps {
 		if err := validateStepShape(&r.Steps[i], i, ""); err != nil {
 			return err
@@ -83,6 +86,9 @@ func validateStepShape(s *Step, idx int, until string) error {
 	}
 	if until != "" && s.When != "" {
 		return fmt.Errorf("step %s: cannot combine when with the enclosing block's until", s.ID)
+	}
+	if err := validateExtKeys("step "+s.ID, s.Ext); err != nil {
+		return err
 	}
 	if err := validateStepBlockShape(s); err != nil {
 		return err
