@@ -151,6 +151,7 @@ func CopyStep(s Step) Step {
 	}
 	out.With = cloneAnyMap(s.With)
 	out.Outputs = cloneAnyMap(s.Outputs)
+	out.Ext = cloneAnyMap(s.Ext)
 	return out
 }
 
@@ -176,6 +177,7 @@ func WalkStepStrings(s *Step, fn func(*string)) {
 	}
 	walkAnyMap(s.With, fn)
 	walkAnyMap(s.Outputs, fn)
+	walkAnyMap(s.Ext, fn)
 	fn(&s.ForEach)
 }
 
@@ -292,4 +294,27 @@ func substituteVars(s *Step, bindings map[string]string) {
 			return m
 		})
 	})
+}
+
+// RenderMap renders every string leaf of m, at any depth, against scope
+// and returns the result as a copy; the input is never mutated. Errors are
+// those of Render. It is how a consumer renders Flow.Ext, which the spec
+// itself leaves as written.
+func RenderMap(m map[string]any, scope Scope) (map[string]any, error) {
+	out := cloneAnyMap(m)
+	var firstErr error
+	walkAnyMap(out, func(s *string) {
+		r, err := Render(*s, scope)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			return
+		}
+		*s = r
+	})
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return out, nil
 }

@@ -75,11 +75,29 @@ func decodeFlowYAML(data []byte, rec *Flow) error {
 	if err := rejectUnknownShapeYAML(root); err != nil {
 		return err
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
+	// x-* keys are not known fields: they are lifted out of the tree and the
+	// rest decodes strictly. Without any, the original bytes decode, so
+	// error lines stay true; with them the document is re-encoded first and
+	// decode-error lines are approximate.
+	body := data
+	var exts extTree
+	if root.Kind == yaml.MappingNode {
+		var err error
+		if exts, err = splitExtYAML(root); err != nil {
+			return fmt.Errorf("invalid flow: %w", err)
+		}
+		if exts.any() {
+			if body, err = yaml.Marshal(root); err != nil {
+				return fmt.Errorf("invalid flow: %w", err)
+			}
+		}
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(body))
 	dec.KnownFields(true)
 	if err := dec.Decode(rec); err != nil && err != io.EOF { //nolint:errorlint // yaml returns the sentinel itself
 		return fmt.Errorf("invalid flow: %w", err)
 	}
+	exts.apply(rec)
 	return nil
 }
 
@@ -130,10 +148,21 @@ func decodeFlowJSON(data []byte, rec *Flow) error {
 			return err
 		}
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
+	body := data
+	exts, err := splitExtJSON(raw)
+	if err != nil {
+		return fmt.Errorf("invalid flow: %w", err)
+	}
+	if exts.any() {
+		if body, err = json.Marshal(raw); err != nil {
+			return fmt.Errorf("invalid flow: %w", err)
+		}
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(rec); err != nil {
 		return fmt.Errorf("invalid flow: %w", err)
 	}
+	exts.apply(rec)
 	return nil
 }
